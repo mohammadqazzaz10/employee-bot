@@ -19,7 +19,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # قائمة معرفات المديرين - يمكنك إضافة أكثر من مدير هنا
-ADMIN_IDS = [1465191277, 6798279805]  # أضف معرفات المديرين الإضافيين مثل: [1465191277, 987654321, 123456789]
+ADMIN_IDS = [1465191277, 6798279805]
 
 authorized_phones = [
     '+962786644106'
@@ -242,6 +242,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     user_phone = get_user_phone(user.id)
     
+    # إضافة تحقق من اليوم الجمعة
+    today = get_jordan_time().weekday()  # 4 يعني يوم الجمعة
+    is_friday = today == 4
+    
     if user_phone and verify_employee(user_phone):
         welcome_message = (
             f"مرحبًا {user_first_name}! 👋\n\n"
@@ -259,7 +263,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "🔹 أوامر الاستراحات:\n"
             "━━━━━━━━━━━━━━━━━\n"
             "/smoke - طلب استراحة تدخين 🚬\n"
-            "  (5 دقائق، حد أقصى 6 سجائر/يوم، فجوة 1.5 ساعة)\n\n"
+            f"  (5 دقائق، حد أقصى {MAX_SMOKES_FRIDAY if is_friday else MAX_DAILY_SMOKES} سجائر/يوم)\n\n"
             "/break - طلب استراحة غداء ☕\n"
             "  (30 دقيقة، مرة واحدة في اليوم)\n\n"
             "🔹 أوامر الإجازات:\n"
