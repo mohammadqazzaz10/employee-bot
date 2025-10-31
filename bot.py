@@ -1,9 +1,11 @@
+#!/usr/bin/env python3
 import os
 import logging
-import sys
+import psycopg2
 from datetime import datetime
 from zoneinfo import ZoneInfo
-
+from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 # محاولة استيراد المكتبات مع معالجة الأخطاء
 try:
     import psycopg2
