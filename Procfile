@@ -1,1 +1,1 @@
-worker: bash render_build.sh
+worker: python bot.py
