@@ -271,4 +271,28 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "/help - عرض المساعدة 📖\n\n"
         )
         
-        if is_admin
+        if is_admin(user.id):
+            welcome_message += (
+                "🔸 أوامر المدير:\n"
+                "━━━━━━━━━━━━━━━━━\n"
+                "/list_employees - عرض جميع الموظفين 👥\n"
+                "/add_employee - إضافة موظف جديد ➕\n"
+                "/remove_employee - حذف موظف ❌\n"
+                "/edit_employee - تعديل بيانات موظف ✏️\n"
+                "/daily_report - التقرير اليومي 📊\n"
+                "/weekly_report - التقرير الأسبوعي 📈\n\n"
+            )
+        
+        await update.message.reply_text(welcome_message)
+    else:
+        keyboard = [[KeyboardButton("مشاركة رقم الهاتف 📱", request_contact=True)]]
+        reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
+        
+        welcome_message = (
+            f"مرحبًا {user_first_name}! 👋\n\n"
+            "أنا بوت إدارة حضور الموظفين.\n\n"
+            "⚠️ للبدء، يرجى مشاركة رقم هاتفك للتحقق من هويتك كموظف.\n\n"
+            "اضغط على الزر أدناه لمشاركة رقم الهاتف:"
+        )
+        
+        await update.message.reply_text(welcome_message, reply_markup=reply_markup)
