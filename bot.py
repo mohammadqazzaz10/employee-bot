@@ -55,22 +55,6 @@ def initialize_database_tables():
         conn = get_db_connection()
         cur = conn.cursor()
         
-        # جدول الموظفين - يجب أن يكون أولاً لأن الجداول الأخرى تعتمد عليه
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS employees (
-                id SERIAL PRIMARY KEY,
-                telegram_id BIGINT UNIQUE,
-                phone_number VARCHAR(50) UNIQUE,
-                full_name VARCHAR(255) NOT NULL,
-                age INTEGER,
-                position VARCHAR(100),
-                department VARCHAR(100),
-                hire_date DATE,
-                last_active TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-                created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-            );
-        """)
-        
         # جدول المديرين
         cur.execute("""
             CREATE TABLE IF NOT EXISTS admins (
@@ -78,40 +62,7 @@ def initialize_database_tables():
                 telegram_id BIGINT UNIQUE NOT NULL,
                 added_by BIGINT,
                 added_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-                is_super_admin BOOLEAN DEFAULT FALSE,
-                can_approve BOOLEAN DEFAULT TRUE
-            );
-        """)
-        
-        cur.execute("""
-            ALTER TABLE admins 
-            ADD COLUMN IF NOT EXISTS can_approve BOOLEAN DEFAULT TRUE;
-        """)
-        
-        # جدول الطلبات
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS requests (
-                id SERIAL PRIMARY KEY,
-                employee_id INTEGER REFERENCES employees(id) ON DELETE CASCADE,
-                request_type VARCHAR(50) NOT NULL,
-                status VARCHAR(20) DEFAULT 'pending',
-                requested_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-                responded_at TIMESTAMP WITH TIME ZONE,
-                notes TEXT,
-                created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-            );
-        """)
-        
-        # جدول السجائر اليومية
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS daily_cigarettes (
-                id SERIAL PRIMARY KEY,
-                employee_id INTEGER REFERENCES employees(id) ON DELETE CASCADE,
-                date DATE NOT NULL,
-                count INTEGER DEFAULT 0,
-                updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-                created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-                UNIQUE(employee_id, date)
+                is_super_admin BOOLEAN DEFAULT FALSE
             );
         """)
         
@@ -803,7 +754,7 @@ def get_last_cigarette_time(employee_id):
         if result:
             last_time = result[0]
             if last_time.tzinfo is None:
-                last_time = last_time.replace(tzinfo=ZoneInfo('UTC'))
+                last_time = last_time.replace(tzinfo=timezone.utc)
             last_time_jordan = last_time.astimezone(JORDAN_TZ)
             logger.info(f"آخر سيجارة للموظف {employee_id}: {last_time_jordan}")
             return last_time_jordan
@@ -872,33 +823,16 @@ def is_super_admin(user_id):
     except:
         return user_id in ADMIN_IDS
 
-def can_approve_requests(user_id):
-    """التحقق من أن المدير لديه صلاحية الموافقة على الطلبات"""
-    try:
-        conn = get_db_connection()
-        cur = conn.cursor()
-        cur.execute("SELECT can_approve FROM admins WHERE telegram_id = %s", (user_id,))
-        result = cur.fetchone()
-        cur.close()
-        conn.close()
-        if not result:
-            return user_id in ADMIN_IDS
-        return result[0]
-    except:
-        return user_id in ADMIN_IDS
-
-def add_admin_to_db(telegram_id, added_by=None, is_super=False, can_approve=True):
+def add_admin_to_db(telegram_id, added_by=None, is_super=False):
     """إضافة مدير إلى قاعدة البيانات"""
     try:
         conn = get_db_connection()
         cur = conn.cursor()
         cur.execute("""
-            INSERT INTO admins (telegram_id, added_by, is_super_admin, can_approve)
-            VALUES (%s, %s, %s, %s)
-            ON CONFLICT (telegram_id) DO UPDATE SET 
-                is_super_admin = EXCLUDED.is_super_admin,
-                can_approve = EXCLUDED.can_approve
-        """, (telegram_id, added_by, is_super, can_approve))
+            INSERT INTO admins (telegram_id, added_by, is_super_admin)
+            VALUES (%s, %s, %s)
+            ON CONFLICT (telegram_id) DO UPDATE SET is_super_admin = EXCLUDED.is_super_admin
+        """, (telegram_id, added_by, is_super))
         conn.commit()
         cur.close()
         conn.close()
@@ -945,809 +879,2009 @@ def get_today_date():
     """الحصول على تاريخ اليوم بتوقيت الأردن"""
     return get_jordan_time().strftime("%Y-%m-%d")
 
-def get_max_daily_smokes():
-    """الحصول على الحد الأقصى للسجائر بناءً على اليوم الحالي"""
-    current_time = get_jordan_time()
-    day_of_week = current_time.weekday()
-    if day_of_week == 4:
-        return 3
-    else:
-        return MAX_DAILY_SMOKES
+def get_smoke_count(user_id):
+    """الحصول على عدد السجائر المستخدمة اليوم"""
+    today = get_today_date()
+    user_id_str = str(user_id)
+    if user_id_str not in daily_smoke_count:
+        daily_smoke_count[user_id_str] = {}
+    count = daily_smoke_count[user_id_str].get(today, 0)
+    logger.info(f"قراءة عداد السجائر للمستخدم {user_id_str} في {today}: {count}")
+    return count
 
-def is_friday():
-    """التحقق من أن اليوم هو الجمعة"""
-    current_time = get_jordan_time()
-    return current_time.weekday() == 4
+def increment_smoke_count(user_id):
+    """زيادة عدد السجائر المستخدمة اليوم"""
+    today = get_today_date()
+    user_id_str = str(user_id)
+    if user_id_str not in daily_smoke_count:
+        daily_smoke_count[user_id_str] = {}
+    daily_smoke_count[user_id_str][today] = daily_smoke_count[user_id_str].get(today, 0) + 1
+    save_smoke_data()
+    logger.info(f"تم زيادة عداد السجائر للمستخدم {user_id_str} في {today}: {daily_smoke_count[user_id_str][today]}")
 
-def normalize_phone(phone):
-    """توحيد تنسيق رقم الهاتف"""
-    if not phone:
+def normalize_phone(phone_number):
+    """تطبيع رقم الهاتف بإزالة جميع الرموز غير الرقمية والأصفار البادئة"""
+    if not phone_number:
         return ""
-    phone = phone.strip().replace(" ", "").replace("-", "")
-    if phone.startswith("+962"):
-        return phone
-    elif phone.startswith("962"):
-        return "+" + phone
-    elif phone.startswith("0"):
-        return "+962" + phone[1:]
-    else:
-        return "+962" + phone
+    digits_only = ''.join(filter(str.isdigit, phone_number))
+    while digits_only.startswith('00'):
+        digits_only = digits_only[2:]
+    return digits_only
+
+def verify_employee(phone_number):
+    """التحقق من صلاحية الموظف باستخدام رقم الهاتف"""
+    normalized_input = normalize_phone(phone_number)
+    for auth_phone in authorized_phones:
+        if normalize_phone(auth_phone) == normalized_input:
+            return True
+    return False
+
+def get_user_phone(user_id):
+    """الحصول على رقم هاتف المستخدم من قاعدة البيانات"""
+    employee = get_employee_by_telegram_id(user_id)
+    if employee:
+        return employee.get('phone_number')
+    return user_database.get(user_id, {}).get('phone')
+
+def get_employee_name(user_id, default_name="المستخدم"):
+    """الحصول على اسم الموظف من قاعدة البيانات بدلاً من Telegram"""
+    employee = get_employee_by_telegram_id(user_id)
+    if employee and employee.get('full_name'):
+        return employee.get('full_name')
+    return default_name
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """معالجة أمر /start"""
-    user = update.effective_user
-    chat_id = update.effective_chat.id
+    """دالة البداية - طلب التحقق من هوية المستخدم"""
+    user = update.message.from_user
+    user_first_name = get_employee_name(user.id)
+    
+    user_phone = get_user_phone(user.id)
+    
+    if user_phone and verify_employee(user_phone):
+        welcome_message = (
+            f"مرحبًا {user_first_name}! 👋\n\n"
+            "✅ تم التحقق من هويتك بنجاح!\n\n"
+            f"📱 رقم الهاتف المسجل: {user_phone}\n\n"
+            "┏━━━━━━━━━━━━━━━━━━━━━┓\n"
+            "┃   📚 قائمة الأوامر   ┃\n"
+            "┗━━━━━━━━━━━━━━━━━━━━━┛\n\n"
+            "🔹 أوامر الحضور والانصراف:\n"
+            "━━━━━━━━━━━━━━━━━\n"
+            "/check_in - تسجيل الحضور 📥\n"
+            "  (إلزامي في بداية الدوام)\n\n"
+            "/check_out - تسجيل الانصراف 📤\n"
+            "  (إلزامي في نهاية الدوام)\n\n"
+            "🔹 أوامر الاستراحات:\n"
+            "━━━━━━━━━━━━━━━━━\n"
+            "/smoke - طلب استراحة تدخين 🚬\n"
+            "  (5 دقائق، حد أقصى 6 سجائر/يوم، فجوة 1.5 ساعة)\n\n"
+            "/break - طلب استراحة غداء ☕\n"
+            "  (30 دقيقة، مرة واحدة في اليوم)\n\n"
+            "🔹 أوامر الإجازات:\n"
+            "━━━━━━━━━━━━━━━━━\n"
+            "/leave - طلب مغادرة العمل 🚪\n"
+            "  (مع سبب المغادرة)\n\n"
+            "/vacation - طلب عطلة 🌴\n"
+            "  (مع سبب وعذر)\n\n"
+            "/help - عرض المساعدة 📖\n\n"
+        )
+        
+        if is_admin(user.id):
+            welcome_message += (
+                "🔸 أوامر المدير:\n"
+                "━━━━━━━━━━━━━━━━━\n"
+                "/list_employees - عرض جميع الموظفين 👥\n"
+                "/add_employee - إضافة موظف جديد ➕\n"
+                "/remove_employee - حذف موظف ❌\n"
+                "/edit_details - تعديل تفاصيل موظف 📋\n\n"
+            )
+        
+        welcome_message += "━━━━━━━━━━━━━━━━━\n✨ يمكنك الآن استخدام جميع الأوامر!"
+        
+        await update.message.reply_text(welcome_message)
+    else:
+        keyboard = [[KeyboardButton("مشاركة رقم الهاتف 📱", request_contact=True)]]
+        reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
+        
+        welcome_message = (
+            f"مرحبًا {user_first_name}! 👋\n\n"
+            "أنا بوت إدارة حضور الموظفين.\n\n"
+            "⚠️ للبدء، يرجى مشاركة رقم هاتفك للتحقق من هويتك كموظف.\n\n"
+            "اضغط على الزر أدناه لمشاركة رقم الهاتف:"
+        )
+        
+        await update.message.reply_text(welcome_message, reply_markup=reply_markup)
+
+async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """عرض رسالة المساعدة"""
+    user = update.message.from_user
+    
+    help_text = (
+        "📚 قائمة الأوامر:\n\n"
+        "🔹 الحضور والانصراف:\n"
+        "/check_in - تسجيل الحضور (إلزامي في بداية الدوام)\n"
+        "/check_out - تسجيل الانصراف (إلزامي في نهاية الدوام)\n"
+        "/attendance_report - عرض تقرير حضورك (آخر 7 أيام)\n\n"
+        "🔹 الاستراحات:\n"
+        "/smoke - طلب استراحة تدخين (5 دقائق، حد أقصى 6 سجائر/يوم، فجوة 1.5 ساعة)\n"
+        "/break - طلب استراحة غداء (30 دقيقة، مرة واحدة في اليوم)\n\n"
+        "🔹 الإجازات:\n"
+        "/leave - طلب مغادرة العمل (مع سبب المغادرة)\n"
+        "/vacation - طلب عطلة (مع سبب وعذر)\n\n"
+        "🔹 أوامر مساعدة:\n"
+        "/start - بدء البوت\n"
+        "/help - عرض هذه الرسالة\n"
+        "/my_id - عرض معرف Telegram الخاص بك\n\n"
+    )
     
     if is_admin(user.id):
-        await show_admin_menu(update, context)
-        return
-    
-    employee = get_employee_by_telegram_id(user.id)
-    
-    if employee:
-        await show_main_menu(update, context)
-    else:
-        await update.message.reply_text(
-            "مرحباً! يبدو أنك لم تسجل بعد.\n\n"
-            "يرجى مشاركة رقم هاتفك للتحقق من هويتك:",
-            reply_markup=ReplyKeyboardMarkup(
-                [[KeyboardButton("مشاركة رقم الهاتف 📞", request_contact=True)]],
-                resize_keyboard=True,
-                one_time_keyboard=True
-            )
+        help_text += (
+            "🔸 أوامر المدير:\n"
+            "/list_employees - عرض جميع الموظفين المسجلين\n"
+            "/add_employee - إضافة موظف جديد\n"
+            "/remove_employee - حذف موظف من النظام\n"
+            "/edit_details - تعديل تفاصيل موظف (الاسم، الهاتف، العمر، الوظيفة، القسم، التاريخ)\n"
+            "/daily_report - تقرير الحضور اليومي لجميع الموظفين\n"
+            "/weekly_report - تقرير الحضور الأسبوعي لجميع الموظفين\n"
+            "/list_admins - عرض قائمة المديرين الحاليين\n"
+            "/add_admin - إضافة مدير جديد (للمدير الرئيسي)\n"
+            "/remove_admin - حذف مدير (للمدير الرئيسي)\n\n"
         )
-
-async def handle_contact(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """معالجة مشاركة رقم الهاتف"""
-    user = update.effective_user
-    contact = update.message.contact
     
-    if not contact:
-        await update.message.reply_text("يرجى مشاركة رقم هاتفك باستخدام الزر أدناه.")
+    help_text += (
+        "ملاحظة: يجب أن يكون رقم هاتفك مسجلاً في النظام لاستخدام الطلبات.\n"
+        "استخدم /start لمشاركة رقم هاتفك."
+    )
+    await update.message.reply_text(help_text)
+
+async def my_id_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """عرض معرف Telegram للمستخدم"""
+    user = update.message.from_user
+    user_first_name = get_employee_name(user.id)
+    
+    message = (
+        f"🆔 معلومات حسابك:\n\n"
+        f"👤 الاسم: {user_first_name}\n"
+        f"🔢 معرف Telegram: `{user.id}`\n\n"
+        "📋 نسخ المعرف:\n"
+        "اضغط على الرقم أعلاه لنسخه\n\n"
+    )
+    
+    if is_admin(user.id):
+        message += "✅ أنت مسجل كمدير في النظام"
+    else:
+        message += "💼 حسابك: موظف"
+    
+    await update.message.reply_text(message, parse_mode='Markdown')
+
+async def list_admins_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """عرض قائمة المديرين الحاليين (للمدير فقط)"""
+    user = update.message.from_user
+    
+    if not is_admin(user.id):
+        await update.message.reply_text("❌ هذا الأمر متاح للمدير فقط.")
         return
     
-    phone_number = contact.phone_number
-    normalized_phone = normalize_phone(phone_number)
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("SELECT * FROM admins ORDER BY added_at")
+        admins = cur.fetchall()
+        cur.close()
+        conn.close()
+        
+        message = "👨‍💼 قائمة المديرين المسجلين في النظام:\n\n"
+        
+        for i, admin in enumerate(admins, 1):
+            is_current = "← (أنت)" if admin['telegram_id'] == user.id else ""
+            admin_type = "⭐ مدير رئيسي" if admin['is_super_admin'] else "👤 مدير"
+            message += f"{i}. {admin_type}\n"
+            message += f"   معرف Telegram: {admin['telegram_id']} {is_current}\n"
+            if admin['added_at']:
+                message += f"   📅 تاريخ الإضافة: {admin['added_at'].strftime('%Y-%m-%d')}\n"
+            message += "\n"
+        
+        message += (
+            "━━━━━━━━━━━━━━━━━\n"
+            "💡 لإضافة مدير جديد:\n"
+            "استخدم: /add_admin معرف_المدير\n\n"
+            "مثال: /add_admin 123456789\n\n"
+            f"📊 إجمالي المديرين: {len(admins)}"
+        )
+        
+        await update.message.reply_text(message)
+        
+    except Exception as e:
+        logger.error(f"خطأ في عرض قائمة المديرين: {e}")
+        await update.message.reply_text("❌ حدث خطأ أثناء عرض قائمة المديرين.")
+
+async def add_admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """إضافة مدير جديد (للمدير الرئيسي فقط)"""
+    user = update.message.from_user
     
-    employee = get_employee_by_phone(normalized_phone)
+    if not is_super_admin(user.id):
+        await update.message.reply_text("❌ هذا الأمر متاح للمدير الرئيسي فقط.")
+        return
     
-    if employee:
-        if employee.get('telegram_id') and employee['telegram_id'] != user.id:
+    if len(context.args) < 1:
+        await update.message.reply_text(
+            "❌ استخدام خاطئ. الصيغة الصحيحة:\n"
+            "/add_admin معرف_المدير\n\n"
+            "مثال:\n"
+            "/add_admin 123456789\n\n"
+            "💡 يمكن للشخص الحصول على معرفه بإرسال /my_id للبوت"
+        )
+        return
+    
+    try:
+        new_admin_id = int(context.args[0])
+        
+        if is_admin(new_admin_id):
+            await update.message.reply_text("⚠️ هذا الشخص مدير بالفعل!")
+            return
+        
+        if add_admin_to_db(new_admin_id, added_by=user.id):
             await update.message.reply_text(
-                "❌ هذا الرقم مرتبط بحساب تليجرام آخر.\n"
-                "يرجى استخدام الرقم الصحيح أو التواصل مع المدير."
+                f"✅ تم إضافة المدير بنجاح!\n\n"
+                f"معرف المدير الجديد: {new_admin_id}\n"
+                f"تمت الإضافة بواسطة: {user.first_name or user.id}\n\n"
+                f"🎉 الآن يمكن للمدير الجديد استخدام جميع الأوامر الإدارية!"
             )
+            logger.info(f"تم إضافة مدير جديد {new_admin_id} بواسطة {user.id}")
+            
+            # إرسال إشعار للمدير الجديد
+            try:
+                await context.bot.send_message(
+                    chat_id=new_admin_id,
+                    text=f"🎉 مبروك!\n\nتمت إضافتك كمدير في بوت إدارة حضور الموظفين.\n\n"
+                         f"يمكنك الآن استخدام /help لعرض الأوامر الإدارية المتاحة لك."
+                )
+            except:
+                pass
+        else:
+            await update.message.reply_text("❌ حدث خطأ أثناء إضافة المدير.")
+    
+    except ValueError:
+        await update.message.reply_text("❌ المعرف غير صحيح. يجب أن يكون رقماً.")
+
+async def remove_admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """حذف مدير (للمدير الرئيسي فقط)"""
+    user = update.message.from_user
+    
+    if not is_super_admin(user.id):
+        await update.message.reply_text("❌ هذا الأمر متاح للمدير الرئيسي فقط.")
+        return
+    
+    if len(context.args) < 1:
+        await update.message.reply_text(
+            "❌ استخدام خاطئ. الصيغة الصحيحة:\n"
+            "/remove_admin معرف_المدير\n\n"
+            "مثال:\n"
+            "/remove_admin 123456789"
+        )
+        return
+    
+    try:
+        admin_id_to_remove = int(context.args[0])
+        
+        if admin_id_to_remove == user.id:
+            await update.message.reply_text("❌ لا يمكنك حذف نفسك!")
             return
         
-        save_employee(user.id, normalized_phone, employee['full_name'])
-        await update.message.reply_text(
-            f"✅ تم التحقق بنجاح!\n"
-            f"مرحباً مرة أخرى {employee['full_name']}",
-            reply_markup=ReplyKeyboardRemove()
-        )
-        await show_main_menu(update, context)
-    else:
-        await update.message.reply_text(
-            "❌ رقم الهاتف غير مسجل في النظام.\n"
-            "يرجى التواصل مع المدير لإضافتك إلى النظام.",
-            reply_markup=ReplyKeyboardRemove()
-        )
-
-async def show_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """عرض القائمة الرئيسية"""
-    keyboard = [
-        [KeyboardButton("تسجيل الحضور 🟢"), KeyboardButton("تسجيل الانصراف 🔴")],
-        [KeyboardButton("طلب إذن خروج 🚪"), KeyboardButton("طلب إجازة 🏖️")],
-        [KeyboardButton("تسجيل سيجارة 🚬"), KeyboardButton("بريك الغداء 🍽️")],
-        [KeyboardButton("عرض الإحصائيات 📊"), KeyboardButton("المساعدة ℹ️")]
-    ]
-    
-    if is_admin(update.effective_user.id):
-        keyboard.append([KeyboardButton("لوحة التحكم 👨‍💼")])
-    
-    reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
-    
-    if update.message:
-        await update.message.reply_text("اختر من القائمة:", reply_markup=reply_markup)
-    elif update.callback_query:
-        await update.callback_query.message.reply_text("اختر من القائمة:", reply_markup=reply_markup)
-
-async def show_admin_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """عرض قائمة المدير"""
-    keyboard = [
-        [KeyboardButton("عرض تقرير اليوم 📅"), KeyboardButton("عرض تقرير الأسبوع 📊")],
-        [KeyboardButton("إدارة الموظفين 👥"), KeyboardButton("إدارة الطلبات 📋")],
-        [KeyboardButton("إدارة المديرين 👨‍💼"), KeyboardButton("رجوع ↩️")]
-    ]
-    
-    reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
-    
-    if update.message:
-        await update.message.reply_text("👨‍💼 لوحة تحكم المدير", reply_markup=reply_markup)
-    elif update.callback_query:
-        await update.callback_query.message.reply_text("👨‍💼 لوحة تحكم المدير", reply_markup=reply_markup)
-
-async def handle_check_in(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """معالجة تسجيل الحضور"""
-    user = update.effective_user
-    employee = get_employee_by_telegram_id(user.id)
-    
-    if not employee:
-        await update.message.reply_text("❌ لم يتم العثور على بياناتك. يرجى التسجيل أولاً.")
-        return
-    
-    result = record_check_in(employee['id'])
-    
-    if result['success']:
-        check_in_time = result['check_in_time'].strftime("%H:%M:%S")
-        if result['is_late']:
-            message = (f"⚠️ تم تسجيل الحضور في {check_in_time} (متأخر {result['late_minutes']} دقيقة)\n"
-                      f"يرجى تقديم سبب التأخير للمدير.")
-        else:
-            message = f"✅ تم تسجيل الحضور في {check_in_time}"
-        await update.message.reply_text(message)
-    else:
-        if result.get('error') == 'already_checked_in':
-            existing_time = result['check_in_time'].strftime("%H:%M:%S")
-            if result['is_late']:
-                message = f"⚠️ تم تسجيل الحضور مسبقاً في {existing_time} (متأخر {result['late_minutes']} دقيقة)"
-            else:
-                message = f"ℹ️ تم تسجيل الحضور مسبقاً في {existing_time}"
-            await update.message.reply_text(message)
-        else:
-            await update.message.reply_text("❌ حدث خطأ في تسجيل الحضور. يرجى المحاولة لاحقاً.")
-
-async def handle_check_out(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """معالجة تسجيل الانصراف"""
-    user = update.effective_user
-    employee = get_employee_by_telegram_id(user.id)
-    
-    if not employee:
-        await update.message.reply_text("❌ لم يتم العثور على بياناتك. يرجى التسجيل أولاً.")
-        return
-    
-    result = record_check_out(employee['id'])
-    
-    if result['success']:
-        check_out_time = result['check_out_time'].strftime("%H:%M:%S")
-        total_hours = result['total_work_hours']
-        overtime = result['overtime_hours']
-        
-        message = (f"✅ تم تسجيل الانصراف في {check_out_time}\n"
-                  f"🕐 مجموع ساعات العمل: {total_hours:.2f} ساعة")
-        
-        if overtime > 0:
-            message += f"\n⏱️ ساعات إضافية: {overtime:.2f} ساعة"
-            
-        await update.message.reply_text(message)
-    else:
-        if result.get('error') == 'already_checked_out':
-            existing_time = result['check_out_time'].strftime("%H:%M:%S")
-            total_hours = result['total_work_hours']
-            overtime = result['overtime_hours']
-            
-            message = (f"ℹ️ تم تسجيل الانصراف مسبقاً في {existing_time}\n"
-                      f"🕐 مجموع ساعات العمل: {total_hours:.2f} ساعة")
-            
-            if overtime > 0:
-                message += f"\n⏱️ ساعات إضافية: {overtime:.2f} ساعة"
-                
-            await update.message.reply_text(message)
-        elif result.get('error') == 'لم يتم تسجيل الحضور اليوم':
-            await update.message.reply_text("❌ لم يتم تسجيل الحضور اليوم. يرجى تسجيل الحضور أولاً.")
-        else:
-            await update.message.reply_text("❌ حدث خطأ في تسجيل الانصراف. يرجى المحاولة لاحقاً.")
-
-async def handle_smoke_request(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """معالجة طلب تدخين سيجارة"""
-    user = update.effective_user
-    employee = get_employee_by_telegram_id(user.id)
-    
-    if not employee:
-        await update.message.reply_text("❌ لم يتم العثور على بياناتك. يرجى التسجيل أولاً.")
-        return
-    
-    current_count = get_smoke_count_db(employee['id'])
-    max_allowed = get_max_daily_smokes()
-    
-    if current_count >= max_allowed:
-        if is_friday():
-            await update.message.reply_text("❌ لقد استهلكت الحد الأقصى لليوم (3 سجائر فقط في الجمعة)")
-        else:
-            await update.message.reply_text(f"❌ لقد استهلكت الحد الأقصى لليوم ({max_allowed} سجائر)")
-        return
-    
-    last_smoke_time = get_last_cigarette_time(employee['id'])
-    current_time = get_jordan_time()
-    
-    if last_smoke_time:
-        time_diff = (current_time - last_smoke_time).total_seconds() / 60
-        if time_diff < 30:
-            remaining = 30 - int(time_diff)
-            await update.message.reply_text(f"⏳ يجب الانتظار {remaining} دقيقة قبل السيجارة القادمة")
+        if admin_id_to_remove in ADMIN_IDS:
+            await update.message.reply_text("❌ لا يمكن حذف المديرين الرئيسيين!")
             return
-    
-    new_count = increment_smoke_count_db(employee['id'])
-    record_cigarette_time(employee['id'])
-    
-    remaining_smokes = max_allowed - new_count
-    
-    message = (f"🚬 تم تسجيل السيجارة بنجاح\n"
-              f"📊 العدد اليومي: {new_count}/{max_allowed}\n"
-              f"📉 المتبقي: {remaining_smokes}")
-    
-    await update.message.reply_text(message)
-
-async def handle_lunch_break(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """معالجة طلب بريك الغداء"""
-    user = update.effective_user
-    employee = get_employee_by_telegram_id(user.id)
-    
-    if not employee:
-        await update.message.reply_text("❌ لم يتم العثور على بياناتك. يرجى التسجيل أولاً.")
-        return
-    
-    if has_taken_lunch_break_today(employee['id']):
-        await update.message.reply_text("ℹ️ لقد أخذت بريك الغداء مسبقاً اليوم")
-        return
-    
-    mark_lunch_break_taken(employee['id'])
-    await update.message.reply_text("✅ تم تسجيل بريك الغداء بنجاح\n🍽️ استمتع بوقتك!")
-
-async def handle_leave_request(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """بدء عملية طلب إذن خروج"""
-    user = update.effective_user
-    employee = get_employee_by_telegram_id(user.id)
-    
-    if not employee:
-        await update.message.reply_text("❌ لم يتم العثور على بياناتك. يرجى التسجيل أولاً.")
-        return ConversationHandler.END
-    
-    await update.message.reply_text(
-        "يرجى كتابة سبب طلب إذن الخروج:",
-        reply_markup=ReplyKeyboardMarkup(
-            [[KeyboardButton("إلغاء ❌")]],
-            resize_keyboard=True,
-            one_time_keyboard=True
-        )
-    )
-    
-    return LEAVE_REASON
-
-async def handle_vacation_request(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """بدء عملية طلب إجازة"""
-    user = update.effective_user
-    employee = get_employee_by_telegram_id(user.id)
-    
-    if not employee:
-        await update.message.reply_text("❌ لم يتم العثور على بياناتك. يرجى التسجيل أولاً.")
-        return ConversationHandler.END
-    
-    await update.message.reply_text(
-        "يرجى كتابة سبب طلب الإجازة:",
-        reply_markup=ReplyKeyboardMarkup(
-            [[KeyboardButton("إلغاء ❌")]],
-            resize_keyboard=True,
-            one_time_keyboard=True
-        )
-    )
-    
-    return VACATION_REASON
-
-async def process_leave_reason(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """معالجة سبب إذن الخروج"""
-    reason = update.message.text
-    
-    if reason == "إلغاء ❌":
-        await update.message.reply_text("تم إلغاء طلب إذن الخروج", reply_markup=ReplyKeyboardRemove())
-        await show_main_menu(update, context)
-        return ConversationHandler.END
-    
-    user = update.effective_user
-    employee = get_employee_by_telegram_id(user.id)
-    
-    request_id = save_request(employee['id'], 'leave')
-    
-    if request_id:
-        admin_text = (f"📋 طلب إذن خروج جديد\n"
-                     f"👤 الموظف: {employee['full_name']}\n"
-                     f"📞 الرقم: {employee['phone_number']}\n"
-                     f"📝 السبب: {reason}\n"
-                     f"🆔 رقم الطلب: {request_id}")
         
-        keyboard = [
-            [
-                InlineKeyboardButton("✅ الموافقة", callback_data=f"approve_leave_{request_id}"),
-                InlineKeyboardButton("❌ الرفض", callback_data=f"reject_leave_{request_id}")
-            ]
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        
-        await send_to_all_admins(context, admin_text, reply_markup)
-        
-        await update.message.reply_text(
-            "✅ تم إرسال طلب إذن الخروج للمدير\n⏳ بانتظار الموافقة...",
-            reply_markup=ReplyKeyboardRemove()
-        )
-    else:
-        await update.message.reply_text(
-            "❌ حدث خطأ في إرسال الطلب. يرجى المحاولة لاحقاً.",
-            reply_markup=ReplyKeyboardRemove()
-        )
-    
-    await show_main_menu(update, context)
-    return ConversationHandler.END
-
-async def process_vacation_reason(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """معالجة سبب الإجازة"""
-    reason = update.message.text
-    
-    if reason == "إلغاء ❌":
-        await update.message.reply_text("تم إلغاء طلب الإجازة", reply_markup=ReplyKeyboardRemove())
-        await show_main_menu(update, context)
-        return ConversationHandler.END
-    
-    user = update.effective_user
-    employee = get_employee_by_telegram_id(user.id)
-    
-    request_id = save_request(employee['id'], 'vacation')
-    
-    if request_id:
-        admin_text = (f"🏖️ طلب إجازة جديد\n"
-                     f"👤 الموظف: {employee['full_name']}\n"
-                     f"📞 الرقم: {employee['phone_number']}\n"
-                     f"📝 السبب: {reason}\n"
-                     f"🆔 رقم الطلب: {request_id}")
-        
-        keyboard = [
-            [
-                InlineKeyboardButton("✅ الموافقة", callback_data=f"approve_vacation_{request_id}"),
-                InlineKeyboardButton("❌ الرفض", callback_data=f"reject_vacation_{request_id}")
-            ]
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        
-        await send_to_all_admins(context, admin_text, reply_markup)
-        
-        await update.message.reply_text(
-            "✅ تم إرسال طلب الإجازة للمدير\n⏳ بانتظار الموافقة...",
-            reply_markup=ReplyKeyboardRemove()
-        )
-    else:
-        await update.message.reply_text(
-            "❌ حدث خطأ في إرسال الطلب. يرجى المحاولة لاحقاً.",
-            reply_markup=ReplyKeyboardRemove()
-        )
-    
-    await show_main_menu(update, context)
-    return ConversationHandler.END
-
-async def cancel_conversation(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """إلغاء المحادثة"""
-    await update.message.reply_text(
-        "تم الإلغاء",
-        reply_markup=ReplyKeyboardRemove()
-    )
-    await show_main_menu(update, context)
-    return ConversationHandler.END
-
-async def handle_admin_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """معالجة عرض تقرير اليوم للمدير"""
-    if not is_admin(update.effective_user.id):
-        await update.message.reply_text("❌ ليس لديك صلاحية الوصول لهذا الأمر.")
-        return
-    
-    report_data = get_daily_attendance_report()
-    today = get_today_date()
-    
-    if not report_data:
-        await update.message.reply_text(f"📅 لا توجد بيانات حضور لليوم {today}")
-        return
-    
-    message = f"📊 تقرير حضور اليوم {today}\n\n"
-    
-    present_count = 0
-    late_count = 0
-    absent_count = 0
-    
-    for record in report_data:
-        status = "❌ غائب"
-        details = ""
-        
-        if record['check_in_time']:
-            check_in = record['check_in_time'].strftime("%H:%M")
-            check_out = record['check_out_time'].strftime("%H:%M") if record['check_out_time'] else "لم ينصرف"
-            total_hours = record['total_work_hours'] or 0
-            overtime = record['overtime_hours'] or 0
+        if remove_admin_from_db(admin_id_to_remove):
+            await update.message.reply_text(
+                f"✅ تم حذف المدير بنجاح!\n\n"
+                f"معرف المدير المحذوف: {admin_id_to_remove}"
+            )
+            logger.info(f"تم حذف المدير {admin_id_to_remove} بواسطة {user.id}")
             
-            if record['is_late']:
-                status = "⚠️ متأخر"
-                late_count += 1
-                details = f" ({check_in} - {check_out}) - تأخر {record['late_minutes']} دقيقة"
-            else:
-                status = "✅ حاضر"
-                present_count += 1
-                details = f" ({check_in} - {check_out})"
-            
-            details += f" - {total_hours:.1f}h"
-            if overtime > 0:
-                details += f" (+{overtime:.1f}h)"
+            # إرسال إشعار للمدير المحذوف
+            try:
+                await context.bot.send_message(
+                    chat_id=admin_id_to_remove,
+                    text="⚠️ تم إزالة صلاحياتك الإدارية من بوت إدارة حضور الموظفين."
+                )
+            except:
+                pass
         else:
-            absent_count += 1
-        
-        message += f"{record['full_name']}: {status}{details}\n"
+            await update.message.reply_text("❌ لم يتم العثور على المدير أو لا يمكن حذفه.")
     
-    message += f"\n📈 الإحصائيات:\n"
-    message += f"✅ حاضر: {present_count}\n"
-    message += f"⚠️ متأخر: {late_count}\n"
-    message += f"❌ غائب: {absent_count}\n"
-    message += f"👥 المجموع: {len(report_data)}"
-    
-    await update.message.reply_text(message)
+    except ValueError:
+        await update.message.reply_text("❌ المعرف غير صحيح. يجب أن يكون رقماً.")
 
-async def handle_weekly_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """معالجة عرض التقرير الأسبوعي للمدير"""
-    if not is_admin(update.effective_user.id):
-        await update.message.reply_text("❌ ليس لديك صلاحية الوصول لهذا الأمر.")
-        return
+async def list_employees(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """عرض جميع الموظفين المسجلين (للمدير فقط)"""
+    user = update.message.from_user
     
-    report_data = get_weekly_attendance_report()
-    
-    if not report_data:
-        await update.message.reply_text("📊 لا توجد بيانات حضور للأسبوع الماضي")
-        return
-    
-    message = "📊 التقرير الأسبوعي (آخر 7 أيام)\n\n"
-    
-    for record in report_data:
-        message += f"👤 {record['full_name']}:\n"
-        message += f"   ✅ أيام الحضور: {record['present_days']}\n"
-        message += f"   ⚠️ أيام التأخر: {record['late_days']}\n"
-        message += f"   🕐 إجمالي الساعات: {record['total_hours']:.1f}h\n"
-        message += f"   ⏱️ ساعات إضافية: {record['total_overtime']:.1f}h\n"
-        if record['avg_hours']:
-            message += f"   📊 متوسط الساعات: {float(record['avg_hours']):.1f}h\n"
-        message += "\n"
-    
-    await update.message.reply_text(message)
-
-async def handle_employee_management(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """معالجة إدارة الموظفين"""
-    if not is_admin(update.effective_user.id):
-        await update.message.reply_text("❌ ليس لديك صلاحية الوصول لهذا الأمر.")
-        return
-    
-    keyboard = [
-        [KeyboardButton("عرض جميع الموظفين 👥")],
-        [KeyboardButton("إضافة موظف جديد ➕"), KeyboardButton("حذف موظف 🗑️")],
-        [KeyboardButton("تحديث بيانات موظف ✏️")],
-        [KeyboardButton("رجوع ↩️")]
-    ]
-    
-    reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
-    await update.message.reply_text("👥 إدارة الموظفين", reply_markup=reply_markup)
-
-async def handle_show_employees(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """عرض جميع الموظفين"""
-    if not is_admin(update.effective_user.id):
-        await update.message.reply_text("❌ ليس لديك صلاحية الوصول لهذا الأمر.")
+    if not is_admin(user.id):
+        await update.message.reply_text("❌ هذا الأمر متاح للمدير فقط.")
         return
     
     employees = get_all_employees()
     
     if not employees:
-        await update.message.reply_text("❌ لا يوجد موظفين مسجلين في النظام.")
+        await update.message.reply_text("📭 لا يوجد موظفين مسجلين في النظام حالياً.")
         return
     
-    message = "👥 قائمة جميع الموظفين:\n\n"
-    
+    message = "👥 قائمة الموظفين المسجلين:\n\n"
     for i, emp in enumerate(employees, 1):
-        status = "✅ نشط" if emp.get('telegram_id') else "❌ غير نشط"
-        last_active = emp.get('last_active')
-        if last_active:
-            if isinstance(last_active, str):
-                last_active_str = last_active
-            else:
-                last_active_str = last_active.strftime("%Y-%m-%d %H:%M")
-        else:
-            last_active_str = "غير معروف"
-        
-        message += (f"{i}. {emp['full_name']}\n"
-                   f"   📞 {emp['phone_number']}\n"
-                   f"   🆔 {emp['id']}\n"
-                   f"   {status}\n"
-                   f"   📅 آخر نشاط: {last_active_str}\n\n")
+        message += (
+            f"{i}. {emp['full_name']}\n"
+            f"   📱 الهاتف: {emp['phone_number']}\n"
+            f"   🆔 معرف Telegram: {emp['telegram_id']}\n"
+            f"   📅 آخر نشاط: {emp.get('last_active', 'غير متوفر')}\n\n"
+        )
     
     await update.message.reply_text(message)
 
-async def handle_admin_management(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """معالجة إدارة المديرين"""
-    if not is_super_admin(update.effective_user.id):
-        await update.message.reply_text("❌ ليس لديك صلاحية الوصول لهذا الأمر.")
+async def add_employee(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """إضافة موظف جديد (للمدير فقط)"""
+    user = update.message.from_user
+    
+    if not is_admin(user.id):
+        await update.message.reply_text("❌ هذا الأمر متاح للمدير فقط.")
         return
     
-    keyboard = [
-        [KeyboardButton("عرض جميع المديرين 👨‍💼")],
-        [KeyboardButton("إضافة مدير جديد ➕"), KeyboardButton("حذف مدير 🗑️")],
-        [KeyboardButton("رجوع ↩️")]
-    ]
-    
-    reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
-    await update.message.reply_text("👨‍💼 إدارة المديرين", reply_markup=reply_markup)
-
-async def handle_show_admins(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """عرض جميع المديرين"""
-    if not is_super_admin(update.effective_user.id):
-        await update.message.reply_text("❌ ليس لديك صلاحية الوصول لهذا الأمر.")
+    if len(context.args) < 2:
+        await update.message.reply_text(
+            "❌ استخدام خاطئ. الصيغة الصحيحة:\n"
+            "/add_employee رقم_الهاتف الاسم_الكامل\n\n"
+            "مثال:\n"
+            "/add_employee +962791234567 أحمد محمد"
+        )
         return
     
-    try:
-        conn = get_db_connection()
-        cur = conn.cursor(cursor_factory=RealDictCursor)
-        cur.execute("""
-            SELECT a.*, e.full_name 
-            FROM admins a 
-            LEFT JOIN employees e ON a.telegram_id = e.telegram_id
-            ORDER BY a.is_super_admin DESC, a.added_at
-        """)
-        admins = cur.fetchall()
-        cur.close()
-        conn.close()
-        
-        message = "👨‍💼 قائمة المديرين:\n\n"
-        
-        for i, admin in enumerate(admins, 1):
-            role = "👑 مدير رئيسي" if admin['is_super_admin'] else "👨‍💼 مدير عادي"
-            can_approve = "✅ نعم" if admin['can_approve'] else "❌ لا"
-            name = admin['full_name'] or "غير معروف"
-            
-            message += (f"{i}. {name}\n"
-                       f"   🆔 {admin['telegram_id']}\n"
-                       f"   {role}\n"
-                       f"   صلاحية الموافقة: {can_approve}\n"
-                       f"   📅 تاريخ الإضافة: {admin['added_at'].strftime('%Y-%m-%d')}\n\n")
-        
-        await update.message.reply_text(message)
-    except Exception as e:
-        logger.error(f"خطأ في عرض المديرين: {e}")
-        await update.message.reply_text("❌ حدث خطأ في عرض قائمة المديرين.")
-
-async def handle_request_management(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """معالجة إدارة الطلبات"""
-    if not is_admin(update.effective_user.id):
-        await update.message.reply_text("❌ ليس لديك صلاحية الوصول لهذا الأمر.")
+    phone_number = context.args[0]
+    full_name = ' '.join(context.args[1:])
+    
+    if not phone_number.startswith('+'):
+        phone_number = '+' + phone_number
+    
+    existing = get_employee_by_phone(phone_number)
+    if existing:
+        if not verify_employee(phone_number):
+            add_employee_to_authorized(phone_number)
+            await update.message.reply_text(
+                f"✅ تم تفعيل الموظف!\n\n"
+                f"👤 الاسم: {existing['full_name']}\n"
+                f"📱 الهاتف: {existing['phone_number']}\n\n"
+                f"الموظف كان مسجلاً في قاعدة البيانات، تم إضافته الآن إلى قائمة الموظفين المصرح لهم.\n"
+                f"يمكنه الآن استخدام جميع أوامر البوت! ✨"
+            )
+            logger.info(f"تم تفعيل موظف موجود: {existing['full_name']} - {phone_number}")
+        else:
+            await update.message.reply_text(
+                f"⚠️ هذا الموظف مسجل ومفعّل بالفعل!\n\n"
+                f"👤 الاسم: {existing['full_name']}\n"
+                f"📱 الهاتف: {existing['phone_number']}\n\n"
+                f"✅ يمكنه استخدام البوت بشكل طبيعي."
+            )
         return
     
-    try:
-        conn = get_db_connection()
-        cur = conn.cursor(cursor_factory=RealDictCursor)
-        cur.execute("""
-            SELECT r.*, e.full_name, e.phone_number
-            FROM requests r
-            JOIN employees e ON r.employee_id = e.id
-            WHERE r.status = 'pending'
-            ORDER BY r.requested_at
-        """)
-        pending_requests = cur.fetchall()
-        cur.close()
-        conn.close()
-        
-        if not pending_requests:
-            await update.message.reply_text("✅ لا توجد طلبات معلقة حالياً.")
-            return
-        
-        message = "📋 الطلبات المعلقة:\n\n"
-        
-        for req in pending_requests:
-            req_type = "إذن خروج 🚪" if req['request_type'] == 'leave' else "إجازة 🏖️'
-            requested_at = req['requested_at'].strftime("%Y-%m-%d %H:%M")
-            
-            message += (f"🆔 رقم الطلب: {req['id']}\n"
-                       f"👤 الموظف: {req['full_name']}\n"
-                       f"📞 الرقم: {req['phone_number']}\n"
-                       f"📋 النوع: {req_type}\n"
-                       f"📝 الملاحظات: {req['notes'] or 'لا توجد'}\n"
-                       f"🕒 وقت الطلب: {requested_at}\n"
-                       f"────────────────────\n")
-        
-        message += "\nاستخدم الأزرار في الرسالة الأصلية للموافقة أو الرفض."
-        
-        await update.message.reply_text(message)
-    except Exception as e:
-        logger.error(f"خطأ في عرض الطلبات: {e}")
-        await update.message.reply_text("❌ حدث خطأ في عرض الطلبات المعلقة.")
+    employee_id = save_employee(None, phone_number, full_name)
+    
+    if employee_id:
+        add_employee_to_authorized(phone_number)
+        await update.message.reply_text(
+            f"✅ تم إضافة الموظف بنجاح!\n\n"
+            f"👤 الاسم: {full_name}\n"
+            f"📱 الهاتف: {phone_number}\n"
+            f"🆔 معرف قاعدة البيانات: {employee_id}\n\n"
+            f"سيتم تحديث معرف Telegram الخاص به عند استخدامه للبوت لأول مرة."
+        )
+        logger.info(f"تم إضافة موظف جديد إلى قاعدة البيانات: {full_name} - {phone_number} (ID: {employee_id})")
+    else:
+        await update.message.reply_text("❌ حدث خطأ أثناء إضافة الموظف إلى قاعدة البيانات. يرجى المحاولة مرة أخرى.")
 
-async def handle_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """عرض إحصائيات الموظف"""
-    user = update.effective_user
-    employee = get_employee_by_telegram_id(user.id)
+async def remove_employee(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """حذف موظف من النظام (للمدير فقط)"""
+    user = update.message.from_user
+    
+    if not is_admin(user.id):
+        await update.message.reply_text("❌ هذا الأمر متاح للمدير فقط.")
+        return
+    
+    if len(context.args) != 1:
+        await update.message.reply_text(
+            "❌ استخدام خاطئ. الصيغة الصحيحة:\n"
+            "/remove_employee رقم_الهاتف\n\n"
+            "مثال:\n"
+            "/remove_employee +962791234567"
+        )
+        return
+    
+    phone_number = context.args[0]
+    
+    if not phone_number.startswith('+'):
+        phone_number = '+' + phone_number
+    
+    employee = get_employee_by_phone(phone_number)
     
     if not employee:
-        await update.message.reply_text("❌ لم يتم العثور على بياناتك. يرجى التسجيل أولاً.")
+        await update.message.reply_text(
+            f"⚠️ لم يتم العثور على موظف برقم الهاتف: {phone_number}"
+        )
         return
     
-    today_attendance = get_attendance_today(employee['id'])
-    smoke_count = get_smoke_count_db(employee['id'])
-    max_smokes = get_max_daily_smokes()
-    lunch_taken = has_taken_lunch_break_today(employee['id'])
-    weekly_report = get_employee_attendance_report(employee['id'], 7)
-    
-    message = f"📊 إحصائيات {employee['full_name']}\n\n"
-    
-    if today_attendance:
-        check_in = today_attendance['check_in_time'].strftime("%H:%M:%S")
-        if today_attendance['check_out_time']:
-            check_out = today_attendance['check_out_time'].strftime("%H:%M:%S")
-            total_hours = today_attendance['total_work_hours']
-            overtime = today_attendance['overtime_hours']
-            
-            message += f"🟢 الحضور: {check_in}\n"
-            message += f"🔴 الانصراف: {check_out}\n"
-            message += f"🕐 ساعات العمل: {total_hours:.2f}h\n"
-            if overtime > 0:
-                message += f"⏱️ ساعات إضافية: {overtime:.2f}h\n"
-            
-            if today_attendance['is_late']:
-                message += f"⚠️ تأخر: {today_attendance['late_minutes']} دقيقة\n"
-        else:
-            message += f"🟢 الحضور: {check_in}\n"
-            message += f"🔴 الانصراف: لم ينصرف بعد\n"
+    if delete_employee_by_phone(phone_number):
+        remove_employee_from_authorized(phone_number)
+        await update.message.reply_text(
+            f"✅ تم حذف الموظف بنجاح!\n\n"
+            f"الاسم: {employee['full_name']}\n"
+            f"الهاتف: {employee['phone_number']}"
+        )
+        logger.info(f"تم حذف الموظف: {employee['full_name']} - {phone_number}")
     else:
-        message += "❌ لم يسجل الحضور اليوم\n"
+        await update.message.reply_text("❌ حدث خطأ أثناء حذف الموظف. يرجى المحاولة مرة أخرى.")
+
+async def edit_details_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """عرض قائمة الموظفين لتعديل تفاصيلهم (للمدير فقط)"""
+    user = update.message.from_user
     
-    message += f"\n🚬 السجائر اليوم: {smoke_count}/{max_smokes}\n"
-    message += f"🍽️ بريك الغداء: {'✅ مأخوذ' if lunch_taken else '❌ لم يؤخذ بعد'}\n"
+    if not is_admin(user.id):
+        await update.message.reply_text("❌ هذا الأمر متاح للمدير فقط.")
+        return
     
-    if weekly_report:
-        present_days = sum(1 for day in weekly_report if day['check_in_time'])
-        late_days = sum(1 for day in weekly_report if day.get('is_late'))
-        total_hours = sum(day['total_work_hours'] or 0 for day in weekly_report)
+    employees = get_all_employees()
+    
+    if not employees:
+        await update.message.reply_text("📭 لا يوجد موظفين مسجلين في النظام حالياً.")
+        return
+    
+    keyboard = []
+    for emp in employees:
+        keyboard.append([InlineKeyboardButton(
+            f"👤 {emp['full_name']} - {emp['phone_number']}", 
+            callback_data=f"editdetail_{emp['id']}"
+        )])
+    
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await update.message.reply_text(
+        "✏️ اختر الموظف الذي تريد تعديل تفاصيله:\n\n"
+        "اضغط على اسم الموظف لعرض تفاصيله:",
+        reply_markup=reply_markup
+    )
+
+async def show_employee_details(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """عرض تفاصيل الموظف مع أزرار التعديل"""
+    query = update.callback_query
+    await query.answer()
+    
+    employee_id = int(query.data.split('_')[1])
+    
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
         
-        message += f"\n📈 إحصائيات الأسبوع:\n"
-        message += f"✅ أيام الحضور: {present_days}/7\n"
-        message += f"⚠️ أيام التأخر: {late_days}\n"
-        message += f"🕐 إجمالي الساعات: {total_hours:.1f}h\n"
+        # إضافة الحقول الجديدة إذا لم تكن موجودة
+        cur.execute("""
+            ALTER TABLE employees 
+            ADD COLUMN IF NOT EXISTS age INTEGER,
+            ADD COLUMN IF NOT EXISTS job_title VARCHAR(100),
+            ADD COLUMN IF NOT EXISTS department VARCHAR(100),
+            ADD COLUMN IF NOT EXISTS hire_date DATE
+        """)
+        conn.commit()
+        
+        cur.execute("SELECT * FROM employees WHERE id = %s", (employee_id,))
+        employee = cur.fetchone()
+        cur.close()
+        conn.close()
+        
+        if not employee:
+            await query.edit_message_text("❌ خطأ: لم يتم العثور على الموظف.")
+            return ConversationHandler.END
+        
+        context.user_data['editing_employee_id'] = employee_id
+        
+        # عرض التفاصيل الحالية
+        message = (
+            f"📋 تفاصيل الموظف:\n\n"
+            f"👤 الاسم: {employee['full_name']}\n"
+            f"📱 الهاتف: {employee['phone_number']}\n"
+            f"🎂 العمر: {employee.get('age') or 'غير محدد'}\n"
+            f"💼 الوظيفة: {employee.get('job_title') or 'غير محددة'}\n"
+            f"🏢 القسم: {employee.get('department') or 'غير محدد'}\n"
+            f"📅 تاريخ التوظيف: {employee.get('hire_date') or 'غير محدد'}\n\n"
+            f"اختر التفصيل الذي تريد تعديله:"
+        )
+        
+        keyboard = [
+            [InlineKeyboardButton("✏️ تعديل الاسم", callback_data=f"editfield_name_{employee_id}")],
+            [InlineKeyboardButton("📱 تعديل رقم الهاتف", callback_data=f"editfield_phone_{employee_id}")],
+            [InlineKeyboardButton("🎂 تعديل العمر", callback_data=f"editfield_age_{employee_id}")],
+            [InlineKeyboardButton("💼 تعديل الوظيفة", callback_data=f"editfield_job_{employee_id}")],
+            [InlineKeyboardButton("🏢 تعديل القسم", callback_data=f"editfield_dept_{employee_id}")],
+            [InlineKeyboardButton("📅 تعديل تاريخ التوظيف", callback_data=f"editfield_hire_{employee_id}")],
+            [InlineKeyboardButton("❌ إلغاء", callback_data="cancel_edit")]
+        ]
+        
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await query.edit_message_text(message, reply_markup=reply_markup)
+        
+        return EDIT_DETAIL_SELECT
+        
+    except Exception as e:
+        logger.error(f"خطأ في عرض تفاصيل الموظف: {e}")
+        await query.edit_message_text("❌ حدث خطأ أثناء عرض التفاصيل.")
+        return ConversationHandler.END
+
+async def select_field_to_edit(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """معالجة اختيار الحقل المراد تعديله"""
+    query = update.callback_query
+    await query.answer()
+    
+    if query.data == "cancel_edit":
+        await query.edit_message_text("❌ تم إلغاء العملية.")
+        context.user_data.clear()
+        return ConversationHandler.END
+    
+    parts = query.data.split('_')
+    field_type = parts[1]
+    employee_id = int(parts[2])
+    
+    context.user_data['editing_field'] = field_type
+    context.user_data['editing_employee_id'] = employee_id
+    
+    field_names = {
+        'name': 'الاسم الكامل',
+        'phone': 'رقم الهاتف',
+        'age': 'العمر',
+        'job': 'الوظيفة',
+        'dept': 'القسم',
+        'hire': 'تاريخ التوظيف (YYYY-MM-DD)'
+    }
+    
+    field_name = field_names.get(field_type, 'التفصيل')
+    
+    await query.edit_message_text(
+        f"✏️ تعديل {field_name}\n\n"
+        f"📝 أرسل القيمة الجديدة:\n\n"
+        f"أرسل /cancel للإلغاء."
+    )
+    
+    return EDIT_DETAIL_INPUT
+
+async def receive_new_detail_value(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """استقبال القيمة الجديدة وتحديثها"""
+    new_value = update.message.text.strip()
+    field_type = context.user_data.get('editing_field')
+    employee_id = context.user_data.get('editing_employee_id')
+    
+    # التحقق من صحة القيمة
+    if field_type == 'age':
+        try:
+            age = int(new_value)
+            if age < 16 or age > 100:
+                await update.message.reply_text(
+                    "⚠️ العمر غير صالح. يجب أن يكون بين 16 و 100.\n\n"
+                    "أرسل العمر الجديد أو /cancel للإلغاء:"
+                )
+                return EDIT_DETAIL_INPUT
+            new_value = age
+        except ValueError:
+            await update.message.reply_text(
+                "⚠️ العمر يجب أن يكون رقماً.\n\n"
+                "أرسل العمر الجديد أو /cancel للإلغاء:"
+            )
+            return EDIT_DETAIL_INPUT
+    
+    if field_type == 'hire':
+        try:
+            from datetime import datetime
+            hire_date = datetime.strptime(new_value, '%Y-%m-%d').date()
+            new_value = hire_date
+        except ValueError:
+            await update.message.reply_text(
+                "⚠️ التاريخ غير صالح. يجب أن يكون بصيغة YYYY-MM-DD\n"
+                "مثال: 2024-01-15\n\n"
+                "أرسل التاريخ الجديد أو /cancel للإلغاء:"
+            )
+            return EDIT_DETAIL_INPUT
+    
+    if field_type == 'phone':
+        if not new_value.startswith('+'):
+            new_value = '+' + new_value
+    
+    # تحديث قاعدة البيانات
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        
+        field_mapping = {
+            'name': 'full_name',
+            'phone': 'phone_number',
+            'age': 'age',
+            'job': 'job_title',
+            'dept': 'department',
+            'hire': 'hire_date'
+        }
+        
+        db_field = field_mapping.get(field_type)
+        
+        cur.execute(
+            f"UPDATE employees SET {db_field} = %s WHERE id = %s",
+            (new_value, employee_id)
+        )
+        conn.commit()
+        
+        # جلب التفاصيل المحدثة
+        cur.execute("SELECT * FROM employees WHERE id = %s", (employee_id,))
+        employee = cur.fetchone()
+        cur.close()
+        conn.close()
+        
+        field_names_ar = {
+            'name': 'الاسم',
+            'phone': 'رقم الهاتف',
+            'age': 'العمر',
+            'job': 'الوظيفة',
+            'dept': 'القسم',
+            'hire': 'تاريخ التوظيف'
+        }
+        
+        await update.message.reply_text(
+            f"✅ تم تحديث {field_names_ar.get(field_type)} بنجاح!\n\n"
+            f"القيمة الجديدة: {new_value}"
+        )
+        
+        logger.info(f"تم تحديث {field_names_ar.get(field_type)} للموظف ID {employee_id}: {new_value}")
+        
+        context.user_data.clear()
+        return ConversationHandler.END
+        
+    except Exception as e:
+        logger.error(f"خطأ في تحديث التفاصيل: {e}")
+        await update.message.reply_text(
+            "❌ حدث خطأ أثناء تحديث التفاصيل. يرجى المحاولة مرة أخرى."
+        )
+        context.user_data.clear()
+        return ConversationHandler.END
+
+async def smoke_request(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """طلب استراحة تدخين"""
+    user = update.message.from_user
+    user_phone = get_user_phone(user.id)
+    user_first_name = get_employee_name(user.id, "الموظف")
+    current_time = get_jordan_time().strftime("%Y-%m-%d %H:%M:%S")
+    
+    if not user_phone:
+        await update.message.reply_text(
+            "⚠️ يجب أن تشارك رقم هاتفك أولاً.\n"
+            "استخدم /start ثم اضغط على 'مشاركة رقم الهاتف'."
+        )
+        return
+    
+    if not verify_employee(user_phone):
+        await update.message.reply_text(
+            f"❌ عذراً، رقم الهاتف {user_phone} غير مسجل في النظام.\n"
+            "يرجى التواصل مع الإدارة لإضافة رقمك."
+        )
+        return
+    
+    employee = get_employee_by_telegram_id(user.id)
+    if not employee:
+        await update.message.reply_text(
+            "❌ خطأ: لم يتم العثور على بياناتك في النظام.\n"
+            "يرجى استخدام /start لتسجيل بياناتك."
+        )
+        return
+    
+    last_cigarette_time = get_last_cigarette_time(employee['id'])
+    if last_cigarette_time:
+        time_since_last = get_jordan_time() - last_cigarette_time
+        hours_since_last = time_since_last.total_seconds() / 3600
+        min_gap_hours = 1.5
+        
+        if hours_since_last < min_gap_hours:
+            remaining_minutes = int((min_gap_hours - hours_since_last) * 60)
+            remaining_hours = remaining_minutes // 60
+            remaining_mins = remaining_minutes % 60
+            
+            time_text = ""
+            if remaining_hours > 0:
+                time_text = f"{remaining_hours} ساعة و {remaining_mins} دقيقة"
+            else:
+                time_text = f"{remaining_mins} دقيقة"
+            
+            await update.message.reply_text(
+                f"⏰ يجب الانتظار ساعة ونصف بين كل سيجارة!\n\n"
+                f"⏳ الوقت المتبقي: {time_text}\n"
+                f"يرجى الانتظار قليلاً. 😊"
+            )
+            return
+    
+    current_smoke_count = get_smoke_count_db(employee['id'])
+    remaining = MAX_DAILY_SMOKES - current_smoke_count
+    
+    if current_smoke_count >= MAX_DAILY_SMOKES:
+        await update.message.reply_text(
+            f"❌ عذراً، لقد وصلت للحد الأقصى اليومي!\n\n"
+            f"🚬 السجائر المستخدمة اليوم: {current_smoke_count}/{MAX_DAILY_SMOKES}\n"
+            f"يمكنك المحاولة غداً. 😊"
+        )
+        return
+    
+    await update.message.reply_text(
+        f"⏳ تم إرسال طلب استراحة تدخين للمدير...\n"
+        f"الموظف: {user_first_name}\n"
+        f"الوقت: {current_time}\n"
+        f"🚬 السجائر المتبقية اليوم: {remaining}/{MAX_DAILY_SMOKES}"
+    )
+    
+    keyboard = [
+        [
+            InlineKeyboardButton("✅ قبول", callback_data=f"approve_smoke_{user.id}"),
+            InlineKeyboardButton("❌ رفض", callback_data=f"reject_smoke_{user.id}")
+        ]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    admin_message = (
+        f"📩 طلب جديد: استراحة تدخين 🚬\n\n"
+        f"الموظف: {user_first_name}\n"
+        f"رقم الهاتف: {user_phone}\n"
+        f"المعرف: {user.id}\n"
+        f"الوقت: {current_time}\n"
+        f"المدة: 5 دقائق\n"
+        f"🚬 السجائر المستخدمة اليوم: {current_smoke_count}/{MAX_DAILY_SMOKES}\n"
+        f"السجائر المتبقية: {remaining}\n\n"
+        "اختر الإجراء:"
+    )
+    
+    await send_to_all_admins(context, admin_message, reply_markup)
+    logger.info(f"Smoke request sent to admins from {user_first_name} ({user_phone})")
+
+async def break_request(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """طلب استراحة غداء"""
+    user = update.message.from_user
+    user_phone = get_user_phone(user.id)
+    user_first_name = get_employee_name(user.id, "الموظف")
+    current_time = get_jordan_time().strftime("%Y-%m-%d %H:%M:%S")
+    
+    if not user_phone:
+        await update.message.reply_text(
+            "⚠️ يجب أن تشارك رقم هاتفك أولاً.\n"
+            "استخدم /start ثم اضغط على 'مشاركة رقم الهاتف'."
+        )
+        return
+    
+    if not verify_employee(user_phone):
+        await update.message.reply_text(
+            f"❌ عذراً، رقم الهاتف {user_phone} غير مسجل في النظام.\n"
+            "يرجى التواصل مع الإدارة لإضافة رقمك."
+        )
+        return
+    
+    employee = get_employee_by_telegram_id(user.id)
+    if not employee:
+        await update.message.reply_text(
+            "❌ خطأ: لم يتم العثور على بياناتك في النظام.\n"
+            "يرجى استخدام /start لتسجيل بياناتك."
+        )
+        return
+    
+    if has_taken_lunch_break_today(employee['id']):
+        await update.message.reply_text(
+            "❌ عذراً، لقد أخذت استراحة غداء اليوم بالفعل!\n\n"
+            "📅 يمكنك الحصول على استراحة غداء واحدة فقط في اليوم (30 دقيقة).\n"
+            "يمكنك المحاولة غداً. 😊"
+        )
+        return
+    
+    await update.message.reply_text(
+        f"⏳ تم إرسال طلب استراحة للمدير...\n"
+        f"الموظف: {user_first_name}\n"
+        f"الوقت: {current_time}"
+    )
+    
+    keyboard = [
+        [
+            InlineKeyboardButton("✅ قبول", callback_data=f"approve_break_{user.id}"),
+            InlineKeyboardButton("❌ رفض", callback_data=f"reject_break_{user.id}")
+        ]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    admin_message = (
+        f"📩 طلب جديد: استراحة غداء ☕\n\n"
+        f"الموظف: {user_first_name}\n"
+        f"رقم الهاتف: {user_phone}\n"
+        f"المعرف: {user.id}\n"
+        f"الوقت: {current_time}\n"
+        f"المدة: 30 دقيقة\n\n"
+        "اختر الإجراء:"
+    )
+    
+    await send_to_all_admins(context, admin_message, reply_markup)
+    logger.info(f"Break request sent to admins from {user_first_name} ({user_phone})")
+
+async def leave_request(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """طلب مغادرة العمل - الخطوة 1: طلب السبب"""
+    user = update.message.from_user
+    user_phone = get_user_phone(user.id)
+    
+    if not user_phone:
+        await update.message.reply_text(
+            "⚠️ يجب أن تشارك رقم هاتفك أولاً.\n"
+            "استخدم /start ثم اضغط على 'مشاركة رقم الهاتف'."
+        )
+        return ConversationHandler.END
+    
+    if not verify_employee(user_phone):
+        await update.message.reply_text(
+            f"❌ عذراً، رقم الهاتف {user_phone} غير مسجل في النظام.\n"
+            "يرجى التواصل مع الإدارة لإضافة رقمك."
+        )
+        return ConversationHandler.END
+    
+    await update.message.reply_text(
+        "📝 من فضلك، أرسل سبب المغادرة كرسالة نصية.\n\n"
+        "مثال: موعد طبيب\n\n"
+        "أرسل /cancel للإلغاء."
+    )
+    
+    return LEAVE_REASON
+
+async def receive_leave_reason(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """طلب مغادرة العمل - الخطوة 2: استقبال السبب وإرساله للمدير"""
+    user = update.message.from_user
+    user_phone = get_user_phone(user.id)
+    user_first_name = get_employee_name(user.id, "الموظف")
+    current_time = get_jordan_time().strftime("%Y-%m-%d %H:%M:%S")
+    leave_reason = update.message.text
+    
+    await update.message.reply_text(
+        f"⏳ تم إرسال طلب مغادرة العمل للمدير...\n"
+        f"الموظف: {user_first_name}\n"
+        f"الوقت: {current_time}\n"
+        f"السبب: {leave_reason}"
+    )
+    
+    keyboard = [
+        [
+            InlineKeyboardButton("✅ قبول", callback_data=f"approve_leave_{user.id}"),
+            InlineKeyboardButton("❌ رفض", callback_data=f"reject_leave_{user.id}")
+        ]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    admin_message = (
+        f"📩 طلب جديد: مغادرة العمل 🚪\n\n"
+        f"الموظف: {user_first_name}\n"
+        f"رقم الهاتف: {user_phone}\n"
+        f"المعرف: {user.id}\n"
+        f"الوقت: {current_time}\n"
+        f"السبب: {leave_reason}\n\n"
+        "اختر الإجراء:"
+    )
+    
+    await send_to_all_admins(context, admin_message, reply_markup)
+    logger.info(f"Leave request sent to admins from {user_first_name} ({user_phone}): {leave_reason}")
+    
+    return ConversationHandler.END
+
+async def vacation_request(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """طلب عطلة - الخطوة 1: طلب السبب والعذر"""
+    user = update.message.from_user
+    user_phone = get_user_phone(user.id)
+    
+    if not user_phone:
+        await update.message.reply_text(
+            "⚠️ يجب أن تشارك رقم هاتفك أولاً.\n"
+            "استخدم /start ثم اضغط على 'مشاركة رقم الهاتف'."
+        )
+        return ConversationHandler.END
+    
+    if not verify_employee(user_phone):
+        await update.message.reply_text(
+            f"❌ عذراً، رقم الهاتف {user_phone} غير مسجل في النظام.\n"
+            "يرجى التواصل مع الإدارة لإضافة رقمك."
+        )
+        return ConversationHandler.END
+    
+    await update.message.reply_text(
+        "🌴 طلب عطلة\n\n"
+        "📝 من فضلك، أرسل سبب طلب العطلة والعذر كرسالة نصية.\n\n"
+        "مثال: مريض - موعد زيارة طبيب\n\n"
+        "أرسل /cancel للإلغاء."
+    )
+    
+    return VACATION_REASON
+
+async def receive_vacation_reason(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """طلب عطلة - الخطوة 2: استقبال السبب وإرساله للمدير"""
+    user = update.message.from_user
+    user_phone = get_user_phone(user.id)
+    user_first_name = get_employee_name(user.id, "الموظف")
+    current_time = get_jordan_time().strftime("%Y-%m-%d %H:%M:%S")
+    vacation_reason = update.message.text
+    
+    await update.message.reply_text(
+        f"⏳ تم إرسال طلب العطلة للمدير...\n"
+        f"الموظف: {user_first_name}\n"
+        f"الوقت: {current_time}\n"
+        f"السبب والعذر: {vacation_reason}\n\n"
+        "سيتم إخطارك عند الرد على الطلب."
+    )
+    
+    keyboard = [
+        [
+            InlineKeyboardButton("✅ قبول", callback_data=f"approve_vacation_{user.id}"),
+            InlineKeyboardButton("❌ رفض", callback_data=f"reject_vacation_{user.id}")
+        ]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    admin_message = (
+        f"📩 طلب جديد: طلب عطلة 🌴\n\n"
+        f"الموظف: {user_first_name}\n"
+        f"رقم الهاتف: {user_phone}\n"
+        f"المعرف: {user.id}\n"
+        f"الوقت: {current_time}\n"
+        f"السبب والعذر: {vacation_reason}\n\n"
+        "اختر الإجراء:"
+    )
+    
+    await send_to_all_admins(context, admin_message, reply_markup)
+    logger.info(f"Vacation request sent to admins from {user_first_name} ({user_phone}): {vacation_reason}")
+    
+    return ConversationHandler.END
+
+async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """إلغاء العملية الحالية"""
+    await update.message.reply_text(
+        "❌ تم إلغاء العملية.\n"
+        "يمكنك استخدام /help لعرض الأوامر المتاحة."
+    )
+    return ConversationHandler.END
+
+async def check_in_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """تسجيل حضور الموظف"""
+    user = update.message.from_user
+    user_phone = get_user_phone(user.id)
+    
+    if not user_phone or not verify_employee(user_phone):
+        await update.message.reply_text(
+            "❌ غير مصرح لك باستخدام هذا الأمر.\n"
+            "يرجى التواصل مع الإدارة لإضافة رقمك."
+        )
+        return
+    
+    employee = get_employee_by_telegram_id(user.id)
+    if not employee:
+        await update.message.reply_text("❌ خطأ: لم يتم العثور على بيانات الموظف")
+        return
+    
+    employee_id = employee['id']
+    employee_name = employee.get('full_name', 'الموظف')
+    
+    result = record_check_in(employee_id)
+    
+    if not result['success']:
+        if result.get('error') == 'already_checked_in':
+            check_in_time = result['check_in_time']
+            await update.message.reply_text(
+                f"⚠️ لقد سجلت حضورك مسبقاً اليوم!\n\n"
+                f"⏰ وقت الحضور: {check_in_time.strftime('%H:%M:%S')}\n"
+                f"📅 التاريخ: {check_in_time.strftime('%Y-%m-%d')}"
+            )
+        else:
+            await update.message.reply_text(f"❌ خطأ في تسجيل الحضور: {result.get('error', 'خطأ غير معروف')}")
+        return
+    
+    check_in_time = result['check_in_time']
+    is_late = result['is_late']
+    late_minutes = result['late_minutes']
+    
+    if is_late:
+        add_warning(employee_id, 'late_arrival', f'تأخير {late_minutes} دقيقة')
+        
+        message = (
+            f"⚠️ تم تسجيل حضورك مع تأخير!\n\n"
+            f"👤 الموظف: {employee_name}\n"
+            f"⏰ وقت الحضور: {check_in_time.strftime('%H:%M:%S')}\n"
+            f"📅 التاريخ: {check_in_time.strftime('%Y-%m-%d')}\n"
+            f"⏱ التأخير: {late_minutes} دقيقة\n\n"
+            f"🚨 تم إصدار إنذار بسبب التأخير بعد الـ15 دقيقة المسموحة!"
+        )
+        
+        await send_to_all_admins(
+            context,
+            f"⚠️ إنذار تأخير موظف\n\n"
+            f"👤 الموظف: {employee_name}\n"
+            f"📱 الهاتف: {user_phone}\n"
+            f"⏰ وقت الحضور: {check_in_time.strftime('%H:%M:%S')}\n"
+            f"⏱ التأخير: {late_minutes} دقيقة\n"
+            f"📅 التاريخ: {check_in_time.strftime('%Y-%m-%d')}\n\n"
+            f"🚨 تم إصدار إنذار تلقائي!"
+        )
+    else:
+        if late_minutes > 0:
+            message = (
+                f"✅ تم تسجيل حضورك بنجاح!\n\n"
+                f"👤 الموظف: {employee_name}\n"
+                f"⏰ وقت الحضور: {check_in_time.strftime('%H:%M:%S')}\n"
+                f"📅 التاريخ: {check_in_time.strftime('%Y-%m-%d')}\n"
+                f"⏱ التأخير: {late_minutes} دقيقة (ضمن الوقت المسموح)\n\n"
+                f"💼 يوم عمل موفق!"
+            )
+        else:
+            message = (
+                f"✅ تم تسجيل حضورك بنجاح!\n\n"
+                f"👤 الموظف: {employee_name}\n"
+                f"⏰ وقت الحضور: {check_in_time.strftime('%H:%M:%S')}\n"
+                f"📅 التاريخ: {check_in_time.strftime('%Y-%m-%d')}\n"
+                f"🎯 في الوقت المحدد!\n\n"
+                f"💼 يوم عمل موفق!"
+            )
+        
+        await send_to_all_admins(
+            context,
+            f"✅ تسجيل حضور موظف\n\n"
+            f"👤 الموظف: {employee_name}\n"
+            f"📱 الهاتف: {user_phone}\n"
+            f"⏰ وقت الحضور: {check_in_time.strftime('%H:%M:%S')}\n"
+            f"📅 التاريخ: {check_in_time.strftime('%Y-%m-%d')}\n"
+            f"{'⏱ التأخير: ' + str(late_minutes) + ' دقيقة' if late_minutes > 0 else '🎯 في الوقت المحدد!'}"
+        )
     
     await update.message.reply_text(message)
 
-async def handle_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """عرض رسالة المساعدة"""
-    help_text = """
-🤖 دليل استخدام بوت إدارة الموظفين
+async def check_out_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """تسجيل انصراف الموظف"""
+    user = update.message.from_user
+    user_phone = get_user_phone(user.id)
+    
+    if not user_phone or not verify_employee(user_phone):
+        await update.message.reply_text(
+            "❌ غير مصرح لك باستخدام هذا الأمر.\n"
+            "يرجى التواصل مع الإدارة لإضافة رقمك."
+        )
+        return
+    
+    employee = get_employee_by_telegram_id(user.id)
+    if not employee:
+        await update.message.reply_text("❌ خطأ: لم يتم العثور على بيانات الموظف")
+        return
+    
+    employee_id = employee['id']
+    employee_name = employee.get('full_name', 'الموظف')
+    
+    result = record_check_out(employee_id)
+    
+    if not result['success']:
+        if result.get('error') == 'already_checked_out':
+            check_out_time = result['check_out_time']
+            total_hours = result['total_work_hours']
+            await update.message.reply_text(
+                f"⚠️ لقد سجلت انصرافك مسبقاً اليوم!\n\n"
+                f"🕐 وقت الانصراف: {check_out_time.strftime('%H:%M:%S')}\n"
+                f"⏱ ساعات العمل: {total_hours:.2f} ساعة\n"
+                f"📅 التاريخ: {check_out_time.strftime('%Y-%m-%d')}"
+            )
+        else:
+            await update.message.reply_text(f"❌ {result.get('error', 'خطأ في تسجيل الانصراف')}")
+        return
+    
+    check_in_time = result['check_in_time']
+    check_out_time = result['check_out_time']
+    total_hours = result['total_work_hours']
+    overtime_hours = result['overtime_hours']
+    
+    message = (
+        f"✅ تم تسجيل انصرافك بنجاح!\n\n"
+        f"👤 الموظف: {employee_name}\n"
+        f"🕐 وقت الحضور: {check_in_time.strftime('%H:%M:%S')}\n"
+        f"🕐 وقت الانصراف: {check_out_time.strftime('%H:%M:%S')}\n"
+        f"📅 التاريخ: {check_out_time.strftime('%Y-%m-%d')}\n\n"
+        f"⏱ ساعات العمل الكلية: {total_hours:.2f} ساعة\n"
+    )
+    
+    if overtime_hours > 0:
+        message += f"⭐ ساعات إضافية: {overtime_hours:.2f} ساعة\n\n"
+        message += "🎉 شكراً على العمل الإضافي!"
+    else:
+        regular_expected = WORK_REGULAR_HOURS
+        if total_hours < regular_expected:
+            shortfall = regular_expected - total_hours
+            message += f"\n⚠️ ملاحظة: نقص في ساعات العمل بمقدار {shortfall:.2f} ساعة"
+        else:
+            message += "\n💼 شكراً لك! نراك غداً بإذن الله"
+    
+    await update.message.reply_text(message)
+    
+    try:
+        admin_message = (
+            f"🚪 تسجيل انصراف موظف\n\n"
+            f"👤 الموظف: {employee_name}\n"
+            f"📱 الهاتف: {user_phone}\n"
+            f"🕐 وقت الحضور: {check_in_time.strftime('%H:%M:%S')}\n"
+            f"🕐 وقت الانصراف: {check_out_time.strftime('%H:%M:%S')}\n"
+            f"⏱ ساعات العمل: {total_hours:.2f} ساعة\n"
+        )
+        
+        if overtime_hours > 0:
+            admin_message += f"⭐ ساعات إضافية: {overtime_hours:.2f} ساعة\n"
+        
+        await send_to_all_admins(context, admin_message)
+    except Exception as e:
+        logger.error(f"Failed to notify admin about check-out: {e}")
 
-🟢 **تسجيل الحضور**: اضغط عند وصولك للعمل
-🔴 **تسجيل الانصراف**: اضغط عند مغادرة العمل
+async def attendance_report_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """عرض تقرير حضور الموظف"""
+    user = update.message.from_user
+    user_phone = get_user_phone(user.id)
+    
+    if not user_phone or not verify_employee(user_phone):
+        await update.message.reply_text(
+            "❌ غير مصرح لك باستخدام هذا الأمر.\n"
+            "يرجى التواصل مع الإدارة لإضافة رقمك."
+        )
+        return
+    
+    employee = get_employee_by_telegram_id(user.id)
+    if not employee:
+        await update.message.reply_text("❌ خطأ: لم يتم العثور على بيانات الموظف")
+        return
+    
+    employee_id = employee['id']
+    employee_name = employee.get('full_name', 'الموظف')
+    
+    records = get_employee_attendance_report(employee_id, days=7)
+    
+    if not records:
+        await update.message.reply_text(
+            f"📊 تقرير الحضور - {employee_name}\n\n"
+            "⚠️ لا توجد سجلات حضور للأيام السبعة الماضية."
+        )
+        return
+    
+    message = (
+        f"📊 تقرير الحضور - {employee_name}\n"
+        f"📅 آخر 7 أيام\n\n"
+    )
+    
+    total_days = 0
+    total_hours = 0
+    total_overtime = 0
+    late_days = 0
+    
+    for record in records:
+        date = record['date']
+        check_in = record['check_in_time']
+        check_out = record['check_out_time']
+        is_late = record['is_late']
+        work_hours = float(record['total_work_hours']) if record['total_work_hours'] else 0
+        overtime = float(record['overtime_hours']) if record['overtime_hours'] else 0
+        
+        message += f"━━━━━━━━━━━━━━━━━\n"
+        message += f"📅 {date.strftime('%Y-%m-%d')}\n"
+        
+        if check_in:
+            message += f"🕐 حضور: {check_in.strftime('%H:%M')}"
+            if is_late:
+                late_days += 1
+                message += f" ⚠️ متأخر"
+            message += "\n"
+        else:
+            message += "❌ لم يتم تسجيل الحضور\n"
+        
+        if check_out:
+            message += f"🕐 انصراف: {check_out.strftime('%H:%M')}\n"
+            message += f"⏱ ساعات العمل: {work_hours:.2f}\n"
+            if overtime > 0:
+                message += f"⭐ إضافي: {overtime:.2f}\n"
+            total_days += 1
+            total_hours += work_hours
+            total_overtime += overtime
+        
+        message += "\n"
+    
+    message += (
+        f"━━━━━━━━━━━━━━━━━\n"
+        f"📈 الإحصائيات:\n"
+        f"📅 أيام العمل: {total_days}\n"
+        f"⏱ إجمالي ساعات العمل: {total_hours:.2f}\n"
+    )
+    
+    if total_overtime > 0:
+        message += f"⭐ إجمالي الإضافي: {total_overtime:.2f}\n"
+    
+    if late_days > 0:
+        message += f"⚠️ أيام التأخير: {late_days}\n"
+    
+    if total_days > 0:
+        avg_hours = total_hours / total_days
+        message += f"📊 متوسط ساعات اليوم: {avg_hours:.2f}\n"
+    
+    await update.message.reply_text(message)
 
-🚬 **تسجيل سيجارة**: اضغط عند كل سيجارة (حد أقصى 6 يومياً، 3 في الجمعة)
-🍽️ **بريك الغداء**: اضغط عند أخذ استراحة الغداء
+async def daily_report_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """عرض تقرير الحضور اليومي (للمدير فقط)"""
+    user = update.message.from_user
+    
+    if not is_admin(user.id):
+        await update.message.reply_text("❌ هذا الأمر متاح للمدير فقط.")
+        return
+    
+    today = get_jordan_time().date()
+    records = get_daily_attendance_report(today)
+    
+    if not records:
+        await update.message.reply_text(
+            f"📊 التقرير اليومي - {today.strftime('%Y-%m-%d')}\n\n"
+            "⚠️ لا توجد سجلات حضور لليوم."
+        )
+        return
+    
+    message = (
+        f"📊 تقرير الحضور اليومي\n"
+        f"📅 {today.strftime('%Y-%m-%d')}\n\n"
+    )
+    
+    present_count = 0
+    absent_count = 0
+    late_count = 0
+    total_hours = 0
+    total_overtime = 0
+    
+    for record in records:
+        name = record['full_name']
+        check_in = record['check_in_time']
+        check_out = record['check_out_time']
+        is_late = record['is_late']
+        work_hours = float(record['total_work_hours']) if record['total_work_hours'] else 0
+        overtime = float(record['overtime_hours']) if record['overtime_hours'] else 0
+        
+        message += f"━━━━━━━━━━━━━━━━━\n"
+        message += f"👤 {name}\n"
+        
+        if check_in:
+            present_count += 1
+            message += f"🕐 حضور: {check_in.strftime('%H:%M')}"
+            if is_late:
+                late_count += 1
+                message += " ⚠️"
+            message += "\n"
+            
+            if check_out:
+                message += f"🕐 انصراف: {check_out.strftime('%H:%M')}\n"
+                message += f"⏱ {work_hours:.2f} ساعة"
+                if overtime > 0:
+                    message += f" (⭐ {overtime:.2f})"
+                message += "\n"
+                total_hours += work_hours
+                total_overtime += overtime
+            else:
+                message += "⏳ لم ينصرف بعد\n"
+        else:
+            absent_count += 1
+            message += "❌ غائب\n"
+        
+        message += "\n"
+    
+    total_employees = len(records)
+    message += (
+        f"━━━━━━━━━━━━━━━━━\n"
+        f"📈 ملخص اليوم:\n"
+        f"👥 إجمالي الموظفين: {total_employees}\n"
+        f"✅ حاضر: {present_count}\n"
+        f"❌ غائب: {absent_count}\n"
+    )
+    
+    if late_count > 0:
+        message += f"⚠️ متأخرين: {late_count}\n"
+    
+    message += f"⏱ إجمالي ساعات العمل: {total_hours:.2f}\n"
+    
+    if total_overtime > 0:
+        message += f"⭐ إجمالي الإضافي: {total_overtime:.2f}\n"
+    
+    await update.message.reply_text(message)
 
-🚪 **طلب إذن خروج**: لطلب الخروج أثناء الدوام
-🏖️ **طلب إجازة**: لطلب إجازة
+async def weekly_report_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """عرض تقرير الحضور الأسبوعي (للمدير فقط)"""
+    user = update.message.from_user
+    
+    if not is_admin(user.id):
+        await update.message.reply_text("❌ هذا الأمر متاح للمدير فقط.")
+        return
+    
+    records = get_weekly_attendance_report()
+    
+    if not records:
+        await update.message.reply_text(
+            "📊 التقرير الأسبوعي\n\n"
+            "⚠️ لا توجد سجلات حضور للأسبوع الماضي."
+        )
+        return
+    
+    end_date = get_jordan_time().date()
+    start_date = end_date - timedelta(days=6)
+    
+    message = (
+        f"📊 تقرير الحضور الأسبوعي\n"
+        f"📅 {start_date.strftime('%Y-%m-%d')} إلى {end_date.strftime('%Y-%m-%d')}\n\n"
+    )
+    
+    total_present = 0
+    total_late = 0
+    grand_total_hours = 0
+    grand_total_overtime = 0
+    
+    for record in records:
+        name = record['full_name']
+        present_days = int(record['present_days']) if record['present_days'] else 0
+        late_days = int(record['late_days']) if record['late_days'] else 0
+        total_hours = float(record['total_hours']) if record['total_hours'] else 0
+        total_overtime = float(record['total_overtime']) if record['total_overtime'] else 0
+        avg_hours = float(record['avg_hours']) if record['avg_hours'] else 0
+        
+        message += f"━━━━━━━━━━━━━━━━━\n"
+        message += f"👤 {name}\n"
+        message += f"📅 أيام الحضور: {present_days}/7\n"
+        
+        if late_days > 0:
+            message += f"⚠️ أيام التأخير: {late_days}\n"
+        
+        message += f"⏱ إجمالي الساعات: {total_hours:.2f}\n"
+        
+        if avg_hours > 0:
+            message += f"📊 متوسط اليوم: {avg_hours:.2f}\n"
+        
+        if total_overtime > 0:
+            message += f"⭐ إضافي: {total_overtime:.2f}\n"
+        
+        message += "\n"
+        
+        total_present += present_days
+        total_late += late_days
+        grand_total_hours += total_hours
+        grand_total_overtime += total_overtime
+    
+    total_employees = len(records)
+    message += (
+        f"━━━━━━━━━━━━━━━━━\n"
+        f"📈 ملخص الأسبوع:\n"
+        f"👥 عدد الموظفين: {total_employees}\n"
+        f"📅 إجمالي أيام الحضور: {total_present}\n"
+    )
+    
+    if total_late > 0:
+        message += f"⚠️ إجمالي أيام التأخير: {total_late}\n"
+    
+    message += f"⏱ إجمالي ساعات العمل: {grand_total_hours:.2f}\n"
+    
+    if grand_total_overtime > 0:
+        message += f"⭐ إجمالي الإضافي: {grand_total_overtime:.2f}\n"
+    
+    if total_employees > 0 and total_present > 0:
+        avg_attendance = total_present / total_employees
+        message += f"📊 متوسط الحضور: {avg_attendance:.1f} أيام/موظف\n"
+    
+    await update.message.reply_text(message)
 
-📊 **عرض الإحصائيات**: لعرض إحصائياتك اليومية والأسبوعية
+async def handle_contact(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """معالجة مشاركة رقم الهاتف"""
+    contact = update.message.contact
+    user = update.message.from_user
+    
+    if contact and contact.user_id == user.id:
+        phone_number = contact.phone_number
+        full_name = contact.first_name or "موظف"
+        
+        existing_by_phone = get_employee_by_phone(phone_number)
+        
+        if existing_by_phone and not existing_by_phone.get('telegram_id'):
+            full_name = existing_by_phone['full_name']
+            logger.info(f"تحديث معرف Telegram للموظف الموجود: {full_name} ({phone_number})")
+        
+        save_employee(user.id, phone_number, full_name)
+        
+        user_database[user.id] = {
+            'phone': phone_number,
+            'first_name': full_name,
+            'registered_at': get_jordan_time().strftime("%Y-%m-%d %H:%M:%S")
+        }
+        
+        if verify_employee(phone_number):
+            message = (
+                f"✅ تم التحقق بنجاح!\n\n"
+                f"👤 الاسم: {full_name}\n"
+                f"📱 الهاتف: {phone_number}\n\n"
+                "━━━━━━━━━━━━━━━━━\n"
+                "✅ رقمك مسجل في النظام!\n\n"
+                "┏━━━━━━━━━━━━━━━━━━━━━┓\n"
+                "┃   📚 قائمة الأوامر   ┃\n"
+                "┗━━━━━━━━━━━━━━━━━━━━━┛\n\n"
+                "🔹 أوامر الحضور والانصراف:\n"
+                "━━━━━━━━━━━━━━━━━\n"
+                "/check_in - تسجيل الحضور 📥\n"
+                "  (إلزامي في بداية الدوام)\n\n"
+                "/check_out - تسجيل الانصراف 📤\n"
+                "  (إلزامي في نهاية الدوام)\n\n"
+                "/attendance_report - تقرير حضورك 📊\n"
+                "  (آخر 7 أيام)\n\n"
+                "🔹 أوامر الاستراحات:\n"
+                "━━━━━━━━━━━━━━━━━\n"
+                "/smoke - طلب استراحة تدخين 🚬\n"
+                "  (5 دقائق، حد أقصى 6 سجائر/يوم، فجوة 1.5 ساعة)\n\n"
+                "/break - طلب استراحة غداء ☕\n"
+                "  (30 دقيقة، مرة واحدة في اليوم)\n\n"
+                "🔹 أوامر الإجازات:\n"
+                "━━━━━━━━━━━━━━━━━\n"
+                "/leave - طلب مغادرة العمل 🚪\n"
+                "  (مع سبب المغادرة)\n\n"
+                "/vacation - طلب عطلة 🌴\n"
+                "  (مع سبب وعذر)\n\n"
+                "/help - عرض المساعدة 📖\n\n"
+            )
+            
+            if is_admin(user.id):
+                message += (
+                    "🔸 أوامر المدير:\n"
+                    "━━━━━━━━━━━━━━━━━\n"
+                    "/list_employees - عرض جميع الموظفين 👥\n"
+                    "/add_employee - إضافة موظف جديد ➕\n"
+                    "/remove_employee - حذف موظف ❌\n"
+                    "/edit_employee - تعديل بيانات موظف ✏️\n"
+                    "/daily_report - التقرير اليومي 📊\n"
+                    "/weekly_report - التقرير الأسبوعي 📈\n\n"
+                )
+            
+            message += "━━━━━━━━━━━━━━━━━\n✨ يمكنك الآن استخدام جميع الأوامر!"
+        else:
+            message = (
+                f"شكراً لمشاركة معلومات الاتصال! ✅\n\n"
+                f"👤 الاسم: {full_name}\n"
+                f"📱 الهاتف: {phone_number}\n\n"
+                "⚠️ رقم هاتفك غير مسجل في النظام حالياً.\n\n"
+                "يرجى التواصل مع الإدارة لإضافة رقمك إلى النظام."
+            )
+        
+        logger.info(f"Contact registered: {full_name} - {phone_number} (ID: {user.id})")
+        await update.message.reply_text(message)
+    else:
+        await update.message.reply_text(
+            "⚠️ يرجى مشاركة رقم هاتفك الشخصي فقط."
+        )
 
-👨‍💼 **للمديرين**: 
-   - عرض تقارير الحضور
-   - إدارة الموظفين والطلبات
-   - إدارة النظام
+def create_progress_bar(current_seconds: int, total_seconds: int, length: int = 20) -> str:
+    """إنشاء شريط تقدم متحرك"""
+    percentage = current_seconds / total_seconds
+    filled = int(percentage * length)
+    empty = length - filled
+    
+    bar = '█' * filled + '░' * empty
+    percent = int(percentage * 100)
+    
+    return f"[{bar}] {percent}%"
 
-للاستفسارات أو المشاكل، تواصل مع المدير.
-"""
-    await update.message.reply_text(help_text)
+def get_time_emoji(remaining_seconds: int, total_seconds: int) -> str:
+    """الحصول على رمز متحرك حسب الوقت المتبقي"""
+    percentage = remaining_seconds / total_seconds
+    
+    if percentage > 0.75:
+        return '🟢'
+    elif percentage > 0.50:
+        return '🟡'
+    elif percentage > 0.25:
+        return '🟠'
+    else:
+        return '🔴'
 
-async def handle_back(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """العودة للقائمة الرئيسية"""
-    await show_main_menu(update, context)
+async def update_timer(context: ContextTypes.DEFAULT_TYPE):
+    """تحديث العداد التنازلي"""
+    job = context.job
+    user_id, message_id, end_time, request_type, total_duration = job.data
+    
+    if user_id in timer_completed and timer_completed[user_id]:
+        return
+    
+    now = get_jordan_time()
+    remaining = end_time - now
+    
+    if remaining.total_seconds() <= 0:
+        if user_id in timer_completed and timer_completed[user_id]:
+            return
+            
+        timer_completed[user_id] = True
+        
+        if user_id in active_timers:
+            for active_job in active_timers[user_id]:
+                try:
+                    active_job.schedule_removal()
+                except:
+                    pass
+            del active_timers[user_id]
+        
+        request_names = {
+            'smoke': 'استراحة التدخين',
+            'break': 'استراحة الغداء'
+        }
+        request_name = request_names.get(request_type, 'الاستراحة')
+        
+        completion_message = (
+            f"🔔🔔🔔 تنبيه! ⏰\n\n"
+            f"⏱ انتهت {request_name}!\n"
+            f"🕐 الوقت: {now.strftime('%H:%M:%S')}\n\n"
+            f"💼 يرجى العودة للعمل فوراً!"
+        )
+        
+        keyboard = [[InlineKeyboardButton("✅ رجعت للعمل", callback_data=f"returned_{request_type}_{user_id}")]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        try:
+            await context.bot.send_message(
+                chat_id=user_id,
+                text=completion_message,
+                reply_markup=reply_markup
+            )
+        except Exception as e:
+            logger.error(f"Failed to send timer completion message: {e}")
+        return
+    
+    minutes = int(remaining.total_seconds() // 60)
+    seconds = int(remaining.total_seconds() % 60)
+    remaining_secs = int(remaining.total_seconds())
+    
+    request_emoji = {
+        'smoke': '🚬',
+        'break': '☕'
+    }
+    emoji = request_emoji.get(request_type, '⏱')
+    
+    status_emoji = get_time_emoji(remaining_secs, total_duration * 60)
+    progress_bar = create_progress_bar(remaining_secs, total_duration * 60)
+    
+    timer_text = (
+        f"┏━━━━━━━━━━━━━━━━━┓\n"
+        f"┃ {emoji}  العداد التنازلي  {emoji} ┃\n"
+        f"┗━━━━━━━━━━━━━━━━━┛\n\n"
+        f"{status_emoji} الحالة: {'جيد' if remaining_secs > total_duration * 60 * 0.5 else 'انتبه!'}\n\n"
+        f"⏱ الوقت المتبقي:\n"
+        f"╔═══════════════╗\n"
+        f"║  {minutes:02d}:{seconds:02d}  ║\n"
+        f"╚═══════════════╝\n\n"
+        f"{progress_bar}\n\n"
+        f"🕐 ينتهي في: {end_time.strftime('%H:%M:%S')}"
+    )
+    
+    try:
+        await context.bot.edit_message_text(
+            chat_id=user_id,
+            message_id=message_id,
+            text=timer_text
+        )
+    except Exception as e:
+        logger.debug(f"Timer update skipped: {e}")
 
-async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """معالجة استجابات الأزرار"""
+async def start_countdown_timer(context: ContextTypes.DEFAULT_TYPE, user_id: int, duration_minutes: int, request_type: str):
+    """بدء عداد تنازلي"""
+    if user_id in active_timers:
+        try:
+            for job in active_timers[user_id]:
+                job.schedule_removal()
+        except:
+            pass
+    
+    timer_completed[user_id] = False
+    
+    end_time = get_jordan_time() + timedelta(minutes=duration_minutes)
+    
+    request_emoji = {
+        'smoke': '🚬',
+        'break': '☕'
+    }
+    emoji = request_emoji.get(request_type, '⏱')
+    
+    progress_bar = create_progress_bar(duration_minutes * 60, duration_minutes * 60)
+    
+    timer_text = (
+        f"┏━━━━━━━━━━━━━━━━━┓\n"
+        f"┃ {emoji}  العداد التنازلي  {emoji} ┃\n"
+        f"┗━━━━━━━━━━━━━━━━━┛\n\n"
+        f"🟢 الحالة: جيد\n\n"
+        f"⏱ الوقت المتبقي:\n"
+        f"╔═══════════════╗\n"
+        f"║  {duration_minutes:02d}:00  ║\n"
+        f"╚═══════════════╝\n\n"
+        f"{progress_bar}\n\n"
+        f"🕐 ينتهي في: {end_time.strftime('%H:%M:%S')}"
+    )
+    
+    try:
+        sent_message = await context.bot.send_message(
+            chat_id=user_id,
+            text=timer_text
+        )
+        
+        jobs = []
+        for i in range(duration_minutes * 60 + 1):
+            job = context.job_queue.run_once(
+                update_timer,
+                when=i,
+                data=(user_id, sent_message.message_id, end_time, request_type, duration_minutes),
+                name=f"timer_{user_id}_{i}"
+            )
+            jobs.append(job)
+        
+        active_timers[user_id] = jobs
+        
+    except Exception as e:
+        logger.error(f"Failed to start countdown timer: {e}")
+
+async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """معالجة الضغط على أزرار الموافقة/الرفض والعودة"""
     query = update.callback_query
     await query.answer()
     
     data = query.data
-    user_id = query.from_user.id
+    parts = data.split('_')
+    action = parts[0]
     
-    if not is_admin(user_id):
-        await query.message.reply_text("❌ ليس لديك صلاحية للقيام بهذا الإجراء.")
+    if action == 'returned':
+        request_type = parts[1]
+        user_id = int(parts[2])
+        
+        employee = get_employee_by_telegram_id(user_id)
+        if not employee:
+            await query.edit_message_text(text=query.message.text + "\n\n❌ خطأ: لم يتم العثور على بيانات الموظف")
+            return
+        
+        employee_name = employee.get('full_name', 'الموظف')
+        return_time = get_jordan_time()
+        
+        request_names = {
+            'smoke': 'استراحة التدخين',
+            'break': 'استراحة الغداء'
+        }
+        request_name = request_names.get(request_type, 'الاستراحة')
+        
+        await query.edit_message_text(
+            text=query.message.text + "\n\n✅ تم تأكيد عودتك للعمل!"
+        )
+        
+        try:
+            await send_to_all_admins(
+                context,
+                (
+                    f"✅ تأكيد عودة موظف\n\n"
+                    f"👤 الموظف: {employee_name}\n"
+                    f"📱 الهاتف: {employee.get('phone_number', 'غير متوفر')}\n"
+                    f"⏱ نوع الاستراحة: {request_name}\n"
+                    f"🕐 وقت العودة: {return_time.strftime('%H:%M:%S')}\n"
+                    f"📅 التاريخ: {return_time.strftime('%Y-%m-%d')}\n\n"
+                    f"💼 الموظف عاد للعمل!"
+                )
+            )
+        except Exception as e:
+            logger.error(f"Failed to notify admin about employee return: {e}")
+        
         return
     
-    if not can_approve_requests(user_id):
-        await query.message.reply_text("❌ ليس لديك صلاحية للموافقة على الطلبات.")
+    request_type = parts[1]
+    telegram_id_str = parts[2]
+    telegram_id = int(telegram_id_str)
+    
+    employee = get_employee_by_telegram_id(telegram_id)
+    if not employee:
+        await query.edit_message_text(text=query.message.text + "\n\n❌ خطأ: لم يتم العثور على بيانات الموظف")
         return
     
-    if data.startswith('approve_leave_'):
-        request_id = int(data.split('_')[2])
-        success = update_request_status(request_id, 'approved', 'تمت الموافقة على إذن الخروج')
-        
-        if success:
-            await query.message.reply_text(f"✅ تمت الموافقة على طلب إذن الخروج رقم {request_id}")
-            await query.edit_message_text(f"✅ {query.message.text}\n\n✅ تمت الموافقة من قبل المدير")
-        else:
-            await query.message.reply_text("❌ حدث خطأ في معالجة الطلب")
+    employee_db_id = employee['id']
+    employee_phone = employee.get('phone_number', 'غير متوفر')
+    employee_name = employee.get('full_name', 'الموظف')
     
-    elif data.startswith('reject_leave_'):
-        request_id = int(data.split('_')[2])
-        success = update_request_status(request_id, 'rejected', 'تم رفض إذن الخروج')
-        
-        if success:
-            await query.message.reply_text(f"❌ تم رفض طلب إذن الخروج رقم {request_id}")
-            await query.edit_message_text(f"✅ {query.message.text}\n\n❌ تم الرفض من قبل المدير")
-        else:
-            await query.message.reply_text("❌ حدث خطأ في معالجة الطلب")
+    request_types_ar = {
+        'smoke': 'استراحة تدخين',
+        'break': 'استراحة غداء',
+        'leave': 'مغادرة العمل',
+        'vacation': 'طلب عطلة'
+    }
     
-    elif data.startswith('approve_vacation_'):
-        request_id = int(data.split('_')[2])
-        success = update_request_status(request_id, 'approved', 'تمت الموافقة على الإجازة')
-        
-        if success:
-            await query.message.reply_text(f"✅ تمت الموافقة على طلب الإجازة رقم {request_id}")
-            await query.edit_message_text(f"✅ {query.message.text}\n\n✅ تمت الموافقة من قبل المدير")
-        else:
-            await query.message.reply_text("❌ حدث خطأ في معالجة الطلب")
+    request_name = request_types_ar.get(request_type, request_type)
     
-    elif data.startswith('reject_vacation_'):
-        request_id = int(data.split('_')[2])
-        success = update_request_status(request_id, 'rejected', 'تم رفض الإجازة')
-        
-        if success:
-            await query.message.reply_text(f"❌ تم رفض طلب الإجازة رقم {request_id}")
-            await query.edit_message_text(f"✅ {query.message.text}\n\n❌ تم الرفض من قبل المدير")
+    if action == 'approve':
+        if request_type == 'smoke':
+            current_count_before = get_smoke_count_db(employee_db_id)
+            
+            if current_count_before >= MAX_DAILY_SMOKES:
+                admin_response = (
+                    f"⚠️ تحذير: تم قبول الطلب لكن الموظف وصل للحد الأقصى!\n"
+                    f"🚬 السجائر المستخدمة: {current_count_before}/{MAX_DAILY_SMOKES}\n"
+                    f"السجائر المتبقية: 0\n\n"
+                    f"لن يتم زيادة العداد."
+                )
+                employee_message = (
+                    f"✅ تم قبول طلبك!\n\n"
+                    f"نوع الطلب: {request_name}\n"
+                    f"المدة: 5 دقائق\n"
+                    f"الوقت: {get_jordan_time().strftime('%Y-%m-%d %H:%M:%S')}\n"
+                    f"⚠️ ملاحظة: وصلت للحد الأقصى اليومي!\n"
+                    f"🚬 السجائر المستخدمة اليوم: {current_count_before}/{MAX_DAILY_SMOKES}\n\n"
+                    f"استمتع بوقتك! 😊"
+                )
+            else:
+                current_count = increment_smoke_count_db(employee_db_id)
+                record_cigarette_time(employee_db_id)
+                remaining = max(0, MAX_DAILY_SMOKES - current_count)
+                admin_response = (
+                    f"✅ تم قبول طلب {request_name}\n"
+                    f"🚬 السجائر المستخدمة الآن: {current_count}/{MAX_DAILY_SMOKES}\n"
+                    f"السجائر المتبقية: {remaining}"
+                )
+                employee_message = (
+                    f"✅ تم قبول طلبك!\n\n"
+                    f"نوع الطلب: {request_name}\n"
+                    f"المدة: 5 دقائق\n"
+                    f"الوقت: {get_jordan_time().strftime('%Y-%m-%d %H:%M:%S')}\n"
+                    f"🚬 السجائر المستخدمة اليوم: {current_count}/{MAX_DAILY_SMOKES}\n\n"
+                    f"استمتع بوقتك! 😊"
+                )
+        elif request_type == 'break':
+            mark_lunch_break_taken(employee_db_id)
+            admin_response = f"✅ تم قبول طلب {request_name}"
+            employee_message = (
+                f"✅ تم قبول طلبك!\n\n"
+                f"نوع الطلب: {request_name}\n"
+                f"المدة: 30 دقيقة\n"
+                f"الوقت: {get_jordan_time().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
+                f"استمتع بوقتك! 😊"
+            )
         else:
-            await query.message.reply_text("❌ حدث خطأ في معالجة الطلب")
+            admin_response = f"✅ تم قبول طلب {request_name}"
+            employee_message = (
+                f"✅ تم قبول طلبك!\n\n"
+                f"نوع الطلب: {request_name}\n"
+                f"الوقت: {get_jordan_time().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
+                f"استمتع بوقتك! 😊"
+            )
+        logger.info(f"Request approved: {request_type} for employee {telegram_id}")
+    else:
+        admin_response = f"❌ تم رفض طلب {request_name}"
+        employee_message = (
+            f"❌ عذراً، تم رفض طلبك.\n\n"
+            f"نوع الطلب: {request_name}\n"
+            f"الوقت: {get_jordan_time().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
+            "يرجى التواصل مع المدير للمزيد من المعلومات."
+        )
+        logger.info(f"Request rejected: {request_type} for employee {telegram_id}")
+    
+    await query.edit_message_text(
+        text=query.message.text + f"\n\n{admin_response}",
+    )
+    
+    try:
+        await context.bot.send_message(
+            chat_id=telegram_id,
+            text=employee_message
+        )
+        
+        if action == 'approve' and request_type in ['smoke', 'break']:
+            duration = 5 if request_type == 'smoke' else 30
+            await start_countdown_timer(context, telegram_id, duration, request_type)
+            
+    except Exception as e:
+        logger.error(f"Failed to send response to employee {telegram_id}: {e}")
+
+async def send_auto_daily_report(context: ContextTypes.DEFAULT_TYPE):
+    """إرسال تقرير يومي تلقائي للمدير عند نهاية الدوام"""
+    try:
+        today = get_jordan_time().date()
+        records = get_daily_attendance_report(today)
+        
+        if not records:
+            message = f"📊 التقرير اليومي التلقائي - {today.strftime('%Y-%m-%d')}\n\n⚠️ لا توجد سجلات حضور لليوم."
+        else:
+            message = (
+                f"📊 التقرير اليومي التلقائي\n"
+                f"📅 {today.strftime('%Y-%m-%d')}\n\n"
+            )
+            
+            present_count = 0
+            absent_count = 0
+            late_count = 0
+            total_hours = 0
+            total_overtime = 0
+            
+            for record in records:
+                name = record['full_name']
+                check_in = record['check_in_time']
+                check_out = record['check_out_time']
+                is_late = record['is_late']
+                work_hours = float(record['total_work_hours']) if record['total_work_hours'] else 0
+                overtime = float(record['overtime_hours']) if record['overtime_hours'] else 0
+                
+                message += f"━━━━━━━━━━━━━━━━━\n"
+                message += f"👤 {name}\n"
+                
+                if check_in:
+                    present_count += 1
+                    message += f"🕐 حضور: {check_in.strftime('%H:%M')}"
+                    if is_late:
+                        late_count += 1
+                        message += " ⚠️"
+                    message += "\n"
+                    
+                    if check_out:
+                        message += f"🕐 انصراف: {check_out.strftime('%H:%M')}\n"
+                        message += f"⏱ {work_hours:.2f} ساعة"
+                        if overtime > 0:
+                            message += f" (⭐ {overtime:.2f})"
+                        message += "\n"
+                        total_hours += work_hours
+                        total_overtime += overtime
+                    else:
+                        message += "⏳ لم ينصرف بعد\n"
+                else:
+                    absent_count += 1
+                    message += "❌ غائب\n"
+                
+                message += "\n"
+            
+            total_employees = len(records)
+            message += (
+                f"━━━━━━━━━━━━━━━━━\n"
+                f"📈 ملخص اليوم:\n"
+                f"👥 إجمالي الموظفين: {total_employees}\n"
+                f"✅ حاضر: {present_count}\n"
+                f"❌ غائب: {absent_count}\n"
+            )
+            
+            if late_count > 0:
+                message += f"⚠️ متأخرين: {late_count}\n"
+            
+            message += f"⏱ إجمالي ساعات العمل: {total_hours:.2f}\n"
+            
+            if total_overtime > 0:
+                message += f"⭐ إجمالي الإضافي: {total_overtime:.2f}\n"
+        
+        await send_to_all_admins(context, message)
+        logger.info(f"تم إرسال التقرير اليومي التلقائي لجميع المديرين - {today}")
+        
+    except Exception as e:
+        logger.error(f"خطأ في إرسال التقرير اليومي التلقائي: {e}")
+
+async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """معالجة الأخطاء"""
+    logger.error(f"Update {update} caused error {context.error}")
+
+def load_employees_from_database():
+    """تحميل جميع الموظفين من قاعدة البيانات إلى قائمة الموظفين المصرح لهم"""
+    try:
+        employees = get_all_employees()
+        loaded_count = 0
+        for employee in employees:
+            phone = employee.get('phone_number')
+            if phone:
+                normalized = normalize_phone(phone)
+                phone_with_plus = '+' + normalized if not phone.startswith('+') else phone
+                if phone_with_plus not in authorized_phones:
+                    authorized_phones.append(phone_with_plus)
+                    loaded_count += 1
+        
+        if loaded_count > 0:
+            logger.info(f"تم تحميل {loaded_count} موظف من قاعدة البيانات إلى قائمة الموظفين المصرح لهم")
+            print(f"✅ تم تحميل {loaded_count} موظف من قاعدة البيانات")
+        return loaded_count
+    except Exception as e:
+        logger.error(f"خطأ في تحميل الموظفين من قاعدة البيانات: {e}")
+        return 0
 
 def main():
-    """الدالة الرئيسية لتشغيل البوت"""
+    """بدء البوت"""
     if not BOT_TOKEN:
-        logger.error("لم يتم تعيين BOT_TOKEN في متغيرات البيئة")
+        print("ERROR: TELEGRAM_BOT_TOKEN not found in environment variables!")
+        print("Please set your bot token in the Secrets tab.")
         return
     
-    if not initialize_database_tables():
-        logger.error("فشل في تهيئة جداول قاعدة البيانات")
-        return
+    print("Starting Employee Management Bot...")
+    print("بدء بوت إدارة الموظفين...")
+    print(f"\nعدد المديرين المسجلين: {len(ADMIN_IDS)}")
+    print(f"Number of registered admins: {len(ADMIN_IDS)}")
+    print(f"لإضافة مديرين إضافيين، قم بتحديث قائمة ADMIN_IDS في الكود")
+    print(f"To add more admins, update the ADMIN_IDS list in the code")
+    
+    initialize_database_tables()
+    load_employees_from_database()
     
     application = Application.builder().token(BOT_TOKEN).build()
     
-    conv_handler_leave = ConversationHandler(
-        entry_points=[MessageHandler(filters.Regex("^طلب إذن خروج 🚪$"), handle_leave_request)],
+    leave_conv_handler = ConversationHandler(
+        entry_points=[CommandHandler("leave", leave_request)],
         states={
-            LEAVE_REASON: [MessageHandler(filters.TEXT & ~filters.COMMAND, process_leave_reason)]
+            LEAVE_REASON: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_leave_reason)],
         },
-        fallbacks=[MessageHandler(filters.Regex("^إلغاء ❌$"), cancel_conversation)]
+        fallbacks=[CommandHandler("cancel", cancel)],
     )
     
-    conv_handler_vacation = ConversationHandler(
-        entry_points=[MessageHandler(filters.Regex("^طلب إجازة 🏖️$"), handle_vacation_request)],
+    vacation_conv_handler = ConversationHandler(
+        entry_points=[CommandHandler("vacation", vacation_request)],
         states={
-            VACATION_REASON: [MessageHandler(filters.TEXT & ~filters.COMMAND, process_vacation_reason)]
+            VACATION_REASON: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_vacation_reason)],
         },
-        fallbacks=[MessageHandler(filters.Regex("^إلغاء ❌$"), cancel_conversation)]
+        fallbacks=[CommandHandler("cancel", cancel)],
+    )
+    
+    edit_details_conv_handler = ConversationHandler(
+        entry_points=[
+            CommandHandler("edit_details", edit_details_command),
+        ],
+        states={
+            EDIT_DETAIL_SELECT: [
+                CallbackQueryHandler(show_employee_details, pattern=r"^editdetail_\d+$"),
+                CallbackQueryHandler(select_field_to_edit, pattern=r"^editfield_\w+_\d+$"),
+                CallbackQueryHandler(select_field_to_edit, pattern=r"^cancel_edit$"),
+            ],
+            EDIT_DETAIL_INPUT: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_new_detail_value)],
+        },
+        fallbacks=[CommandHandler("cancel", cancel)],
     )
     
     application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("help", help_command))
+    application.add_handler(CommandHandler("my_id", my_id_command))
+    application.add_handler(CommandHandler("check_in", check_in_command))
+    application.add_handler(CommandHandler("check_out", check_out_command))
+    application.add_handler(CommandHandler("attendance_report", attendance_report_command))
+    application.add_handler(CommandHandler("smoke", smoke_request))
+    application.add_handler(CommandHandler("break", break_request))
+    application.add_handler(leave_conv_handler)
+    application.add_handler(vacation_conv_handler)
+    application.add_handler(edit_details_conv_handler)
+    
+    application.add_handler(CommandHandler("list_employees", list_employees))
+    application.add_handler(CommandHandler("add_employee", add_employee))
+    application.add_handler(CommandHandler("remove_employee", remove_employee))
+    application.add_handler(CommandHandler("daily_report", daily_report_command))
+    application.add_handler(CommandHandler("weekly_report", weekly_report_command))
+    application.add_handler(CommandHandler("list_admins", list_admins_command))
+    application.add_handler(CommandHandler("add_admin", add_admin_command))
+    application.add_handler(CommandHandler("remove_admin", remove_admin_command))
+    
     application.add_handler(MessageHandler(filters.CONTACT, handle_contact))
-    application.add_handler(conv_handler_leave)
-    application.add_handler(conv_handler_vacation)
-    application.add_handler(CallbackQueryHandler(handle_callback_query))
+    application.add_handler(CallbackQueryHandler(button_callback))
     
-    application.add_handler(MessageHandler(filters.Regex("^تسجيل الحضور 🟢$"), handle_check_in))
-    application.add_handler(MessageHandler(filters.Regex("^تسجيل الانصراف 🔴$"), handle_check_out))
-    application.add_handler(MessageHandler(filters.Regex("^تسجيل سيجارة 🚬$"), handle_smoke_request))
-    application.add_handler(MessageHandler(filters.Regex("^بريك الغداء 🍽️$"), handle_lunch_break))
-    application.add_handler(MessageHandler(filters.Regex("^عرض الإحصائيات 📊$"), handle_stats))
-    application.add_handler(MessageHandler(filters.Regex("^المساعدة ℹ️$"), handle_help))
-    application.add_handler(MessageHandler(filters.Regex("^رجوع ↩️$"), handle_back))
+    application.add_error_handler(error_handler)
     
-    application.add_handler(MessageHandler(filters.Regex("^لوحة التحكم 👨‍💼$"), show_admin_menu))
-    application.add_handler(MessageHandler(filters.Regex("^عرض تقرير اليوم 📅$"), handle_admin_report))
-    application.add_handler(MessageHandler(filters.Regex("^عرض تقرير الأسبوع 📊$"), handle_weekly_report))
-    application.add_handler(MessageHandler(filters.Regex("^إدارة الموظفين 👥$"), handle_employee_management))
-    application.add_handler(MessageHandler(filters.Regex("^إدارة المديرين 👨‍💼$"), handle_admin_management))
-    application.add_handler(MessageHandler(filters.Regex("^إدارة الطلبات 📋$"), handle_request_management))
-    application.add_handler(MessageHandler(filters.Regex("^عرض جميع الموظفين 👥$"), handle_show_employees))
-    application.add_handler(MessageHandler(filters.Regex("^عرض جميع المديرين 👨‍💼$"), handle_show_admins))
+    job_queue = application.job_queue
+    if job_queue:
+        daily_report_time = datetime.now(JORDAN_TZ).replace(hour=19, minute=0, second=0, microsecond=0)
+        job_queue.run_daily(
+            send_auto_daily_report,
+            time=daily_report_time.time(),
+            days=(0, 1, 2, 3, 4, 5, 6),
+            name="daily_attendance_report"
+        )
+        logger.info("تم جدولة التقرير اليومي التلقائي للساعة 7:00 مساءً (توقيت الأردن)")
+        print("✅ تم جدولة التقرير اليومي التلقائي للساعة 7:00 مساءً")
     
-    logger.info("Bot is starting...")
-    application.run_polling()
+    print("Bot is running! Press Ctrl+C to stop.")
+    print("البوت يعمل الآن!")
+    
+    while True:
+        try:
+            application.run_polling(allowed_updates=Update.ALL_TYPES, drop_pending_updates=True)
+        except KeyboardInterrupt:
+            print("\n⏹️  إيقاف البوت...")
+            print("⏹️  Bot stopped by user")
+            break
+        except Exception as e:
+            logger.error(f"⚠️  خطأ في البوت: {e}")
+            logger.error("🔄 إعادة تشغيل البوت بعد 5 ثواني...")
+            print(f"\n⚠️  حدث خطأ: {e}")
+            print("🔄 سيتم إعادة تشغيل البوت تلقائياً بعد 5 ثواني...")
+            import time
+            time.sleep(5)
+            print("🚀 إعادة تشغيل البوت...")
+            continue
 
 if __name__ == '__main__':
     main()
