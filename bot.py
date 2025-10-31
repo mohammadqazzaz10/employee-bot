@@ -19,7 +19,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # قائمة معرفات المديرين - يمكنك إضافة أكثر من مدير هنا
-ADMIN_IDS = [1465191277, 6798279805]
+ADMIN_IDS = [1465191277, 6798279805]  # أضف معرفات المديرين الإضافيين هنا
 
 authorized_phones = [
     '+962786644106'
