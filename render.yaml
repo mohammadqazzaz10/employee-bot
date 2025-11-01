@@ -1,8 +1,0 @@
-services:
-  - type: worker
-    name: employee-bot
-    env: python
-    plan: free
-    buildCommand: pip install -r requirements.txt
-    startCommand: python bot.py
-    pythonVersion: "3.11"
