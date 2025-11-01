@@ -1,7 +1,3 @@
-
-## 3. قاعدة البيانات (database.py)
-
-```python
 import psycopg2
 import pytz
 from datetime import datetime
@@ -463,8 +459,8 @@ class Database:
                 last_time = last_smoke[0]
                 time_diff = (datetime.now(pytz.timezone(TIMEZONE)) - last_time).total_seconds()
                 
-                if time_diff < self.MIN_SMOKE_INTERVAL:
-                    remaining = (self.MIN_SMOKE_INTERVAL - time_diff) / 60
+                if time_diff < MIN_SMOKE_INTERVAL:
+                    remaining = (MIN_SMOKE_INTERVAL - time_diff) / 60
                     cur.close()
                     return False, f"يجب الانتظار {remaining:.1f} دقائق قبل أخذ سيجارة أخرى"
             
@@ -545,6 +541,51 @@ class Database:
         except Exception as e:
             print(f"خطأ في تحديث حالة الطلب: {e}")
             return False
+
+    # === دوال إضافية ===
+    def get_employee_by_id(self, employee_id):
+        """الحصول على موظف بواسطة ID"""
+        try:
+            cur = self.conn.cursor()
+            cur.execute("SELECT * FROM employees WHERE id = %s", (employee_id,))
+            employee = cur.fetchone()
+            cur.close()
+            return employee
+        except Exception as e:
+            print(f"خطأ في جلب بيانات الموظف: {e}")
+            return None
+
+    def get_today_attendance(self, employee_id):
+        """الحصول على سجل الحضور اليوم"""
+        try:
+            cur = self.conn.cursor()
+            today = datetime.now().date()
+            cur.execute("""
+                SELECT * FROM attendance 
+                WHERE employee_id = %s AND date = %s
+            """, (employee_id, today))
+            attendance = cur.fetchone()
+            cur.close()
+            return attendance
+        except Exception as e:
+            print(f"خطأ في جلب الحضور اليوم: {e}")
+            return None
+
+    def get_employee_smokes_today(self, employee_id):
+        """عدد سجائر اليوم للموظف"""
+        try:
+            cur = self.conn.cursor()
+            today = datetime.now().date()
+            cur.execute("""
+                SELECT COUNT(*) FROM cigarette_breaks 
+                WHERE employee_id = %s AND DATE(break_start) = %s
+            """, (employee_id, today))
+            count = cur.fetchone()[0]
+            cur.close()
+            return count
+        except Exception as e:
+            print(f"خطأ في جلب عدد السجائر: {e}")
+            return 0
 
 # إنشاء كائن قاعدة البيانات العالمي
 db = Database()
