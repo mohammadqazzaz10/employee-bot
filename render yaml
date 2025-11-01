@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: employee-bot
+    env: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: python run.py
+    envVars:
+      - key: BOT_TOKEN
+        value: your_bot_token_here
+      - key: SUPER_ADMIN_IDS
+        value: "123456789"
+      - key: DATABASE_URL
+        fromDatabase:
+          name: employee_bot_db
+          property: connectionString
