@@ -1,10 +1,23 @@
-[project]
-name = "repl-nix-workspace"
+[tool.poetry]
+name = "employee-management-bot"
 version = "0.1.0"
-description = "Add your description here"
-requires-python = ">=3.11"
-dependencies = [
-    "flask>=3.1.2",
-    "psycopg2-binary>=2.9.11",
-    "python-telegram-bot[job-queue]>=22.5",
+description = "Telegram bot for managing employee attendance"
+authors = ["your_name <your_email>"]
+packages = [
+    { include = "employee_management_bot", from = "." }
 ]
+
+[tool.poetry.dependencies]
+python = "^3.8"
+flask = "^3.1.2"
+psycopg2-binary = "^2.9.11"
+python-telegram-bot = "^22.5"
+
+[tool.poetry.dev-dependencies]
+# يمكن إضافة التبعيات الخاصة بالتطوير هنا إذا كانت هناك حاجة
+# مثلا:
+# pytest = "^7.0.0"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
