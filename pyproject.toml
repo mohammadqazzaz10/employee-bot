@@ -12,7 +12,6 @@ psycopg2-binary = "^2.9.3"
 pytz = "^2021.1"
 
 [tool.poetry.packages]
-# تأكد من أن الحزم معرفة بشكل صحيح كمصفوفة
 [[tool.poetry.packages]]
 include = "employee_management_bot"
 from = "."
