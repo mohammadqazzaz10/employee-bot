@@ -1,0 +1,51 @@
+import psycopg2
+import os
+
+def get_db_connection():
+    """إنشاء اتصال بقاعدة البيانات"""
+    return psycopg2.connect(os.environ.get("DATABASE_URL"))
+
+def initialize_database():
+    """تهيئة قاعدة البيانات وإنشاء الجداول المطلوبة"""
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS employees (
+            id SERIAL PRIMARY KEY,
+            telegram_id BIGINT UNIQUE,
+            phone_number VARCHAR(50) UNIQUE,
+            full_name VARCHAR(255) NOT NULL,
+            age INTEGER,
+            position VARCHAR(100),
+            department VARCHAR(100),
+            hire_date DATE,
+            last_active TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+        """)
+
+        # جداول أخرى مثل attendance, absences, daily_cigarettes, requests
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS attendance (
+            id SERIAL PRIMARY KEY,
+            employee_id INTEGER REFERENCES employees(id),
+            date DATE NOT NULL,
+            check_in_time TIMESTAMP,
+            check_out_time TIMESTAMP,
+            total_work_hours DECIMAL(5, 2),
+            overtime_hours DECIMAL(5, 2)
+        );
+        """)
+
+        # إنشاء المزيد من الجداول الأخرى المطلوبة بنفس الطريقة
+
+        conn.commit()
+        cur.close()
+        conn.close()
+        print("Database initialized successfully!")
+    except Exception as e:
+        print(f"Error setting up database: {e}")
+
+if __name__ == "__main__":
+    initialize_database()
