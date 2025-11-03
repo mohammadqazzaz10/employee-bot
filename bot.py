@@ -10,16 +10,16 @@ from telegram import (
 )
 from telegram.ext import (
     Updater, CommandHandler, MessageHandler, Filters, 
-    CallbackContext, ConversationHandler, CallbackQueryHandler, JobQueue
+    CallbackContext, ConversationHandler, CallbackQueryHandler
 )
 
 # --- إعدادات أساسية ---
 
 # تحميل متغيرات البيئة (التوكن ورابط الداتا بيس) من ملف .env (للتشغيل المحلي)
-# على منصة Render، يتم تعيين هذه المتغيرات مباشرة في لوحة التحكم
 load_dotenv()
 
 # تفعيل تسجيل الأخطاء (Logging)
+# تم تعديل اسم الـ Logger ليكون `__main__` لتجنب التباسات التسمية
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO
 )
@@ -30,7 +30,6 @@ TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
 DATABASE_URL = os.environ.get("DATABASE_URL")
 
 # --- تعريف حالات المحادثة (لأوامر إضافة موظف أو طلب إجازة) ---
-# هذه ثوابت رقمية لتعريف خطوات المحادثة
 (ASK_PHONE, ASK_NAME, ASK_AGE, ASK_POSITION, ASK_DEPT, ASK_HIRE_DATE) = range(6)
 (ASK_LEAVE_REASON, ASK_VACATION_REASON_DAYS) = range(6, 8)
 (EDIT_EMPLOYEE_ID, EDIT_FIELD, EDIT_VALUE) = range(8, 11)
@@ -40,6 +39,7 @@ DATABASE_URL = os.environ.get("DATABASE_URL")
 def get_db_connection():
     """الاتصال بقاعدة البيانات PostgreSQL."""
     try:
+        # هنا قد تحتاج لإضافة sslmode='require' إذا كانت قاعدة البيانات على Render
         conn = psycopg2.connect(DATABASE_URL)
         return conn
     except psycopg2.DatabaseError as e:
@@ -52,7 +52,7 @@ def setup_database():
         """
         CREATE TABLE IF NOT EXISTS employees (
             id SERIAL PRIMARY KEY,
-            telegram_id BIGINT UNIQUE NOT NULL,
+            telegram_id BIGINT UNIQUE,
             phone_number VARCHAR(20) UNIQUE NOT NULL,
             full_name VARCHAR(100),
             age INTEGER,
@@ -97,12 +97,19 @@ def setup_database():
     
     conn = get_db_connection()
     if conn:
-        with conn.cursor() as cur:
-            for command in commands:
-                cur.execute(command)
-            conn.commit()
-        conn.close()
-        logger.info("تم إعداد جداول قاعدة البيانات بنجاح.")
+        try:
+            with conn.cursor() as cur:
+                for command in commands:
+                    cur.execute(command)
+                conn.commit()
+            logger.info("تم إعداد جداول قاعدة البيانات بنجاح.")
+        except Exception as e:
+            logger.error(f"فشل إعداد قاعدة البيانات: {e}")
+        finally:
+            conn.close()
+    else:
+        logger.error("لم يتمكن من الاتصال بقاعدة البيانات لإنشاء الجداول.")
+
 
 # --- 2. دوال مساعدة (Helper Functions) ---
 
@@ -113,17 +120,19 @@ def get_employee(telegram_id):
     with conn.cursor() as cur:
         cur.execute("SELECT * FROM employees WHERE telegram_id = %s", (telegram_id,))
         employee = cur.fetchone()
+        
+        # استرجاع أسماء الأعمدة لإنشاء قاموس
+        columns = [desc[0] for desc in cur.description] if cur.description else []
+
     conn.close()
-    if employee:
-        # تحويل النتيجة إلى قاموس (Dictionary) لسهولة الاستخدام
-        columns = [desc[0] for desc in cur.description]
+    if employee and columns:
         return dict(zip(columns, employee))
     return None
 
 def is_admin(telegram_id):
     """التحقق إذا كان المستخدم مديراً."""
     employee = get_employee(telegram_id)
-    return employee and employee['is_admin']
+    return employee and employee.get('is_admin', False)
 
 def get_admin_ids():
     """جلب قائمة بـ Telegram IDs لجميع المديرين."""
@@ -131,7 +140,7 @@ def get_admin_ids():
     ids = []
     if conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT telegram_id FROM employees WHERE is_admin = TRUE")
+            cur.execute("SELECT telegram_id FROM employees WHERE is_admin = TRUE AND telegram_id IS NOT NULL")
             rows = cur.fetchall()
             ids = [row[0] for row in rows]
         conn.close()
@@ -141,8 +150,10 @@ def notify_admins(context: CallbackContext, message: str):
     """إرسال إشعار لجميع المديرين."""
     admin_ids = get_admin_ids()
     for admin_id in admin_ids:
+        # لا ترسل لنفسك إذا كنت مديراً وبدأت الأمر
+        # if admin_id == update.effective_user.id: continue 
         try:
-            context.bot.send_message(chat_id=admin_id, text=message)
+            context.bot.send_message(chat_id=admin_id, text=message, parse_mode=ParseMode.MARKDOWN)
         except Exception as e:
             logger.warning(f"فشل إرسال إشعار للمدير {admin_id}: {e}")
 
@@ -169,7 +180,7 @@ def handle_contact(update: Update, context: CallbackContext):
     contact = update.message.contact
     phone_number = contact.phone_number
     # توحيد صيغة الرقم (إزالة + أو 00)
-    phone_number = phone_number.lstrip('00').lstrip('+')
+    phone_number_cleaned = phone_number.lstrip('00').lstrip('+')
     
     conn = get_db_connection()
     if not conn:
@@ -177,19 +188,20 @@ def handle_contact(update: Update, context: CallbackContext):
         return
 
     with conn.cursor() as cur:
-        # البحث عن الرقم في جدول الموظفين (يجب أن يكون المدير قد أضافه مسبقاً)
-        cur.execute("SELECT * FROM employees WHERE phone_number = %s", (phone_number,))
-        employee = cur.fetchone()
+        # البحث عن الرقم في جدول الموظفين
+        cur.execute("SELECT full_name FROM employees WHERE phone_number LIKE %s", (phone_number_cleaned + '%',))
+        employee_name_row = cur.fetchone()
         
-        if employee:
+        if employee_name_row:
+            employee_name = employee_name_row[0]
             # تم العثور على الموظف، قم بتحديث telegram_id الخاص به
             cur.execute(
-                "UPDATE employees SET telegram_id = %s WHERE phone_number = %s",
-                (update.effective_user.id, phone_number)
+                "UPDATE employees SET telegram_id = %s WHERE phone_number LIKE %s",
+                (update.effective_user.id, phone_number_cleaned + '%')
             )
             conn.commit()
             update.message.reply_text(
-                f"✅ تم التحقق بنجاح!\nأهلاً بك {employee[3]}. يمكنك الآن استخدام أوامر البوت.",
+                f"✅ تم التحقق بنجاح!\nأهلاً بك {employee_name}. يمكنك الآن استخدام أوامر البوت.",
                 reply_markup=ReplyKeyboardMarkup([['/check_in', '/check_out'], ['/break', '/smoke']], resize_keyboard=True)
             )
         else:
@@ -200,25 +212,25 @@ def help_command(update: Update, context: CallbackContext):
     """عرض قائمة الأوامر المتاحة."""
     user_id = update.effective_user.id
     msg = "👤 **أوامر الموظفين:**\n"
-    msg += "/check_in - تسجيل الحضور\n"
-    msg += "/check_out - تسجيل الانصراف\n"
-    msg += "/break - طلب استراحة غداء (30 دقيقة)\n"
-    msg += "/smoke - طلب استراحة تدخين (5 دقائق)\n"
-    msg += "/leave - طلب مغادرة مبكرة\n"
-    msg += "/vacation - طلب إجازة\n"
-    msg += "/help - عرض هذه القائمة\n"
+    msg += "`/check_in` - تسجيل الحضور\n"
+    msg += "`/check_out` - تسجيل الانصراف\n"
+    msg += "`/break` - طلب استراحة غداء (30 دقيقة)\n"
+    msg += "`/smoke` - طلب استراحة تدخين (5 دقائق)\n"
+    msg += "`/leave` - طلب مغادرة مبكرة\n"
+    msg += "`/vacation` - طلب إجازة\n"
+    msg += "`/help` - عرض هذه القائمة\n"
     
     if is_admin(user_id):
         msg += "\n👑 **أوامر المديرين:**\n"
-        msg += "/add_employee - إضافة موظف جديد\n"
-        msg += "/remove_employee - حذف موظف\n"
-        msg += "/edit_details - تعديل بيانات موظف\n"
-        msg += "/list_employees - عرض جميع الموظفين\n"
-        msg += "/daily_report - تقرير الحضور اليومي\n"
-        msg += "/weekly_report - تقرير الحضور الأسبوعي\n"
-        msg += "/add_admin - ترقية موظف لمدير\n"
-        msg += "/remove_admin - إزالة صلاحيات مدير\n"
-        msg += "/list_admins - عرض قائمة المديرين\n"
+        msg += "`/add_employee` - إضافة موظف جديد\n"
+        msg += "`/remove_employee` - حذف موظف\n"
+        msg += "`/edit_details` - تعديل بيانات موظف\n"
+        msg += "`/list_employees` - عرض جميع الموظفين\n"
+        msg += "`/daily_report` - تقرير الحضور اليومي\n"
+        msg += "`/weekly_report` - تقرير الحضور الأسبوعي\n"
+        msg += "`/add_admin` - ترقية موظف لمدير\n"
+        msg += "`/remove_admin` - إزالة صلاحيات مدير\n"
+        msg += "`/list_admins` - عرض قائمة المديرين\n"
 
     update.message.reply_text(msg, parse_mode=ParseMode.MARKDOWN)
 
@@ -252,7 +264,7 @@ def check_in_command(update: Update, context: CallbackContext):
             conn.commit()
             update.message.reply_text("✅ تم تسجيل حضورك بنجاح. نتمنى لك يوماً مثمراً!")
             # إشعار المديرين
-            notify_admins(context, f"🔔 [حضور]\nالموظف: {employee['full_name']}\nالوقت: {datetime.datetime.now().strftime('%H:%M')}")
+            notify_admins(context, f"🔔 **[حضور]**\nالموظف: {employee['full_name']}\nالوقت: {datetime.datetime.now().strftime('%H:%M')}")
     conn.close()
 
 def check_out_command(update: Update, context: CallbackContext):
@@ -268,9 +280,9 @@ def check_out_command(update: Update, context: CallbackContext):
         return
 
     with conn.cursor() as cur:
-        # التحقق من وجود تسجيل حضور (check_in) أولاً
+        # البحث عن آخر تسجيل حضور لم يتم تسجيل انصرافه
         cur.execute(
-            "SELECT id FROM attendance WHERE employee_id = %s AND work_date = CURRENT_DATE AND check_in_time IS NOT NULL AND check_out_time IS NULL",
+            "SELECT id FROM attendance WHERE employee_id = %s AND work_date = CURRENT_DATE AND check_in_time IS NOT NULL AND check_out_time IS NULL ORDER BY check_in_time DESC LIMIT 1",
             (employee['id'],)
         )
         attendance_record = cur.fetchone()
@@ -285,7 +297,7 @@ def check_out_command(update: Update, context: CallbackContext):
             conn.commit()
             update.message.reply_text("✅ تم تسجيل انصرافك. شكراً لجهودك اليوم!")
             # إشعار المديرين
-            notify_admins(context, f"🔔 [انصراف]\nالموظف: {employee['full_name']}\nالوقت: {datetime.datetime.now().strftime('%H:%M')}")
+            notify_admins(context, f"🔔 **[انصراف]**\nالموظف: {employee['full_name']}\nالوقت: {datetime.datetime.now().strftime('%H:%M')}")
     conn.close()
 
 # --- 5. أوامر الاستراحات (Breaks) ومنطق العد التنازلي ---
@@ -310,8 +322,7 @@ def update_countdown_message(context: CallbackContext):
     remaining = duration - elapsed
     
     if remaining <= 0:
-        # إذا انتهى الوقت، لا تفعل شيئاً هنا (دالة end_break_notification ستتولى الأمر)
-        # فقط أوقف هذا الجوب
+        # إذا انتهى الوقت، أوقف هذا الجوب (سيتم إرسال إشعار الإنهاء من جوب end_break_notification)
         context.job.schedule_removal()
         return
 
@@ -378,6 +389,7 @@ def end_break_notification(context: CallbackContext):
     conn = get_db_connection()
     if conn:
         with conn.cursor() as cur:
+            # تحديث نهاية الاستراحة (break_db_id)
             cur.execute(
                 "UPDATE breaks SET end_time = %s WHERE id = %s",
                 (datetime.datetime.now(), job_data['break_db_id'])
@@ -389,12 +401,14 @@ def im_back_callback(update: Update, context: CallbackContext):
     """معالجة الضغط على زر "رجعت للعمل"."""
     query = update.callback_query
     query.answer("شكراً لك، تم تسجيل عودتك.")
-    # إخفاء الأزرار
+    
+    # إخفاء الأزرار وتعديل الرسالة
     query.edit_message_text(text="✅ تم تسجيل العودة للعمل.")
     
     employee = get_employee(update.effective_user.id)
     if employee:
-        notify_admins(context, f"👍 [عودة للعمل]\nالموظف: {employee['full_name']}")
+        # إشعار المديرين
+        notify_admins(context, f"👍 **[عودة للعمل]**\nالموظف: {employee['full_name']}")
 
 
 # 5.2 - الأوامر الفعلية للاستراحات (/break, /smoke)
@@ -457,7 +471,12 @@ def start_break_timer(update: Update, context: CallbackContext, break_type: str,
                 time_since_last = datetime.datetime.now() - last_smoke[0]
                 if time_since_last.total_seconds() < (90 * 60): # 90 دقيقة
                     remaining_gap = (90 * 60) - time_since_last.total_seconds()
-                    update.message.reply_text(f"يجب الانتظار 1.5 ساعة بين كل استراحة تدخين. متبقي: {int(remaining_gap / 60)} دقيقة.")
+                    
+                    # تحويل المتبقي إلى دقائق وثواني لعرض أفضل
+                    mins_left, secs_left = divmod(int(remaining_gap), 60)
+                    time_left_str = f"{mins_left} دقيقة و {secs_left} ثانية"
+                    
+                    update.message.reply_text(f"يجب الانتظار 1.5 ساعة بين كل استراحة تدخين. متبقي: {time_left_str}.")
                     conn.close()
                     return
 
@@ -490,6 +509,7 @@ def start_break_timer(update: Update, context: CallbackContext, break_type: str,
     }
     
     # 4. جدولة جوب "الإنهاء" (يتم تشغيله مرة واحدة بعد انتهاء المدة)
+    # يجب التأكد من أن job_queue متاح في context (يجب أن يكون متاحاً عبر Updater)
     context.job_queue.run_once(
         end_break_notification,
         duration_seconds,
@@ -497,18 +517,17 @@ def start_break_timer(update: Update, context: CallbackContext, break_type: str,
     )
     
     # 5. جدولة جوب "التحديث" (يتم تشغيله بشكل متكرر كل 15 ثانية)
-    # نعطيه اسماً لنتمكن من إيقافه لاحقاً
     job_name = f"countdown_{update.effective_chat.id}"
     context.job_queue.run_repeating(
         update_countdown_message,
-        interval=15, # تحديث كل 15 ثانية (لتجنب قيود تيليجرام)
+        interval=15, # تحديث كل 15 ثانية 
         first=0, # ابدأ التحديث فوراً
         context=job_context,
         name=job_name
     )
 
     # إشعار المديرين
-    notify_admins(context, f"Approval ⏱️ [استراحة {name}]\nالموظف: {employee['full_name']}\nالمدة: {duration_minutes} دقيقة.")
+    notify_admins(context, f"⏱️ **[استراحة {name}]**\nالموظف: {employee['full_name']}\nالمدة: {duration_minutes} دقيقة.")
 
 # أوامر الاستراحة الفعلية
 def break_command(update: Update, context: CallbackContext):
@@ -519,17 +538,26 @@ def smoke_command(update: Update, context: CallbackContext):
     """طلب استراحة تدخين (5 دقائق)."""
     start_break_timer(update, context, break_type='smoke', duration_minutes=5, emoji='🚬', name='تدخين')
 
-# --- 6. أوامر الإجازات والمغادرة (تحتاج ConversationHandler) ---
-# (سنقوم بتضمين الهيكل الأساسي لها)
+# --- 6. أوامر الإجازات والمغادرة (ConversationHandler) ---
 
 def leave_command(update: Update, context: CallbackContext):
     """بدء طلب مغادرة مبكرة."""
+    employee = get_employee(update.effective_user.id)
+    if not employee:
+        update.message.reply_text("يرجى التسجيل أولاً باستخدام /start.")
+        return ConversationHandler.END
+        
     update.message.reply_text("يرجى ذكر سبب المغادرة المبكرة:")
     return ASK_LEAVE_REASON
 
 def vacation_command(update: Update, context: CallbackContext):
     """بدء طلب إجازة."""
-    update.message.reply_text("يرجى ذكر سبب ومدة الإجازة (مثال: سفر، 3 أيام):")
+    employee = get_employee(update.effective_user.id)
+    if not employee:
+        update.message.reply_text("يرجى التسجيل أولاً باستخدام /start.")
+        return ConversationHandler.END
+
+    update.message.reply_text("يرجى ذكر سبب ومدة الإجازة (مثال: سفر، من 10/12 إلى 15/12):")
     return ASK_VACATION_REASON_DAYS
 
 def handle_leave_reason(update: Update, context: CallbackContext):
@@ -537,11 +565,19 @@ def handle_leave_reason(update: Update, context: CallbackContext):
     reason = update.message.text
     employee = get_employee(update.effective_user.id)
     
-    # (هنا يجب إضافة كود حفظ الطلب في داتابيس 'leaves')
-    # ...
-    
-    update.message.reply_text("تم إرسال طلبك للمغادرة. سيتم إشعارك بالموافقة.")
-    notify_admins(context, f"❓ [طلب مغادرة]\nموظف: {employee['full_name']}\nالسبب: {reason}")
+    conn = get_db_connection()
+    if conn:
+        with conn.cursor() as cur:
+            # افتراضياً: المغادرة من الآن وحتى نهاية اليوم
+            cur.execute(
+                "INSERT INTO leaves (employee_id, leave_type, reason, start_date, end_date) VALUES (%s, 'leave', %s, %s, %s)",
+                (employee['id'], reason, datetime.datetime.now(), datetime.datetime.now().replace(hour=23, minute=59, second=59))
+            )
+            conn.commit()
+        conn.close()
+
+    update.message.reply_text("✅ تم إرسال طلبك للمغادرة. سيتم إشعارك بالموافقة.")
+    notify_admins(context, f"❓ **[طلب مغادرة]**\nالموظف: {employee['full_name']}\nالسبب: {reason}")
     return ConversationHandler.END
 
 def handle_vacation_reason(update: Update, context: CallbackContext):
@@ -549,11 +585,20 @@ def handle_vacation_reason(update: Update, context: CallbackContext):
     reason = update.message.text
     employee = get_employee(update.effective_user.id)
     
-    # (هنا يجب إضافة كود حفظ الطلب في داتابيس 'leaves')
-    # ...
+    # (هنا يمكن إضافة منطق معقد لتحليل التاريخ من الرسالة)
+    # حالياً، نعتبر الرسالة هي السبب والتاريخ
+    conn = get_db_connection()
+    if conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "INSERT INTO leaves (employee_id, leave_type, reason, start_date, end_date) VALUES (%s, 'vacation', %s, %s, %s)",
+                (employee['id'], reason, datetime.datetime.now(), datetime.datetime.now() + datetime.timedelta(days=1)) # مثال: يوم واحد
+            )
+            conn.commit()
+        conn.close()
 
-    update.message.reply_text("تم إرسال طلبك للإجازة. سيتم إشعارك بالموافقة.")
-    notify_admins(context, f"❓ [طلب إجازة]\nموظف: {employee['full_name']}\nالطلب: {reason}")
+    update.message.reply_text("✅ تم إرسال طلبك للإجازة. سيتم إشعارك بالموافقة.")
+    notify_admins(context, f"❓ **[طلب إجازة]**\nالموظف: {employee['full_name']}\nالطلب: {reason}")
     return ConversationHandler.END
 
 def cancel_command(update: Update, context: CallbackContext):
@@ -563,7 +608,6 @@ def cancel_command(update: Update, context: CallbackContext):
 
 
 # --- 7. أوامر المديرين (Admin Commands) ---
-# (سنقوم بتنفيذ بعضها كمثال)
 
 def admin_only(handler):
     """
@@ -586,7 +630,7 @@ def list_employees_command(update: Update, context: CallbackContext):
         return
 
     with conn.cursor() as cur:
-        cur.execute("SELECT full_name, phone_number, position FROM employees ORDER BY full_name")
+        cur.execute("SELECT full_name, phone_number, position, is_admin FROM employees ORDER BY full_name")
         employees = cur.fetchall()
         
         if not employees:
@@ -596,7 +640,8 @@ def list_employees_command(update: Update, context: CallbackContext):
         msg = "👥 **قائمة الموظفين:**\n"
         msg += "--------------------\n"
         for emp in employees:
-            msg += f"• **{emp[0]}** ({emp[2]})\n  📞 {emp[1]}\n"
+            admin_status = "👑" if emp[3] else "👤"
+            msg += f"{admin_status} **{emp[0]}** ({emp[2]})\n  📞 {emp[1]}\n"
         
         # إرسال الرسالة (قد تكون طويلة)
         for part in [msg[i:i+4000] for i in range(0, len(msg), 4000)]:
@@ -623,25 +668,25 @@ def daily_report_command(update: Update, context: CallbackContext):
         report = cur.fetchall()
         
         if not report:
-            update.message.reply_text("لا توجد بيانات لعرضها.")
+            update.message.reply_text("لا توجد بيانات حضور لهذا اليوم.")
             return
 
         msg = f"**📊 تقرير الحضور ليوم {datetime.date.today()}**\n"
         msg += "---------------------------------\n"
         for row in report:
             name = row[0]
-            check_in = row[1].strftime('%H:%M') if row[1] else "لم يحضر"
-            check_out = row[2].strftime('%H:%M') if row[2] else "لم ينصرف"
+            check_in = row[1].strftime('%H:%M') if row[1] else "---"
+            check_out = row[2].strftime('%H:%M') if row[2] else "---"
             
-            if check_in == "لم يحضر":
-                msg += f"• {name}: ❌ (لم يحضر)\n"
+            if row[1] is None:
+                msg += f"• **{name}**: ❌ (لم يحضر)\n"
             else:
-                msg += f"• {name}: ✅ {check_in}  ➡️  {check_out}\n"
+                msg += f"• **{name}**: ✅ {check_in}  ➡️  {check_out}\n"
         
         update.message.reply_text(msg, parse_mode=ParseMode.MARKDOWN)
     conn.close()
 
-# --- أوامر إدارية (تحتاج ConversationHandler - تم وضع الهيكل) ---
+# أوامر إدارية (تحتاج ConversationHandler - تم وضع الهيكل)
 
 @admin_only
 def add_employee_start(update: Update, context: CallbackContext):
@@ -649,35 +694,35 @@ def add_employee_start(update: Update, context: CallbackContext):
     update.message.reply_text("أرسل الاسم الكامل للموظف الجديد:")
     return ASK_NAME
 
-# (هنا يجب تكملة باقي خطوات المحادثة: الاسم ثم الهاتف ثم العمر...إلخ)
-# هذه العملية طويلة ولكنها تتبع نفس نمط محادثة الإجازات
-
 def add_employee_phone(update: Update, context: CallbackContext):
     """(مدير) استلام الاسم وطلب الهاتف."""
     context.user_data['new_emp_name'] = update.message.text
-    update.message.reply_text("أرسل رقم هاتف الموظف (مثال: 9627...):")
+    update.message.reply_text("أرسل رقم هاتف الموظف (بصيغة دولية: 9627...):")
     return ASK_PHONE
 
 def add_employee_save(update: Update, context: CallbackContext):
-    """(مدير) استلام الهاتف وحفظ الموظف."""
-    phone = update.message.text.lstrip('00').lstrip('+')
+    """(مدير) استلام الهاتف وحفظ الموظف (هنا فقط نكتفي بالاسم والهاتف)."""
+    phone_input = update.message.text
+    # تنظيف رقم الهاتف
+    phone = phone_input.lstrip('00').lstrip('+')
     name = context.user_data['new_emp_name']
     
     conn = get_db_connection()
     if conn:
         try:
             with conn.cursor() as cur:
-                # (هنا يجب إضافة باقي الحقول التي تم تجميعها)
+                # إدراج الحد الأدنى من البيانات
                 cur.execute(
                     "INSERT INTO employees (full_name, phone_number) VALUES (%s, %s)",
                     (name, phone)
                 )
                 conn.commit()
-            update.message.reply_text(f"✅ تم إضافة الموظف '{name}' بنجاح إلى النظام.")
+            update.message.reply_text(f"✅ تم إضافة الموظف '{name}' برقم هاتف '{phone}' بنجاح إلى النظام.")
         except psycopg2.errors.UniqueViolation:
             update.message.reply_text("خطأ: رقم الهاتف هذا مسجل مسبقاً.")
         except Exception as e:
-            update.message.reply_text(f"حدث خطأ: {e}")
+            logger.error(f"خطأ في إضافة موظف: {e}")
+            update.message.reply_text("حدث خطأ غير متوقع أثناء الحفظ.")
         finally:
             conn.close()
             context.user_data.clear()
@@ -687,37 +732,33 @@ def add_employee_save(update: Update, context: CallbackContext):
         return ConversationHandler.END
 
 # --- الأوامر الإدارية المتبقية (كدوال بسيطة مؤقتة) ---
-# يجب تكميل المنطق البرمجي لها بنفس طريقة /list_employees
 @admin_only
 def remove_employee_command(update: Update, context: CallbackContext):
-    update.message.reply_text("أمر /remove_employee (قيد الإنشاء).")
+    update.message.reply_text("أمر `/remove_employee` (قيد الإنشاء). يرجى تحديد موظف للحذف.")
 @admin_only
 def edit_details_command(update: Update, context: CallbackContext):
-    update.message.reply_text("أمر /edit_details (قيد الإنشاء).")
+    update.message.reply_text("أمر `/edit_details` (قيد الإنشاء).")
 @admin_only
 def weekly_report_command(update: Update, context: CallbackContext):
-    update.message.reply_text("أمر /weekly_report (قيد الإنشاء).")
+    update.message.reply_text("أمر `/weekly_report` (قيد الإنشاء).")
 @admin_only
 def list_admins_command(update: Update, context: CallbackContext):
-    update.message.reply_text("أمر /list_admins (قيد الإنشاء).")
+    update.message.reply_text("أمر `/list_admins` (قيد الإنشاء).")
 @admin_only
 def add_admin_command(update: Update, context: CallbackContext):
-    update.message.reply_text("أمر /add_admin (قيد الإنشاء).")
+    update.message.reply_text("أمر `/add_admin` (قيد الإنشاء).")
 @admin_only
 def remove_admin_command(update: Update, context: CallbackContext):
-    update.message.reply_text("أمر /remove_admin (قيد الإنشاء).")
+    update.message.reply_text("أمر `/remove_admin` (قيد الإنشاء).")
+
 
 # --- الدالة الرئيسية (Main) ---
 
 def main():
     """تشغيل البوت."""
     
-    # التحقق من المتغيرات الأساسية
-    if not TELEGRAM_TOKEN:
-        logger.critical("خطأ: لم يتم العثور على TELEGRAM_TOKEN. يرجى إعداده.")
-        return
-    if not DATABASE_URL:
-        logger.critical("خطأ: لم يتم العثور على DATABASE_URL. يرجى إعداده.")
+    if not TELEGRAM_TOKEN or not DATABASE_URL:
+        logger.critical("خطأ: يرجى التأكد من إعداد TELEGRAM_TOKEN و DATABASE_URL كمتغيرات بيئة.")
         return
 
     # إعداد قاعدة البيانات لأول مرة
@@ -726,7 +767,7 @@ def main():
     # تهيئة البوت
     updater = Updater(TELEGRAM_TOKEN, use_context=True)
     
-    # الحصول على موزع الأوامر (Dispatcher) و (JobQueue)
+    # الحصول على موزع الأوامر (Dispatcher)
     dp = updater.dispatcher
     
     # --- تعريف محادثات (Conversations) ---
@@ -744,13 +785,12 @@ def main():
         fallbacks=[CommandHandler('cancel', cancel_command)]
     )
     
-    # 2. محادثة إضافة موظف (مثال مبسط)
+    # 2. محادثة إضافة موظف
     add_emp_conv_handler = ConversationHandler(
         entry_points=[CommandHandler('add_employee', add_employee_start)],
         states={
             ASK_NAME: [MessageHandler(Filters.text & ~Filters.command, add_employee_phone)],
             ASK_PHONE: [MessageHandler(Filters.text & ~Filters.command, add_employee_save)],
-            # (هنا يجب إضافة باقي الحالات: العمر، القسم...)
         },
         fallbacks=[CommandHandler('cancel', cancel_command)]
     )
@@ -773,6 +813,7 @@ def main():
     dp.add_handler(add_emp_conv_handler)
     dp.add_handler(CommandHandler("list_employees", list_employees_command))
     dp.add_handler(CommandHandler("daily_report", daily_report_command))
+    # إضافة الأوامر الإدارية المتبقية
     dp.add_handler(CommandHandler("remove_employee", remove_employee_command))
     dp.add_handler(CommandHandler("edit_details", edit_details_command))
     dp.add_handler(CommandHandler("weekly_report", weekly_report_command))
@@ -784,7 +825,6 @@ def main():
     dp.add_handler(CallbackQueryHandler(im_back_callback, pattern='^im_back$'))
 
     # بدء تشغيل البوت (باستخدام Polling)
-    # هذا مناسب لـ `worker` على Render
     logger.info("... بدء تشغيل البوت (Polling) ...")
     updater.start_polling()
     
@@ -792,4 +832,6 @@ def main():
     updater.idle()
 
 if __name__ == '__main__':
+    # لتسهيل التتبع في السجلات
+    logging.getLogger('__main__').info("Starting Employee Management Bot...")
     main()
