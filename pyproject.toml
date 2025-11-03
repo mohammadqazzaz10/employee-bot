@@ -9,4 +9,6 @@ python = "^3.8"
 python-telegram-bot = "^20.1"
 psycopg2 = "^2.9.3"
 psycopg2-binary = "^2.9.3"
-timezone = "^1.1"
+pytz = "^2021.1"  # استبدال timezone بـ pytz
+# أو يمكنك استبدالها بـ pendulum إذا كنت تفضلها:
+# pendulum = "^2.1.2"
