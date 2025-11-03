@@ -6,13 +6,13 @@ authors = ["Mohammad Qazzaz <your_email@example.com>"]
 license = "MIT"
 readme = "README.md"
 
-# 🛠️ هذا السطر يحل المشكلة: يخبر Poetry بتثبيت مجلد الكود المصدري الخاص بك
+# 🛠️ هذا السطر يحل المشكلة بتحديد مكان الكود المصدري
 packages = [
     {include = "employee_management_bot"} 
 ]
 
 [tool.poetry.dependencies]
-python = "^3.13" # يستخدم إصدار بايثون 3.13 المحدد في سجلاتك
+python = "^3.13" 
 flask = "^3.1.2"
 psycopg2-binary = "^2.9.11"
 apscheduler = "^3.11.1" 
