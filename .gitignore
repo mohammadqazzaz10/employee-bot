@@ -1,10 +1,15 @@
-# تجاهل ملفات البيئة المحلية
-.env
-
-# تجاهل ملفات بايثون المؤقتة
+# Python
 __pycache__/
-*.pyc
-
-# تجاهل مجلد البيئة الافتراضية
-venv/
+*.py[cod]
+*$py.class
 .venv/
+venv/
+ENV/
+
+# Environment
+.env
+.env.*
+
+# IDE
+.vscode/
+.idea/
