@@ -2792,7 +2792,18 @@ def main():
     initialize_database_tables()
     load_employees_from_database()
     
-    application = Application.builder().token(BOT_TOKEN).build()
+     application = Application.builder().token(BOT_TOKEN).build()
+
+    # الإضافة الجديدة: مسح جميع الـ Webhooks والرسائل العالقة لضمان الإطلاق النظيف
+    try:
+        # إيقاف أي Webhook قديم
+        application.bot.delete_webhook()
+        # مسح أي تحديثات عالقة
+        application.bot.get_updates(offset=-1, timeout=1) 
+        logger.info("تم مسح الـ Webhook والرسائل العالقة بنجاح.")
+    except Exception as e:
+        logger.warning(f"لم نتمكن من مسح الـ Webhook/الرسائل العالقة: {e}") 
+
     
     leave_conv_handler = ConversationHandler(
         entry_points=[CommandHandler("leave", leave_request)],
