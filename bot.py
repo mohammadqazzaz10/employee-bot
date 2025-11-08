@@ -55,6 +55,47 @@ def initialize_database_tables():
         conn = get_db_connection()
         cur = conn.cursor()
         
+        # جدول الموظفين
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS employees (
+                id SERIAL PRIMARY KEY,
+                telegram_id BIGINT UNIQUE,
+                phone_number VARCHAR(20) NOT NULL,
+                full_name VARCHAR(100) NOT NULL,
+                age INTEGER,
+                job_title VARCHAR(100),
+                department VARCHAR(100),
+                hire_date DATE,
+                last_active TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+            );
+        """)
+        
+        # جدول الطلبات
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS requests (
+                id SERIAL PRIMARY KEY,
+                employee_id INTEGER REFERENCES employees(id) ON DELETE CASCADE,
+                request_type VARCHAR(50) NOT NULL,
+                status VARCHAR(20) DEFAULT 'pending',
+                requested_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                responded_at TIMESTAMP WITH TIME ZONE,
+                notes TEXT
+            );
+        """)
+        
+        # جدول السجائر اليومية
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS daily_cigarettes (
+                id SERIAL PRIMARY KEY,
+                employee_id INTEGER REFERENCES employees(id) ON DELETE CASCADE,
+                date DATE NOT NULL,
+                count INTEGER DEFAULT 0,
+                updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(employee_id, date)
+            );
+        """)
+        
         # جدول المديرين
         cur.execute("""
             CREATE TABLE IF NOT EXISTS admins (
@@ -2792,7 +2833,7 @@ def main():
     initialize_database_tables()
     load_employees_from_database()
     
-     application = Application.builder().token(BOT_TOKEN).build()
+    application = Application.builder().token(BOT_TOKEN).build()
 
     # الإضافة الجديدة: مسح جميع الـ Webhooks والرسائل العالقة لضمان الإطلاق النظيف
     try:
