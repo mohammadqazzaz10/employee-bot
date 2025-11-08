@@ -959,14 +959,14 @@ def verify_employee(phone_number):
 
 def get_user_phone(user_id):
     """الحصول على رقم هاتف المستخدم من قاعدة البيانات"""
-    employee = get_employee_by_telegram_id(user_id)
+    employee = get_employee_by_telegram_id(user.id)
     if employee:
         return employee.get('phone_number')
-    return user_database.get(user_id, {}).get('phone')
+    return user_database.get(user.id, {}).get('phone')
 
 def get_employee_name(user_id, default_name="المستخدم"):
     """الحصول على اسم الموظف من قاعدة البيانات بدلاً من Telegram"""
-    employee = get_employee_by_telegram_id(user_id)
+    employee = get_employee_by_telegram_id(user.id)
     if employee and employee.get('full_name'):
         return employee.get('full_name')
     return default_name
@@ -2872,15 +2872,14 @@ def main():
     
     application = Application.builder().token(BOT_TOKEN).build()
 
-    # الإضافة الجديدة: مسح جميع الـ Webhooks والرسائل العالقة لضمان الإطلاق النظيف
+    # إصلاح مشكلة coroutines - إزالة الكود الذي يسبب المشكلة
     try:
-        # إيقاف أي Webhook قديم
-        application.bot.delete_webhook()
-        # مسح أي تحديثات عالقة
-        application.bot.get_updates(offset=-1, timeout=1) 
-        logger.info("تم مسح الـ Webhook والرسائل العالقة بنجاح.")
+        # هذه السطور تسبب المشكلة، سنزيلها
+        # application.bot.delete_webhook()
+        # application.bot.get_updates(offset=-1, timeout=1)
+        logger.info("تم تهيئة البوت بنجاح.")
     except Exception as e:
-        logger.warning(f"لم نتمكن من مسح الـ Webhook/الرسائل العالقة: {e}") 
+        logger.warning(f"ملاحظة: {e}") 
 
     
     leave_conv_handler = ConversationHandler(
@@ -2959,22 +2958,12 @@ def main():
     print("Bot is running! Press Ctrl+C to stop.")
     print("البوت يعمل الآن!")
     
-    while True:
-        try:
-            application.run_polling(allowed_updates=Update.ALL_TYPES, drop_pending_updates=True)
-        except KeyboardInterrupt:
-            print("\n⏹️  إيقاف البوت...")
-            print("⏹️  Bot stopped by user")
-            break
-        except Exception as e:
-            logger.error(f"⚠️  خطأ في البوت: {e}")
-            logger.error("🔄 إعادة تشغيل البوت بعد 5 ثواني...")
-            print(f"\n⚠️  حدث خطأ: {e}")
-            print("🔄 سيتم إعادة تشغيل البوت تلقائياً بعد 5 ثواني...")
-            import time
-            time.sleep(5)
-            print("🚀 إعادة تشغيل البوت...")
-            continue
+    # إصلاح مشكلة getUpdates المتعددة
+    application.run_polling(
+        allowed_updates=Update.ALL_TYPES,
+        drop_pending_updates=True,
+        close_loop=False
+    )
 
 if __name__ == '__main__':
     main()
