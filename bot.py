@@ -959,14 +959,14 @@ def verify_employee(phone_number):
 
 def get_user_phone(user_id):
     """الحصول على رقم هاتف المستخدم من قاعدة البيانات"""
-    employee = get_employee_by_telegram_id(user.id)
+    employee = get_employee_by_telegram_id(user_id)
     if employee:
         return employee.get('phone_number')
-    return user_database.get(user.id, {}).get('phone')
+    return user_database.get(user_id, {}).get('phone')
 
 def get_employee_name(user_id, default_name="المستخدم"):
     """الحصول على اسم الموظف من قاعدة البيانات بدلاً من Telegram"""
-    employee = get_employee_by_telegram_id(user.id)
+    employee = get_employee_by_telegram_id(user_id)
     if employee and employee.get('full_name'):
         return employee.get('full_name')
     return default_name
@@ -1393,30 +1393,21 @@ async def show_employee_details(update: Update, context: ContextTypes.DEFAULT_TY
     query = update.callback_query
     await query.answer()
     
+    employee_id = int(query.data.split('_')[1])
+    
     try:
-        # استخراج employee_id من callback_data بشكل آمن
-        callback_data = query.data
-        if not callback_data.startswith('editdetail_'):
-            await query.edit_message_text("❌ بيانات غير صالحة.")
-            return ConversationHandler.END
-        
-        employee_id = int(callback_data.split('_')[1])
-        
         conn = get_db_connection()
         cur = conn.cursor(cursor_factory=RealDictCursor)
         
         # إضافة الحقول الجديدة إذا لم تكن موجودة
-        try:
-            cur.execute("""
-                ALTER TABLE employees 
-                ADD COLUMN IF NOT EXISTS age INTEGER,
-                ADD COLUMN IF NOT EXISTS job_title VARCHAR(100),
-                ADD COLUMN IF NOT EXISTS department VARCHAR(100),
-                ADD COLUMN IF NOT EXISTS hire_date DATE
-            """)
-            conn.commit()
-        except Exception as alter_error:
-            logger.warning(f"قد تكون الحقول موجودة بالفعل: {alter_error}")
+        cur.execute("""
+            ALTER TABLE employees 
+            ADD COLUMN IF NOT EXISTS age INTEGER,
+            ADD COLUMN IF NOT EXISTS job_title VARCHAR(100),
+            ADD COLUMN IF NOT EXISTS department VARCHAR(100),
+            ADD COLUMN IF NOT EXISTS hire_date DATE
+        """)
+        conn.commit()
         
         cur.execute("SELECT * FROM employees WHERE id = %s", (employee_id,))
         employee = cur.fetchone()
@@ -1429,24 +1420,15 @@ async def show_employee_details(update: Update, context: ContextTypes.DEFAULT_TY
         
         context.user_data['editing_employee_id'] = employee_id
         
-        # تنسيق البيانات لعرضها
-        age = employee.get('age') or 'غير محدد'
-        job_title = employee.get('job_title') or 'غير محددة'
-        department = employee.get('department') or 'غير محدد'
-        hire_date = employee.get('hire_date') or 'غير محدد'
-        
-        if hire_date != 'غير محدد':
-            hire_date = hire_date.strftime('%Y-%m-%d')
-        
         # عرض التفاصيل الحالية
         message = (
             f"📋 تفاصيل الموظف:\n\n"
             f"👤 الاسم: {employee['full_name']}\n"
             f"📱 الهاتف: {employee['phone_number']}\n"
-            f"🎂 العمر: {age}\n"
-            f"💼 الوظيفة: {job_title}\n"
-            f"🏢 القسم: {department}\n"
-            f"📅 تاريخ التوظيف: {hire_date}\n\n"
+            f"🎂 العمر: {employee.get('age') or 'غير محدد'}\n"
+            f"💼 الوظيفة: {employee.get('job_title') or 'غير محددة'}\n"
+            f"🏢 القسم: {employee.get('department') or 'غير محدد'}\n"
+            f"📅 تاريخ التوظيف: {employee.get('hire_date') or 'غير محدد'}\n\n"
             f"اختر التفصيل الذي تريد تعديله:"
         )
         
@@ -1475,95 +1457,80 @@ async def select_field_to_edit(update: Update, context: ContextTypes.DEFAULT_TYP
     query = update.callback_query
     await query.answer()
     
-    try:
-        if query.data == "cancel_edit":
-            await query.edit_message_text("❌ تم إلغاء العملية.")
-            context.user_data.clear()
-            return ConversationHandler.END
-        
-        parts = query.data.split('_')
-        if len(parts) < 3:
-            await query.edit_message_text("❌ بيانات غير صالحة.")
-            return ConversationHandler.END
-        
-        field_type = parts[1]
-        employee_id = int(parts[2])
-        
-        context.user_data['editing_field'] = field_type
-        context.user_data['editing_employee_id'] = employee_id
-        
-        field_names = {
-            'name': 'الاسم الكامل',
-            'phone': 'رقم الهاتف',
-            'age': 'العمر',
-            'job': 'الوظيفة',
-            'dept': 'القسم',
-            'hire': 'تاريخ التوظيف (YYYY-MM-DD)'
-        }
-        
-        field_name = field_names.get(field_type, 'التفصيل')
-        
-        await query.edit_message_text(
-            f"✏️ تعديل {field_name}\n\n"
-            f"📝 أرسل القيمة الجديدة:\n\n"
-            f"أرسل /cancel للإلغاء."
-        )
-        
-        return EDIT_DETAIL_INPUT
-        
-    except Exception as e:
-        logger.error(f"خطأ في اختيار الحقل: {e}")
-        await query.edit_message_text("❌ حدث خطأ أثناء معالجة الطلب.")
+    if query.data == "cancel_edit":
+        await query.edit_message_text("❌ تم إلغاء العملية.")
+        context.user_data.clear()
         return ConversationHandler.END
+    
+    parts = query.data.split('_')
+    field_type = parts[1]
+    employee_id = int(parts[2])
+    
+    context.user_data['editing_field'] = field_type
+    context.user_data['editing_employee_id'] = employee_id
+    
+    field_names = {
+        'name': 'الاسم الكامل',
+        'phone': 'رقم الهاتف',
+        'age': 'العمر',
+        'job': 'الوظيفة',
+        'dept': 'القسم',
+        'hire': 'تاريخ التوظيف (YYYY-MM-DD)'
+    }
+    
+    field_name = field_names.get(field_type, 'التفصيل')
+    
+    await query.edit_message_text(
+        f"✏️ تعديل {field_name}\n\n"
+        f"📝 أرسل القيمة الجديدة:\n\n"
+        f"أرسل /cancel للإلغاء."
+    )
+    
+    return EDIT_DETAIL_INPUT
 
 async def receive_new_detail_value(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """استقبال القيمة الجديدة وتحديثها"""
-    try:
-        new_value = update.message.text.strip()
-        field_type = context.user_data.get('editing_field')
-        employee_id = context.user_data.get('editing_employee_id')
-        
-        if not field_type or not employee_id:
-            await update.message.reply_text("❌ جلسة العمل انتهت. يرجى البدء من جديد.")
-            context.user_data.clear()
-            return ConversationHandler.END
-        
-        # التحقق من صحة القيمة
-        if field_type == 'age':
-            try:
-                age = int(new_value)
-                if age < 16 or age > 100:
-                    await update.message.reply_text(
-                        "⚠️ العمر غير صالح. يجب أن يكون بين 16 و 100.\n\n"
-                        "أرسل العمر الجديد أو /cancel للإلغاء:"
-                    )
-                    return EDIT_DETAIL_INPUT
-                new_value = age
-            except ValueError:
+    new_value = update.message.text.strip()
+    field_type = context.user_data.get('editing_field')
+    employee_id = context.user_data.get('editing_employee_id')
+    
+    # التحقق من صحة القيمة
+    if field_type == 'age':
+        try:
+            age = int(new_value)
+            if age < 16 or age > 100:
                 await update.message.reply_text(
-                    "⚠️ العمر يجب أن يكون رقماً.\n\n"
+                    "⚠️ العمر غير صالح. يجب أن يكون بين 16 و 100.\n\n"
                     "أرسل العمر الجديد أو /cancel للإلغاء:"
                 )
                 return EDIT_DETAIL_INPUT
-        
-        elif field_type == 'hire':
-            try:
-                from datetime import datetime
-                hire_date = datetime.strptime(new_value, '%Y-%m-%d').date()
-                new_value = hire_date
-            except ValueError:
-                await update.message.reply_text(
-                    "⚠️ التاريخ غير صالح. يجب أن يكون بصيغة YYYY-MM-DD\n"
-                    "مثال: 2024-01-15\n\n"
-                    "أرسل التاريخ الجديد أو /cancel للإلغاء:"
-                )
-                return EDIT_DETAIL_INPUT
-        
-        elif field_type == 'phone':
-            if not new_value.startswith('+'):
-                new_value = '+' + new_value
-        
-        # تحديث قاعدة البيانات
+            new_value = age
+        except ValueError:
+            await update.message.reply_text(
+                "⚠️ العمر يجب أن يكون رقماً.\n\n"
+                "أرسل العمر الجديد أو /cancel للإلغاء:"
+            )
+            return EDIT_DETAIL_INPUT
+    
+    if field_type == 'hire':
+        try:
+            from datetime import datetime
+            hire_date = datetime.strptime(new_value, '%Y-%m-%d').date()
+            new_value = hire_date
+        except ValueError:
+            await update.message.reply_text(
+                "⚠️ التاريخ غير صالح. يجب أن يكون بصيغة YYYY-MM-DD\n"
+                "مثال: 2024-01-15\n\n"
+                "أرسل التاريخ الجديد أو /cancel للإلغاء:"
+            )
+            return EDIT_DETAIL_INPUT
+    
+    if field_type == 'phone':
+        if not new_value.startswith('+'):
+            new_value = '+' + new_value
+    
+    # تحديث قاعدة البيانات
+    try:
         conn = get_db_connection()
         cur = conn.cursor()
         
@@ -1577,10 +1544,6 @@ async def receive_new_detail_value(update: Update, context: ContextTypes.DEFAULT
         }
         
         db_field = field_mapping.get(field_type)
-        
-        if not db_field:
-            await update.message.reply_text("❌ نوع الحقل غير صالح.")
-            return ConversationHandler.END
         
         cur.execute(
             f"UPDATE employees SET {db_field} = %s WHERE id = %s",
@@ -2872,14 +2835,15 @@ def main():
     
     application = Application.builder().token(BOT_TOKEN).build()
 
-    # إصلاح مشكلة coroutines - إزالة الكود الذي يسبب المشكلة
+    # الإضافة الجديدة: مسح جميع الـ Webhooks والرسائل العالقة لضمان الإطلاق النظيف
     try:
-        # هذه السطور تسبب المشكلة، سنزيلها
-        # application.bot.delete_webhook()
-        # application.bot.get_updates(offset=-1, timeout=1)
-        logger.info("تم تهيئة البوت بنجاح.")
+        # إيقاف أي Webhook قديم
+        application.bot.delete_webhook()
+        # مسح أي تحديثات عالقة
+        application.bot.get_updates(offset=-1, timeout=1) 
+        logger.info("تم مسح الـ Webhook والرسائل العالقة بنجاح.")
     except Exception as e:
-        logger.warning(f"ملاحظة: {e}") 
+        logger.warning(f"لم نتمكن من مسح الـ Webhook/الرسائل العالقة: {e}") 
 
     
     leave_conv_handler = ConversationHandler(
@@ -2908,13 +2872,9 @@ def main():
                 CallbackQueryHandler(select_field_to_edit, pattern=r"^editfield_\w+_\d+$"),
                 CallbackQueryHandler(select_field_to_edit, pattern=r"^cancel_edit$"),
             ],
-            EDIT_DETAIL_INPUT: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, receive_new_detail_value),
-                CommandHandler("cancel", cancel)
-            ],
+            EDIT_DETAIL_INPUT: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_new_detail_value)],
         },
         fallbacks=[CommandHandler("cancel", cancel)],
-        allow_reentry=True
     )
     
     application.add_handler(CommandHandler("start", start))
@@ -2958,12 +2918,22 @@ def main():
     print("Bot is running! Press Ctrl+C to stop.")
     print("البوت يعمل الآن!")
     
-    # إصلاح مشكلة getUpdates المتعددة
-    application.run_polling(
-        allowed_updates=Update.ALL_TYPES,
-        drop_pending_updates=True,
-        close_loop=False
-    )
+    while True:
+        try:
+            application.run_polling(allowed_updates=Update.ALL_TYPES, drop_pending_updates=True)
+        except KeyboardInterrupt:
+            print("\n⏹️  إيقاف البوت...")
+            print("⏹️  Bot stopped by user")
+            break
+        except Exception as e:
+            logger.error(f"⚠️  خطأ في البوت: {e}")
+            logger.error("🔄 إعادة تشغيل البوت بعد 5 ثواني...")
+            print(f"\n⚠️  حدث خطأ: {e}")
+            print("🔄 سيتم إعادة تشغيل البوت تلقائياً بعد 5 ثواني...")
+            import time
+            time.sleep(5)
+            print("🚀 إعادة تشغيل البوت...")
+            continue
 
 if __name__ == '__main__':
     main()
