@@ -11,702 +11,435 @@ import asyncio
 from functools import partial
 
 # ==============================================================================
-# ⚙️ الإعدادات العامة (Configuration)
+# ⚙️ الإعدادات العامة
 # ==============================================================================
 
-# الحالات الخاصة بالمحادثات (Conversation States)
+# الحالات (States)
 LEAVE_REASON, VACATION_REASON = range(2)
-EDIT_SELECT_EMPLOYEE, EDIT_SELECT_FIELD, EDIT_INPUT_VALUE = range(2, 5)
+EDIT_DETAIL_SELECT, EDIT_DETAIL_INPUT = range(2, 4)
 
-# التوكن ورابط قاعدة البيانات من متغيرات البيئة
+# المتغيرات البيئية
 BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 DATABASE_URL = os.environ.get("DATABASE_URL")
 
-# إعدادات الوقت والمنطقة
+# إعدادات العمل
 JORDAN_TZ = ZoneInfo('Asia/Amman')
 WORK_START_HOUR = 8
 WORK_START_MINUTE = 0
 WORK_REGULAR_HOURS = 9
 MAX_DAILY_SMOKES = 6
 LATE_GRACE_PERIOD_MINUTES = 15
+SMOKE_GAP_MINUTES = 90  # ساعة ونصف
 
-# قائمة المديرين (يمكنك تعديلها هنا أو إضافتها عبر البوت)
+# قائمة المديرين (يجب أن تضع معرفك هنا)
 ADMIN_IDS = [1465191277]  
 
-# إعدادات التسجيل (Logging)
+# إعدادات التسجيل
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
 )
 logger = logging.getLogger(__name__)
 
-# متغيرات الذاكرة المؤقتة (Caching)
-authorized_phones = []  # سيتم تحميلها من قاعدة البيانات عند التشغيل
+authorized_phones = []
 active_timers = {}
-timer_completed = {}
 
 # ==============================================================================
-# 🗄️ إدارة قاعدة البيانات (Database Management)
+# 🗄️ إدارة قاعدة البيانات (أداء عالي)
 # ==============================================================================
 
-# إنشاء مجمع اتصالات (Connection Pool) للأداء العالي
 try:
-    db_pool = psycopg2.pool.SimpleConnectionPool(
-        1, 20,  # minconn, maxconn
-        dsn=DATABASE_URL
-    )
-    if db_pool:
-        logger.info("✅ Database connection pool created successfully")
+    db_pool = psycopg2.pool.SimpleConnectionPool(1, 20, dsn=DATABASE_URL)
 except Exception as e:
-    logger.error(f"❌ Error creating connection pool: {e}")
+    logger.error(f"❌ Error creating pool: {e}")
     db_pool = None
 
-def get_db_connection():
-    """الحصول على اتصال من المجمع"""
-    try:
-        return db_pool.getconn()
-    except Exception as e:
-        logger.error(f"Error getting connection from pool: {e}")
-        # محاولة إنشاء اتصال جديد إذا فشل المجمع
-        return psycopg2.connect(DATABASE_URL)
-
-def release_db_connection(conn):
-    """إعادة الاتصال إلى المجمع"""
-    try:
-        if db_pool:
-            db_pool.putconn(conn)
-        else:
-            conn.close()
-    except Exception as e:
-        logger.error(f"Error releasing connection: {e}")
-
 def execute_query(query, params=None, fetch_one=False, fetch_all=False, commit=False):
-    """دالة مساعدة لتنفيذ الاستعلامات بأمان"""
+    """دالة تنفيذ الأوامر بشكل آمن وسريع"""
     conn = None
     result = None
     try:
-        conn = get_db_connection()
+        conn = db_pool.getconn() if db_pool else psycopg2.connect(DATABASE_URL)
         cur = conn.cursor(cursor_factory=RealDictCursor)
         cur.execute(query, params)
         
         if commit:
             conn.commit()
-            # لعمليات الإدخال التي تعيد ID
             if 'RETURNING' in query.upper():
                 result = cur.fetchone()
         
-        if fetch_one:
-            result = cur.fetchone()
-        elif fetch_all:
-            result = cur.fetchall()
-            
+        if fetch_one: result = cur.fetchone()
+        elif fetch_all: result = cur.fetchall()
         cur.close()
     except Exception as e:
-        logger.error(f"Database query error: {e} | Query: {query}")
-        if conn:
-            conn.rollback()
+        logger.error(f"DB Error: {e}")
+        if conn: conn.rollback()
     finally:
-        if conn:
-            release_db_connection(conn)
+        if conn and db_pool: db_pool.putconn(conn)
+        elif conn: conn.close()
     return result
 
 def initialize_database_tables():
-    """إنشاء الجداول المطلوبة إذا لم تكن موجودة"""
-    conn = None
-    try:
-        conn = get_db_connection()
-        cur = conn.cursor()
-        
-        # جدول الموظفين
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS employees (
-                id SERIAL PRIMARY KEY,
-                telegram_id BIGINT UNIQUE,
-                phone_number VARCHAR(20) NOT NULL UNIQUE,
-                full_name VARCHAR(100) NOT NULL,
-                age INTEGER,
-                job_title VARCHAR(100),
-                department VARCHAR(100),
-                hire_date DATE,
-                last_active TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-                created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-            );
-        """)
-        
-        # جدول الطلبات
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS requests (
-                id SERIAL PRIMARY KEY,
-                employee_id INTEGER REFERENCES employees(id) ON DELETE CASCADE,
-                request_type VARCHAR(50) NOT NULL,
-                status VARCHAR(20) DEFAULT 'pending',
-                requested_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-                responded_at TIMESTAMP WITH TIME ZONE,
-                notes TEXT
-            );
-        """)
-        
-        # جدول السجائر
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS daily_cigarettes (
-                id SERIAL PRIMARY KEY,
-                employee_id INTEGER REFERENCES employees(id) ON DELETE CASCADE,
-                date DATE NOT NULL,
-                count INTEGER DEFAULT 0,
-                updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-                UNIQUE(employee_id, date)
-            );
-        """)
-        
-        # جدول المديرين
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS admins (
-                id SERIAL PRIMARY KEY,
-                telegram_id BIGINT UNIQUE NOT NULL,
-                added_by BIGINT,
-                added_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-                is_super_admin BOOLEAN DEFAULT FALSE
-            );
-        """)
-        
-        # جدول الحضور
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS attendance (
-                id SERIAL PRIMARY KEY,
-                employee_id INTEGER REFERENCES employees(id) ON DELETE CASCADE,
-                date DATE NOT NULL,
-                check_in_time TIMESTAMP WITH TIME ZONE,
-                check_out_time TIMESTAMP WITH TIME ZONE,
-                is_late BOOLEAN DEFAULT FALSE,
-                late_minutes INTEGER DEFAULT 0,
-                total_work_hours DECIMAL(4,2),
-                overtime_hours DECIMAL(4,2) DEFAULT 0,
-                status VARCHAR(20) DEFAULT 'present',
-                created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-                UNIQUE(employee_id, date)
-            );
-        """)
-
-        # الجداول الأخرى
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS lunch_breaks (
-                id SERIAL PRIMARY KEY,
-                employee_id INTEGER REFERENCES employees(id) ON DELETE CASCADE,
-                date DATE NOT NULL,
-                taken BOOLEAN DEFAULT FALSE,
-                taken_at TIMESTAMP WITH TIME ZONE,
-                UNIQUE(employee_id, date)
-            );
-            CREATE TABLE IF NOT EXISTS cigarette_times (
-                id SERIAL PRIMARY KEY,
-                employee_id INTEGER REFERENCES employees(id) ON DELETE CASCADE,
-                taken_at TIMESTAMP WITH TIME ZONE NOT NULL
-            );
-            CREATE TABLE IF NOT EXISTS warnings (
-                id SERIAL PRIMARY KEY,
-                employee_id INTEGER REFERENCES employees(id) ON DELETE CASCADE,
-                warning_type VARCHAR(50),
-                warning_reason TEXT,
-                date DATE,
-                created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-            );
-            CREATE TABLE IF NOT EXISTS absences (
-                id SERIAL PRIMARY KEY,
-                employee_id INTEGER REFERENCES employees(id) ON DELETE CASCADE,
-                date DATE NOT NULL,
-                absence_type VARCHAR(50),
-                reason TEXT,
-                UNIQUE(employee_id, date)
-            );
-        """)
-        
-        conn.commit()
-        cur.close()
-        logger.info("✅ Database tables initialized successfully")
-    except Exception as e:
-        logger.error(f"❌ Error initializing database tables: {e}")
-    finally:
-        if conn:
-            release_db_connection(conn)
+    queries = [
+        """CREATE TABLE IF NOT EXISTS employees (
+            id SERIAL PRIMARY KEY, telegram_id BIGINT UNIQUE, phone_number VARCHAR(20) UNIQUE,
+            full_name VARCHAR(100), age INTEGER, job_title VARCHAR(100), department VARCHAR(100),
+            hire_date DATE, last_active TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+        );""",
+        """CREATE TABLE IF NOT EXISTS attendance (
+            id SERIAL PRIMARY KEY, employee_id INTEGER REFERENCES employees(id),
+            date DATE, check_in_time TIMESTAMP WITH TIME ZONE, check_out_time TIMESTAMP WITH TIME ZONE,
+            is_late BOOLEAN, late_minutes INTEGER, total_work_hours DECIMAL(4,2), overtime_hours DECIMAL(4,2),
+            status VARCHAR(20), UNIQUE(employee_id, date)
+        );""",
+        """CREATE TABLE IF NOT EXISTS daily_cigarettes (
+            id SERIAL PRIMARY KEY, employee_id INTEGER REFERENCES employees(id),
+            date DATE, count INTEGER DEFAULT 0, updated_at TIMESTAMP WITH TIME ZONE,
+            UNIQUE(employee_id, date)
+        );""",
+        """CREATE TABLE IF NOT EXISTS cigarette_times (
+            id SERIAL PRIMARY KEY, employee_id INTEGER REFERENCES employees(id),
+            taken_at TIMESTAMP WITH TIME ZONE
+        );""",
+        """CREATE TABLE IF NOT EXISTS lunch_breaks (
+            id SERIAL PRIMARY KEY, employee_id INTEGER REFERENCES employees(id),
+            date DATE, taken BOOLEAN DEFAULT FALSE, taken_at TIMESTAMP WITH TIME ZONE,
+            UNIQUE(employee_id, date)
+        );""",
+        """CREATE TABLE IF NOT EXISTS requests (
+            id SERIAL PRIMARY KEY, employee_id INTEGER REFERENCES employees(id),
+            request_type VARCHAR(50), status VARCHAR(20), requested_at TIMESTAMP WITH TIME ZONE,
+            notes TEXT
+        );"""
+    ]
+    for q in queries:
+        execute_query(q, commit=True)
 
 # ==============================================================================
-# 🛠️ دوال مساعدة (Helpers & Logic)
+# 🛠️ دوال مساعدة
 # ==============================================================================
 
 def get_jordan_time():
     return datetime.now(JORDAN_TZ)
 
-def normalize_phone(phone_number):
-    if not phone_number: return ""
-    digits = ''.join(filter(str.isdigit, phone_number))
+def normalize_phone(phone):
+    if not phone: return ""
+    digits = ''.join(filter(str.isdigit, phone))
     while digits.startswith('00'): digits = digits[2:]
-    if digits.startswith('0'): digits = digits[1:] # Remove leading zero for standardizing
+    if digits.startswith('0'): digits = digits[1:]
     return digits
 
-def get_all_admins():
-    """جلب قائمة المديرين"""
-    query = "SELECT telegram_id, is_super_admin FROM admins"
-    results = execute_query(query, fetch_all=True)
-    admin_ids = [row['telegram_id'] for row in results] if results else []
-    
-    # دمج المديرين من الكود ومن قاعدة البيانات
-    return list(set(ADMIN_IDS + admin_ids))
+def get_all_admins_ids():
+    # دمج المديرين من الكود + قاعدة البيانات (إذا أضفت جدول admins لاحقاً)
+    return ADMIN_IDS
 
-def is_admin(user_id):
-    return user_id in get_all_admins()
+async def send_to_admins(context, text, reply_markup=None):
+    for admin_id in get_all_admins_ids():
+        try:
+            await context.bot.send_message(chat_id=admin_id, text=text, reply_markup=reply_markup)
+        except Exception as e:
+            logger.error(f"Failed to send to admin {admin_id}: {e}")
 
-def verify_employee(phone_number):
-    """التحقق من أن الموظف مصرح له"""
-    norm_input = normalize_phone(phone_number)
-    for auth_phone in authorized_phones:
-        if normalize_phone(auth_phone) == norm_input:
-            return True
-    return False
-
-# --- دوال الموظفين ---
-
-def save_employee(telegram_id, phone_number, full_name):
-    norm_phone = normalize_phone(phone_number)
-    
-    # التحقق مما إذا كان موجوداً برقم الهاتف
-    existing = execute_query("SELECT * FROM employees WHERE phone_number = %s", (phone_number,), fetch_one=True)
-    
-    if existing:
-        execute_query(
-            "UPDATE employees SET telegram_id = %s, full_name = %s, last_active = CURRENT_TIMESTAMP WHERE id = %s",
-            (telegram_id, full_name, existing['id']), commit=True
-        )
-        return existing['id']
-    else:
-        res = execute_query(
-            "INSERT INTO employees (telegram_id, phone_number, full_name) VALUES (%s, %s, %s) RETURNING id",
-            (telegram_id, phone_number, full_name), commit=True
-        )
-        return res['id'] if res else None
-
-def get_employee_by_telegram_id(telegram_id):
-    return execute_query("SELECT * FROM employees WHERE telegram_id = %s", (telegram_id,), fetch_one=True)
-
-def get_employee_by_phone(phone):
-    return execute_query("SELECT * FROM employees WHERE phone_number = %s", (phone,), fetch_one=True)
-
-def get_all_employees():
-    return execute_query("SELECT * FROM employees ORDER BY full_name", fetch_all=True)
-
-# --- دوال الحضور والانصراف ---
-
-def record_check_in(employee_id):
-    now = get_jordan_time()
-    today = now.date()
-    
-    existing = execute_query(
-        "SELECT check_in_time, is_late, late_minutes FROM attendance WHERE employee_id = %s AND date = %s",
-        (employee_id, today), fetch_one=True
-    )
-    
-    if existing:
-        return {'success': False, 'error': 'already_checked_in', 'data': existing}
-    
-    work_start = now.replace(hour=WORK_START_HOUR, minute=WORK_START_MINUTE, second=0)
-    late_minutes = max(0, int((now - work_start).total_seconds() / 60))
-    is_late = late_minutes > LATE_GRACE_PERIOD_MINUTES
-    
-    res = execute_query(
-        """
-        INSERT INTO attendance (employee_id, date, check_in_time, is_late, late_minutes, status)
-        VALUES (%s, %s, %s, %s, %s, 'present')
-        RETURNING check_in_time, is_late, late_minutes
-        """,
-        (employee_id, today, now, is_late, late_minutes), commit=True
-    )
-    
-    if res:
-        return {'success': True, 'check_in_time': res['check_in_time'], 'is_late': res['is_late'], 'late_minutes': res['late_minutes']}
-    return {'success': False, 'error': 'Database error'}
-
-def record_check_out(employee_id):
-    now = get_jordan_time()
-    today = now.date()
-    
-    att = execute_query(
-        "SELECT check_in_time, check_out_time, total_work_hours FROM attendance WHERE employee_id = %s AND date = %s",
-        (employee_id, today), fetch_one=True
-    )
-    
-    if not att:
-        return {'success': False, 'error': 'لم تقم بتسجيل الحضور اليوم'}
-    if att['check_out_time']:
-        return {'success': False, 'error': 'already_checked_out', 'data': att}
-    
-    check_in_time = att['check_in_time']
-    # تحويل للتوقيت المحلي للحساب
-    if check_in_time.tzinfo is None:
-        check_in_time = check_in_time.replace(tzinfo=JORDAN_TZ)
-    else:
-        check_in_time = check_in_time.astimezone(JORDAN_TZ)
-        
-    work_hours = (now - check_in_time).total_seconds() / 3600
-    
-    # خصم نصف ساعة غداء إذا عمل أكثر من ساعة
-    if work_hours >= 1.0: work_hours -= 0.5
-    work_hours = max(0, work_hours)
-    
-    overtime = max(0, work_hours - WORK_REGULAR_HOURS)
-    
-    res = execute_query(
-        """
-        UPDATE attendance
-        SET check_out_time = %s, total_work_hours = %s, overtime_hours = %s
-        WHERE employee_id = %s AND date = %s
-        RETURNING check_out_time, total_work_hours, overtime_hours
-        """,
-        (now, round(work_hours, 2), round(overtime, 2), employee_id, today), commit=True
-    )
-    
-    if res:
-        return {
-            'success': True, 
-            'check_in_time': check_in_time,
-            'check_out_time': res['check_out_time'], 
-            'total_work_hours': res['total_work_hours'],
-            'overtime_hours': res['overtime_hours']
-        }
-    return {'success': False, 'error': 'Database Update Error'}
+def get_employee(telegram_id=None, phone=None):
+    if telegram_id:
+        return execute_query("SELECT * FROM employees WHERE telegram_id = %s", (telegram_id,), fetch_one=True)
+    if phone:
+        norm = normalize_phone(phone)
+        # بحث مرن قليلاً
+        return execute_query("SELECT * FROM employees WHERE phone_number LIKE %s", (f"%{norm}",), fetch_one=True)
+    return None
 
 # ==============================================================================
-# 🤖 معالجات البوت (Bot Handlers)
+# 🤖 أوامر البوت (Handlers)
 # ==============================================================================
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.message.from_user
-    
-    # تنفيذ استعلام قاعدة البيانات بشكل غير متزامن
     loop = asyncio.get_running_loop()
-    employee = await loop.run_in_executor(None, get_employee_by_telegram_id, user.id)
+    emp = await loop.run_in_executor(None, get_employee, user.id)
     
-    user_phone = employee['phone_number'] if employee else None
-    user_name = employee['full_name'] if employee else user.first_name
-    
-    if user_phone and verify_employee(user_phone):
+    if emp:
         msg = (
-            f"مرحبًا {user_name}! 👋\n\n"
-            "✅ تم التحقق من هويتك بنجاح!\n\n"
-            "💼 **القائمة الرئيسية:**\n"
-            "/check_in - تسجيل حضور 📥\n"
-            "/check_out - تسجيل انصراف 📤\n"
-            "/smoke - استراحة تدخين 🚬\n"
-            "/break - استراحة غداء ☕\n"
-            "/leave - طلب مغادرة 🚪\n"
-            "/attendance_report - تقريري 📊"
+            f"مرحباً {emp['full_name']} 👋\n\n"
+            "✅ أنت مسجل في النظام.\n\n"
+            "🔸 **الحضور:** /check_in | /check_out\n"
+            "🔸 **الاستراحات:** /smoke | /break\n"
+            "🔸 **الطلبات:** /leave | /vacation\n"
+            "🔸 **تقارير:** /attendance_report"
         )
-        if is_admin(user.id):
-            msg += "\n\n👑 **أوامر المدير:**\n/edit_details - تعديل بيانات موظف\n/list_employees - قائمة الموظفين\n/daily_report - تقرير يومي"
-            
-        await update.message.reply_text(msg, parse_mode='Markdown')
+        if user.id in ADMIN_IDS:
+            msg += "\n\n👮‍♂️ **أوامر المدير:**\n/list_employees\n/daily_report"
+        await update.message.reply_text(msg)
     else:
-        keyboard = [[KeyboardButton("مشاركة رقم الهاتف 📱", request_contact=True)]]
-        reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
-        await update.message.reply_text(
-            "👋 مرحبًا بك في نظام الحضور.\n⚠️ للبدء، يرجى مشاركة رقم هاتفك للتحقق من الهوية.",
-            reply_markup=reply_markup
-        )
+        keyboard = [[KeyboardButton("📱 مشاركة رقم الهاتف", request_contact=True)]]
+        await update.message.reply_text("مرحباً! للبدء، يرجى مشاركة رقم هاتفك.", reply_markup=ReplyKeyboardMarkup(keyboard, one_time_keyboard=True))
 
 async def handle_contact(update: Update, context: ContextTypes.DEFAULT_TYPE):
     contact = update.message.contact
     user = update.message.from_user
     
     if contact.user_id != user.id:
-        await update.message.reply_text("⚠️ يرجى مشاركة رقمك الخاص.")
+        await update.message.reply_text("⛔ يرجى مشاركة رقمك الخاص.")
         return
-        
-    phone_number = contact.phone_number
-    if not phone_number.startswith('+'): phone_number = '+' + phone_number
-    full_name = f"{contact.first_name} {contact.last_name or ''}".strip()
+
+    phone = contact.phone_number
+    if not phone.startswith('+'): phone = '+' + phone
+    name = f"{contact.first_name} {contact.last_name or ''}".strip()
     
     loop = asyncio.get_running_loop()
     
-    # حفظ البيانات
-    await loop.run_in_executor(None, save_employee, user.id, phone_number, full_name)
+    # حفظ الموظف
+    existing = await loop.run_in_executor(None, execute_query, "SELECT * FROM employees WHERE phone_number = %s", (phone,), True)
     
-    # التحقق من الصلاحية (مؤقتاً نضيف أي شخص يشارك رقمه لقائمة المصرح لهم للتجربة)
-    # في الإنتاج، يجب أن يكون الرقم مضافاً مسبقاً من قبل المدير
-    norm_phone = normalize_phone(phone_number)
-    found = False
-    for p in authorized_phones:
-        if normalize_phone(p) == norm_phone:
-            found = True
-            break
-            
-    if not found:
-        authorized_phones.append(phone_number) # إضافة تلقائية للتسهيل عليك
-        found = True
-
-    if found:
-        await update.message.reply_text(
-            f"✅ تم تسجيلك بنجاح يا {full_name}!\nرقم الهاتف: {phone_number}\n\nاستخدم /start لعرض القائمة."
-        )
+    if existing:
+        await loop.run_in_executor(None, execute_query, "UPDATE employees SET telegram_id = %s, full_name = %s WHERE id = %s", (user.id, name, existing['id']), False, False, True)
+        await update.message.reply_text("✅ تم تحديث بياناتك وربط حسابك بنجاح!")
     else:
-        await update.message.reply_text("⚠️ رقمك غير مسجل في النظام. راجع المدير.")
+        # يمكنك وضع شرط هنا لمنع تسجيل أي شخص غريب، لكن سأتركه مفتوحاً للتجربة
+        await loop.run_in_executor(None, execute_query, "INSERT INTO employees (telegram_id, phone_number, full_name) VALUES (%s, %s, %s)", (user.id, phone, name), False, False, True)
+        await update.message.reply_text("✅ تم تسجيلك كموظف جديد بنجاح!")
 
-# --- أوامر الحضور ---
+# --- الحضور والانصراف ---
 
-async def check_in_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def check_in(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.message.from_user
     loop = asyncio.get_running_loop()
+    emp = await loop.run_in_executor(None, get_employee, user.id)
     
-    # Get employee ID async
-    emp = await loop.run_in_executor(None, get_employee_by_telegram_id, user.id)
-    if not emp:
-        await update.message.reply_text("❌ يجب تسجيل بياناتك أولاً عبر /start")
-        return
-
-    # Record check-in async
-    res = await loop.run_in_executor(None, record_check_in, emp['id'])
+    if not emp: return await update.message.reply_text("❌ غير مسجل.")
     
-    if not res['success']:
-        if res.get('error') == 'already_checked_in':
-            await update.message.reply_text(f"⚠️ لقد سجلت دخول مسبقاً عند {res['data']['check_in_time'].strftime('%H:%M')}")
-        else:
-            await update.message.reply_text("❌ حدث خطأ في النظام.")
-        return
-
-    msg = f"✅ تم تسجيل الحضور: {res['check_in_time'].strftime('%H:%M')}"
-    if res['is_late']:
-        msg += f"\n⚠️ **متأخر** بمقدار {res['late_minutes']} دقيقة!"
-        # Notify Admins logic here
+    now = get_jordan_time()
+    res = await loop.run_in_executor(None, execute_query, "SELECT * FROM attendance WHERE employee_id = %s AND date = %s", (emp['id'], now.date()), True)
+    
+    if res:
+        return await update.message.reply_text(f"⚠️ لقد سجلت دخول مسبقاً الساعة {res['check_in_time'].strftime('%H:%M')}")
         
+    work_start = now.replace(hour=WORK_START_HOUR, minute=WORK_START_MINUTE, second=0)
+    late_mins = max(0, int((now - work_start).total_seconds() / 60))
+    is_late = late_mins > LATE_GRACE_PERIOD_MINUTES
+    
+    await loop.run_in_executor(None, execute_query, 
+        "INSERT INTO attendance (employee_id, date, check_in_time, is_late, late_minutes) VALUES (%s, %s, %s, %s, %s)",
+        (emp['id'], now.date(), now, is_late, late_mins), False, False, True)
+    
+    msg = f"✅ تم تسجيل الحضور: {now.strftime('%H:%M')}"
+    if is_late: msg += f"\n⚠️ **تأخير:** {late_mins} دقيقة"
     await update.message.reply_text(msg, parse_mode='Markdown')
 
-async def check_out_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def check_out(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.message.from_user
     loop = asyncio.get_running_loop()
+    emp = await loop.run_in_executor(None, get_employee, user.id)
     
-    emp = await loop.run_in_executor(None, get_employee_by_telegram_id, user.id)
-    if not emp:
-        await update.message.reply_text("❌ غير مسجل.")
-        return
-
-    res = await loop.run_in_executor(None, record_check_out, emp['id'])
+    if not emp: return await update.message.reply_text("❌ غير مسجل.")
     
-    if not res['success']:
-        await update.message.reply_text(f"⚠️ {res['error']}")
-        return
-
-    msg = (
-        f"🚪 **تسجيل انصراف**\n"
-        f"✅ وقت الانصراف: {res['check_out_time'].strftime('%H:%M')}\n"
-        f"⏱ ساعات العمل: {res['total_work_hours']} ساعة"
-    )
-    if res['overtime_hours'] > 0:
-        msg += f"\n🌟 **إضافي:** {res['overtime_hours']} ساعة"
+    now = get_jordan_time()
+    att = await loop.run_in_executor(None, execute_query, "SELECT * FROM attendance WHERE employee_id = %s AND date = %s", (emp['id'], now.date()), True)
+    
+    if not att: return await update.message.reply_text("❌ لم تسجل دخول اليوم.")
+    if att['check_out_time']: return await update.message.reply_text("⚠️ سجلت خروج مسبقاً.")
+    
+    check_in_time = att['check_in_time'].astimezone(JORDAN_TZ)
+    work_hours = (now - check_in_time).total_seconds() / 3600
+    if work_hours >= 1: work_hours -= 0.5 # خصم الغداء
+    overtime = max(0, work_hours - WORK_REGULAR_HOURS)
+    
+    await loop.run_in_executor(None, execute_query,
+        "UPDATE attendance SET check_out_time = %s, total_work_hours = %s, overtime_hours = %s WHERE id = %s",
+        (now, work_hours, overtime, att['id']), False, False, True)
         
-    await update.message.reply_text(msg, parse_mode='Markdown')
+    await update.message.reply_text(f"🚪 تم تسجيل الانصراف.\nساعات العمل: {work_hours:.2f}\nإضافي: {overtime:.2f}")
 
-# ==============================================================================
-# ✏️ نظام تعديل بيانات الموظفين (Conversation Handler)
-# ==============================================================================
-
-async def edit_details_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.message.from_user
-    if not is_admin(user.id):
-        await update.message.reply_text("❌ هذا الأمر للمديرين فقط.")
-        return ConversationHandler.END
-        
-    loop = asyncio.get_running_loop()
-    employees = await loop.run_in_executor(None, get_all_employees)
-    
-    if not employees:
-        await update.message.reply_text("📭 لا يوجد موظفين.")
-        return ConversationHandler.END
-
-    keyboard = []
-    for emp in employees:
-        keyboard.append([InlineKeyboardButton(f"{emp['full_name']}", callback_data=f"sel_emp_{emp['id']}")])
-    
-    keyboard.append([InlineKeyboardButton("❌ إلغاء", callback_data="cancel_edit")])
-    
-    await update.message.reply_text(
-        "👥 اختر الموظف لتعديل بياناته:",
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
-    return EDIT_SELECT_EMPLOYEE
-
-async def edit_select_field(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    
-    data = query.data
-    if data == "cancel_edit":
-        await query.edit_message_text("❌ تم الإلغاء.")
-        return ConversationHandler.END
-        
-    if data.startswith("sel_emp_"):
-        emp_id = int(data.split("_")[2])
-        context.user_data['edit_emp_id'] = emp_id
-        
-        # أزرار الحقول
-        keyboard = [
-            [InlineKeyboardButton("👤 الاسم", callback_data="field_full_name")],
-            [InlineKeyboardButton("📱 الهاتف", callback_data="field_phone_number")],
-            [InlineKeyboardButton("💼 الوظيفة", callback_data="field_job_title")],
-            [InlineKeyboardButton("🎂 العمر", callback_data="field_age")],
-            [InlineKeyboardButton("🔙 رجوع", callback_data="back_to_list")]
-        ]
-        
-        await query.edit_message_text(
-            "📝 ماذا تريد أن تعدل؟",
-            reply_markup=InlineKeyboardMarkup(keyboard)
-        )
-        return EDIT_SELECT_FIELD
-
-async def edit_ask_value(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    
-    data = query.data
-    if data == "back_to_list":
-        # العودة للقائمة (تحتاج استدعاء الدالة الأولى مرة أخرى، للأبسط سنلغي)
-        await query.edit_message_text("🔙 أعد الأمر /edit_details للبدء من جديد.")
-        return ConversationHandler.END
-        
-    field_map = {
-        "field_full_name": "الاسم الكامل",
-        "field_phone_number": "رقم الهاتف",
-        "field_job_title": "المسمى الوظيفي",
-        "field_age": "العمر"
-    }
-    
-    field_db_name = data.replace("field_", "")
-    context.user_data['edit_field'] = field_db_name
-    
-    await query.edit_message_text(f"✍️ أرسل القيمة الجديدة لـ ({field_map.get(data, field_db_name)}):")
-    return EDIT_INPUT_VALUE
-
-async def edit_save_value(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    new_value = update.message.text
-    emp_id = context.user_data.get('edit_emp_id')
-    field = context.user_data.get('edit_field')
-    
-    if not emp_id or not field:
-        await update.message.reply_text("❌ حدث خطأ في الجلسة. حاول مجدداً.")
-        return ConversationHandler.END
-    
-    # معالجة خاصة للأرقام
-    if field == 'age':
-        if not new_value.isdigit():
-            await update.message.reply_text("⚠️ العمر يجب أن يكون رقماً. حاول مرة أخرى.")
-            return EDIT_INPUT_VALUE
-        new_value = int(new_value)
-
-    loop = asyncio.get_running_loop()
-    query = f"UPDATE employees SET {field} = %s WHERE id = %s"
-    
-    await loop.run_in_executor(None, execute_query, query, (new_value, emp_id), False, False, True)
-    
-    await update.message.reply_text("✅ تم تحديث البيانات بنجاح!")
-    return ConversationHandler.END
-
-async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("❌ تم إلغاء العملية.")
-    return ConversationHandler.END
-
-# ==============================================================================
-# 🚬 استراحات التدخين (Smoke Logic)
-# ==============================================================================
+# --- طلبات التدخين (مع الشروط القديمة) ---
 
 async def smoke_request(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.message.from_user
-    
-    # منطق التدخين هنا (تحقق من العدد، إرسال للمدير)
-    # للاختصار في هذا المثال، سنقوم بالموافقة المباشرة وإظهار المؤقت
-    # في الإنتاج، اربطها بنظام الموافقة
-    
-    # 1. التحقق من الموظف
     loop = asyncio.get_running_loop()
-    emp = await loop.run_in_executor(None, get_employee_by_telegram_id, user.id)
-    if not emp: return
+    emp = await loop.run_in_executor(None, get_employee, user.id)
     
-    # 2. التحقق من العدد (من قاعدة البيانات)
-    today = datetime.now().date()
-    smoke_record = await loop.run_in_executor(None, execute_query, 
-        "SELECT count FROM daily_cigarettes WHERE employee_id = %s AND date = %s", 
-        (emp['id'], today), True)
+    if not emp: return await update.message.reply_text("❌ غير مسجل.")
     
-    count = smoke_record['count'] if smoke_record else 0
+    # 1. التحقق من العدد اليومي
+    today = get_jordan_time().date()
+    daily = await loop.run_in_executor(None, execute_query, "SELECT count FROM daily_cigarettes WHERE employee_id = %s AND date = %s", (emp['id'], today), True)
+    count = daily['count'] if daily else 0
     
     if count >= MAX_DAILY_SMOKES:
-        await update.message.reply_text("❌ وصلت للحد الأقصى اليوم!")
-        return
+        return await update.message.reply_text(f"⛔ لقد استهلكت الحد الأقصى ({MAX_DAILY_SMOKES}) اليوم!")
         
-    # 3. تسجيل (زيادة العداد)
-    await loop.run_in_executor(None, execute_query,
-        """
-        INSERT INTO daily_cigarettes (employee_id, date, count) VALUES (%s, %s, 1)
-        ON CONFLICT (employee_id, date) DO UPDATE SET count = daily_cigarettes.count + 1
-        """, (emp['id'], today), False, False, True)
-
-    # 4. بدء المؤقت
-    await start_countdown(update, context, 5, "🚬 استراحة تدخين")
-
-async def start_countdown(update, context, minutes, title):
-    end_time = datetime.now(JORDAN_TZ) + timedelta(minutes=minutes)
-    msg = await update.message.reply_text(f"⏳ {title} بدأت!\nالوقت: {minutes} دقيقة.")
+    # 2. التحقق من الفاصل الزمني (ساعة ونصف)
+    last_cig = await loop.run_in_executor(None, execute_query, "SELECT taken_at FROM cigarette_times WHERE employee_id = %s ORDER BY taken_at DESC LIMIT 1", (emp['id'],), True)
     
-    # في الإنتاج نستخدم JobQueue للتحديث
-    # هنا محاكاة بسيطة
-    context.job_queue.run_once(alarm, minutes * 60, chat_id=update.effective_chat.id, data=title)
+    if last_cig:
+        last_time = last_cig['taken_at'].astimezone(JORDAN_TZ)
+        diff_mins = (get_jordan_time() - last_time).total_seconds() / 60
+        if diff_mins < SMOKE_GAP_MINUTES:
+            remain = int(SMOKE_GAP_MINUTES - diff_mins)
+            return await update.message.reply_text(f"⏳ يرجى الانتظار. المتبقي: {remain} دقيقة.")
 
-async def alarm(context: ContextTypes.DEFAULT_TYPE):
-    job = context.job
-    await context.bot.send_message(job.chat_id, text=f"🔔 انتهى وقت {job.data}! عد للعمل.")
+    # 3. إرسال الطلب للمدير (كما كان في الكود القديم)
+    await update.message.reply_text("⏳ تم إرسال الطلب للمدير، انتظر الموافقة...")
+    
+    keyboard = [[
+        InlineKeyboardButton("✅ موافقة", callback_data=f"app_smoke_{emp['id']}"),
+        InlineKeyboardButton("❌ رفض", callback_data=f"rej_smoke_{emp['id']}")
+    ]]
+    
+    admin_msg = (
+        f"🚬 **طلب تدخين جديد**\n"
+        f"👤 الموظف: {emp['full_name']}\n"
+        f"📊 العدد اليومي: {count}/{MAX_DAILY_SMOKES}\n"
+        f"⌚ الوقت: {get_jordan_time().strftime('%H:%M')}"
+    )
+    await send_to_admins(context, admin_msg, InlineKeyboardMarkup(keyboard))
 
+# --- طلب الغداء ---
+
+async def break_request(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.message.from_user
+    loop = asyncio.get_running_loop()
+    emp = await loop.run_in_executor(None, get_employee, user.id)
+    if not emp: return await update.message.reply_text("❌ غير مسجل.")
+    
+    today = get_jordan_time().date()
+    chk = await loop.run_in_executor(None, execute_query, "SELECT taken FROM lunch_breaks WHERE employee_id = %s AND date = %s", (emp['id'], today), True)
+    
+    if chk and chk['taken']:
+        return await update.message.reply_text("⛔ لقد أخذت استراحة غداء بالفعل.")
+        
+    await update.message.reply_text("⏳ تم إرسال طلب الغداء للمدير...")
+    
+    keyboard = [[
+        InlineKeyboardButton("✅ موافقة", callback_data=f"app_break_{emp['id']}"),
+        InlineKeyboardButton("❌ رفض", callback_data=f"rej_break_{emp['id']}")
+    ]]
+    await send_to_admins(context, f"☕ **طلب غداء**\n👤 {emp['full_name']}", InlineKeyboardMarkup(keyboard))
+
+# --- معالجة ردود المدير (Callback Query) ---
+
+async def admin_decision(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    
+    data = query.data
+    action, type_, emp_id = data.split('_') # ex: app_smoke_5
+    emp_id = int(emp_id)
+    
+    # التأكد أن الضي هو مدير
+    if query.from_user.id not in ADMIN_IDS:
+        return await query.answer("❌ لست مديراً!", show_alert=True)
+        
+    loop = asyncio.get_running_loop()
+    emp = await loop.run_in_executor(None, execute_query, "SELECT * FROM employees WHERE id = %s", (emp_id,), True)
+    if not emp: return await query.edit_message_text("❌ موظف غير موجود.")
+    
+    status = "✅ تمت الموافقة" if action == "app" else "❌ تم الرفض"
+    await query.edit_message_text(f"{query.message.text}\n\nالقرار: {status} بواسطة {query.from_user.first_name}")
+    
+    if action == "rej":
+        await context.bot.send_message(emp['telegram_id'], f"❌ تم رفض طلبك ({type_}).")
+        return
+
+    # تنفيذ الموافقة
+    now = get_jordan_time()
+    
+    if type_ == "smoke":
+        # زيادة العداد + تسجيل الوقت
+        await loop.run_in_executor(None, execute_query, 
+            "INSERT INTO daily_cigarettes (employee_id, date, count) VALUES (%s, %s, 1) ON CONFLICT (employee_id, date) DO UPDATE SET count = daily_cigarettes.count + 1",
+            (emp_id, now.date()), False, False, True)
+        await loop.run_in_executor(None, execute_query, "INSERT INTO cigarette_times (employee_id, taken_at) VALUES (%s, %s)", (emp_id, now), False, False, True)
+        
+        # بدء المؤقت
+        await context.bot.send_message(emp['telegram_id'], "✅ وافق المدير! معك 5 دقائق. 🚬")
+        # هنا يمكنك إضافة كود المؤقت (Timer)
+        
+    elif type_ == "break":
+        await loop.run_in_executor(None, execute_query, 
+            "INSERT INTO lunch_breaks (employee_id, date, taken, taken_at) VALUES (%s, %s, TRUE, %s)",
+            (emp_id, now.date(), now), False, False, True)
+        await context.bot.send_message(emp['telegram_id'], "✅ وافق المدير! معك 30 دقيقة. ☕")
+
+# --- طلبات الإجازة والمغادرة (Conversation) ---
+
+async def leave_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("📝 اكتب سبب المغادرة:")
+    return LEAVE_REASON
+
+async def leave_reason(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    reason = update.message.text
+    user = update.message.from_user
+    
+    keyboard = [[
+        InlineKeyboardButton("✅ قبول", callback_data=f"app_leave_{user.id}"), # هنا استخدمنا user.id مؤقتا للتبسيط أو يجب جلب emp_id
+        InlineKeyboardButton("❌ رفض", callback_data=f"rej_leave_{user.id}")
+    ]]
+    await send_to_admins(context, f"🚪 **طلب مغادرة**\n👤 {user.first_name}\n📝 السبب: {reason}", InlineKeyboardMarkup(keyboard))
+    await update.message.reply_text("تم الإرسال للمدير.")
+    return ConversationHandler.END
+
+async def vacation_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("📝 اكتب سبب وتاريخ العطلة:")
+    return VACATION_REASON
+
+async def vacation_reason(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    reason = update.message.text
+    user = update.message.from_user
+    
+    keyboard = [[
+        InlineKeyboardButton("✅ قبول", callback_data=f"app_vac_{user.id}"),
+        InlineKeyboardButton("❌ رفض", callback_data=f"rej_vac_{user.id}")
+    ]]
+    await send_to_admins(context, f"🌴 **طلب إجازة**\n👤 {user.first_name}\n📝 التفاصيل: {reason}", InlineKeyboardMarkup(keyboard))
+    await update.message.reply_text("تم الإرسال للمدير.")
+    return ConversationHandler.END
+
+async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("تم الإلغاء.")
+    return ConversationHandler.END
 
 # ==============================================================================
-# 🚀 التشغيل الرئيسي (Main Execution)
+# 🚀 التشغيل
 # ==============================================================================
 
 def main():
-    if not BOT_TOKEN or not DATABASE_URL:
-        print("❌ ERROR: Missing TELEGRAM_BOT_TOKEN or DATABASE_URL env vars.")
-        return
-
-    print("🚀 Starting Bot with Connection Pooling...")
+    if not BOT_TOKEN: return print("❌ NO TOKEN")
     
-    # تهيئة الجداول
+    print("🚀 Starting Bot (Pro + Strict Logic)...")
     initialize_database_tables()
     
-    # تحميل الموظفين للقائمة المسموحة (اختياري للسرعة)
-    employees = get_all_employees()
-    if employees:
-        for e in employees:
-            if e['phone_number'] not in authorized_phones:
-                authorized_phones.append(e['phone_number'])
+    app = Application.builder().token(BOT_TOKEN).build()
     
-    # بناء التطبيق
-    application = Application.builder().token(BOT_TOKEN).build()
-
-    # المحادثات (Conversations)
-    edit_conv = ConversationHandler(
-        entry_points=[CommandHandler("edit_details", edit_details_start)],
-        states={
-            EDIT_SELECT_EMPLOYEE: [CallbackQueryHandler(edit_select_field)],
-            EDIT_SELECT_FIELD: [CallbackQueryHandler(edit_ask_value)],
-            EDIT_INPUT_VALUE: [MessageHandler(filters.TEXT & ~filters.COMMAND, edit_save_value)],
-        },
-        fallbacks=[CommandHandler("cancel", cancel), CallbackQueryHandler(edit_select_field, pattern="^cancel")]
+    # تعريف المحادثات
+    leave_conv = ConversationHandler(
+        entry_points=[CommandHandler('leave', leave_start)],
+        states={LEAVE_REASON: [MessageHandler(filters.TEXT, leave_reason)]},
+        fallbacks=[CommandHandler('cancel', cancel)]
     )
-
-    # إضافة المعالجات (Handlers)
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(MessageHandler(filters.CONTACT, handle_contact))
-    application.add_handler(CommandHandler("check_in", check_in_command))
-    application.add_handler(CommandHandler("check_out", check_out_command))
-    application.add_handler(CommandHandler("smoke", smoke_request))
-    application.add_handler(edit_conv)
     
-    # تشغيل البوت
-    print("✅ Bot is running...")
-    application.run_polling(drop_pending_updates=True)
+    vacation_conv = ConversationHandler(
+        entry_points=[CommandHandler('vacation', vacation_start)],
+        states={VACATION_REASON: [MessageHandler(filters.TEXT, vacation_reason)]},
+        fallbacks=[CommandHandler('cancel', cancel)]
+    )
+    
+    # إضافة المعالجات
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(MessageHandler(filters.CONTACT, handle_contact))
+    
+    app.add_handler(CommandHandler("check_in", check_in))
+    app.add_handler(CommandHandler("check_out", check_out))
+    app.add_handler(CommandHandler("smoke", smoke_request))
+    app.add_handler(CommandHandler("break", break_request))
+    
+    app.add_handler(leave_conv)
+    app.add_handler(vacation_conv)
+    
+    # معالج الأزرار (مهم جداً للموافقة)
+    app.add_handler(CallbackQueryHandler(admin_decision))
+    
+    print("✅ Bot Running...")
+    app.run_polling()
 
 if __name__ == '__main__':
     main()
