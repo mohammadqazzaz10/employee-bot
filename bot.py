@@ -1,51 +1,57 @@
 import os
 import logging
-import json
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from datetime import datetime, timedelta, date, timezone
 from zoneinfo import ZoneInfo
-from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardRemove
+from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, ConversationHandler, filters, ContextTypes
+
+# --- إعدادات البوت والبيئة ---
+BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
+DATABASE_URL = os.environ.get("DATABASE_URL")
 
 # تعريف مراحل المحادثة
 LEAVE_REASON, VACATION_REASON = range(2)
 
-BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
-
+# إعدادات التسجيل (Logging)
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
 )
 logger = logging.getLogger(__name__)
 
-# --- إعدادات المديرين ---
+# --- إعدادات النظام الإدارية ---
 ADMIN_IDS = [1465191277]  # ضع معرفات المديرين هنا
 
+# أرقام الهواتف المصرح لها (التي لا تحتاج تسجيل عبر قاعدة البيانات أول مرة)
 authorized_phones = [
     '+962786644106'
 ]
 
+# مخازن مؤقتة للبيانات
 user_database = {}
-daily_smoke_count = {}
+active_timers = {}    # لتخزين وظائف العداد النشطة
+timer_completed = {}  # لتتبع حالة انتهاء العداد
 
-# --- إعدادات السجائر الجديدة ---
-MAX_DAILY_SMOKES = 5        # عدد السجائر المسموحة
-SMOKE_DURATION_MINUTES = 6  # مدة السيجارة بالدقائق
-SMOKE_START_HOUR = 10       # بداية وقت التدخين (العاشرة صباحاً)
-SMOKE_GAP_HOURS = 1.5       # الفجوة بين السجائر بالساعات
+# --- إعدادات قوانين العمل والتدخين ---
+MAX_DAILY_SMOKES = 5        # عدد السجائر المسموحة يومياً
+SMOKE_DURATION_MINUTES = 6  # مدة السيجارة (دقائق)
+SMOKE_START_HOUR = 10       # يبدأ التدخين الساعة 10 صباحاً
+SMOKE_GAP_HOURS = 1.5       # الفجوة الزمنية (ساعة ونصف)
 
 JORDAN_TZ = ZoneInfo('Asia/Amman')
 
-active_timers = {}
-timer_completed = {}
+# ==========================================
+# 🗄️ قسم قاعدة البيانات (Database Section)
+# ==========================================
 
 def get_db_connection():
     """إنشاء اتصال بقاعدة البيانات"""
-    return psycopg2.connect(os.environ.get("DATABASE_URL"))
+    return psycopg2.connect(DATABASE_URL)
 
 def initialize_database_tables():
-    """إنشاء الجداول المطلوبة (تم حذف جداول الحضور والانصراف)"""
+    """إنشاء الجداول المطلوبة"""
     try:
         conn = get_db_connection()
         cur = conn.cursor()
@@ -63,19 +69,6 @@ def initialize_database_tables():
                 hire_date DATE,
                 last_active TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
                 created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-            );
-        """)
-        
-        # جدول الطلبات
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS requests (
-                id SERIAL PRIMARY KEY,
-                employee_id INTEGER REFERENCES employees(id) ON DELETE CASCADE,
-                request_type VARCHAR(50) NOT NULL,
-                status VARCHAR(20) DEFAULT 'pending',
-                requested_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-                responded_at TIMESTAMP WITH TIME ZONE,
-                notes TEXT
             );
         """)
         
@@ -115,28 +108,13 @@ def initialize_database_tables():
             );
         """)
         
-        # جدول أوقات السجائر (لحساب الفجوة)
+        # جدول أوقات السجائر (لحساب الفجوة الزمنية)
         cur.execute("""
             CREATE TABLE IF NOT EXISTS cigarette_times (
                 id SERIAL PRIMARY KEY,
                 employee_id INTEGER REFERENCES employees(id) ON DELETE CASCADE,
                 taken_at TIMESTAMP WITH TIME ZONE NOT NULL,
                 created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-            );
-        """)
-        
-        # جدول الغيابات (للمغادرات والعطل)
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS absences (
-                id SERIAL PRIMARY KEY,
-                employee_id INTEGER REFERENCES employees(id) ON DELETE CASCADE,
-                date DATE NOT NULL,
-                absence_type VARCHAR(50) NOT NULL,
-                reason TEXT,
-                excuse TEXT,
-                is_excused BOOLEAN DEFAULT FALSE,
-                created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-                UNIQUE(employee_id, date)
             );
         """)
         
@@ -149,7 +127,7 @@ def initialize_database_tables():
         logger.error(f"Error initializing database tables: {e}")
         return False
 
-# --- دوال الموظفين وقاعدة البيانات ---
+# --- دوال التعامل مع الموظفين ---
 
 def save_employee(telegram_id, phone_number, full_name):
     """حفظ أو تحديث بيانات الموظف"""
@@ -159,8 +137,11 @@ def save_employee(telegram_id, phone_number, full_name):
         cur = conn.cursor()
         
         if telegram_id:
-            existing_by_phone = get_employee_by_phone(phone_number)
-            if existing_by_phone and not existing_by_phone.get('telegram_id'):
+            # التحقق إذا كان الرقم موجوداً مسبقاً لربطه بـ Telegram ID
+            cur.execute("SELECT id FROM employees WHERE phone_number = %s", (normalized_phone,))
+            existing = cur.fetchone()
+            
+            if existing:
                 cur.execute("""
                     UPDATE employees 
                     SET telegram_id = %s, full_name = %s, last_active = CURRENT_TIMESTAMP
@@ -179,31 +160,21 @@ def save_employee(telegram_id, phone_number, full_name):
                     RETURNING id
                 """, (telegram_id, normalized_phone, full_name))
         else:
-            existing = get_employee_by_phone(phone_number)
-            if existing:
-                cur.execute("""
-                    UPDATE employees 
-                    SET full_name = %s, last_active = CURRENT_TIMESTAMP
-                    WHERE phone_number = %s
-                    RETURNING id
-                """, (full_name, normalized_phone))
-            else:
-                cur.execute("""
-                    INSERT INTO employees (phone_number, full_name, last_active)
-                    VALUES (%s, %s, CURRENT_TIMESTAMP)
-                    RETURNING id
-                """, (normalized_phone, full_name))
+            # إضافة مدير أو موظف يدوياً بدون Telegram ID
+            cur.execute("""
+                INSERT INTO employees (phone_number, full_name, last_active)
+                VALUES (%s, %s, CURRENT_TIMESTAMP)
+                ON CONFLICT (telegram_id) DO NOTHING
+                RETURNING id
+            """, (normalized_phone, full_name))
         
-        employee_id = cur.fetchone()[0]
+        employee_id = cur.fetchone()[0] if cur.rowcount > 0 else None
         conn.commit()
         cur.close()
         conn.close()
         return employee_id
     except Exception as e:
-        logger.error(f"خطأ في حفظ بيانات الموظف: {e}")
-        if 'conn' in locals():
-            conn.rollback()
-            conn.close()
+        logger.error(f"Error saving employee: {e}")
         return None
 
 def get_employee_by_telegram_id(telegram_id):
@@ -382,7 +353,7 @@ def mark_lunch_break_taken(employee_id):
         logger.error(f"Error marking lunch break: {e}")
         return False
 
-# --- دوال المديرين ---
+# --- دوال المديرين (Admins) ---
 
 def get_all_admins():
     try:
@@ -394,6 +365,7 @@ def get_all_admins():
         conn.close()
         
         admin_ids = [admin['telegram_id'] for admin in admins] if admins else []
+        # التأكد من وجود المديرين الافتراضيين
         for admin_id in ADMIN_IDS:
             if admin_id not in admin_ids:
                 add_admin_to_db(admin_id, is_super=True)
@@ -458,7 +430,7 @@ async def send_to_all_admins(context, text, reply_markup=None):
         except Exception as e:
             logger.error(f"Failed to send to admin {admin_id}: {e}")
 
-# --- أدوات مساعدة ---
+# --- دوال مساعدة (Helpers) ---
 
 def get_jordan_time():
     return datetime.now(JORDAN_TZ)
@@ -501,7 +473,163 @@ def remove_employee_from_authorized(phone_number):
             return True
     return False
 
-# --- أوامر البوت ---
+# ==========================================
+# ⏱️ قسم العداد والأنيميشن (Timer Section)
+# ==========================================
+
+def create_progress_bar(current_seconds, total_seconds, length=15):
+    """إنشاء شريط التقدم"""
+    if total_seconds == 0: return ""
+    percentage = max(0, min(1, current_seconds / total_seconds))
+    filled = int(percentage * length)
+    empty = length - filled
+    bar = '█' * filled + '░' * empty
+    percent_num = int(percentage * 100)
+    return f"[{bar}] {percent_num}%"
+
+async def update_timer(context: ContextTypes.DEFAULT_TYPE):
+    """وظيفة تحديث العداد"""
+    job = context.job
+    user_id, msg_id, end_time, type_, total_duration_minutes = job.data
+    
+    # إذا تم إنهاء المؤقت مسبقاً، لا تفعل شيئاً
+    if timer_completed.get(user_id):
+        return
+    
+    now = get_jordan_time()
+    remaining = end_time - now
+    remaining_seconds = int(remaining.total_seconds())
+    
+    # --- حالة انتهاء الوقت ---
+    if remaining_seconds <= 0:
+        timer_completed[user_id] = True
+        
+        # تنظيف الوظائف المجدولة
+        if user_id in active_timers:
+            for t in active_timers[user_id]:
+                try:
+                    t.schedule_removal()
+                except:
+                    pass
+            del active_timers[user_id]
+            
+        # إعداد رسالة التنبيه
+        request_name = "استراحة التدخين" if type_ == 'smoke' else "استراحة الغداء"
+        
+        alert_msg = (
+            "🔔🔔🔔 **تنبيه هام!** 🔔🔔🔔\n\n"
+            f"🛑 **انتهى وقت {request_name}!**\n"
+            "يرجى العودة للعمل فوراً.\n"
+            "🔔🔔🔔🔔🔔🔔🔔🔔🔔"
+        )
+        
+        keyboard = [[InlineKeyboardButton("✅ تم العودة للعمل", callback_data=f"returned_{type_}_{user_id}")]]
+        
+        try:
+            # إرسال رسالة جديدة للتنبيه (لضمان الرنين)
+            await context.bot.send_message(
+                chat_id=user_id,
+                text=alert_msg,
+                reply_markup=InlineKeyboardMarkup(keyboard)
+            )
+            # تعديل رسالة العداد القديمة
+            await context.bot.edit_message_text(
+                chat_id=user_id,
+                message_id=msg_id,
+                text="✅ **انتهى الوقت!**"
+            )
+        except Exception as e:
+            logger.error(f"Timer finish error: {e}")
+        return
+
+    # --- تحديث الأنيميشن (أثناء العد) ---
+    minutes = remaining_seconds // 60
+    seconds = remaining_seconds % 60
+    
+    total_seconds = total_duration_minutes * 60
+    bar = create_progress_bar(remaining_seconds, total_seconds)
+    emoji = "🚬" if type_ == 'smoke' else "☕"
+    
+    status_emoji = "🟢"
+    if remaining_seconds < total_seconds * 0.25:
+        status_emoji = "🔴"
+    elif remaining_seconds < total_seconds * 0.5:
+        status_emoji = "🟡"
+
+    text = (
+        f"{emoji} **العداد التنازلي** {emoji}\n\n"
+        f"{status_emoji} الحالة: جاري الاحتساب\n\n"
+        f"⏱ الوقت المتبقي:\n"
+        f"╔═══════════════╗\n"
+        f"║  {minutes:02d}:{seconds:02d}  ║\n"
+        f"╚═══════════════╝\n\n"
+        f"{bar}\n\n"
+        f"🕐 ينتهي في: {end_time.strftime('%H:%M:%S')}"
+    )
+    
+    try:
+        await context.bot.edit_message_text(
+            chat_id=user_id,
+            message_id=msg_id,
+            text=text
+        )
+    except Exception:
+        # تجاهل الأخطاء إذا لم يتغير النص أو مشاكل الشبكة البسيطة
+        pass
+
+async def start_timer(context: ContextTypes.DEFAULT_TYPE, user_id: int, minutes: int, type_: str):
+    """بدء العداد مع تحديث كل 5 ثواني لتجنب الحظر"""
+    
+    # تنظيف أي مؤقتات سابقة
+    if user_id in active_timers:
+        for job in active_timers[user_id]:
+            try: job.schedule_removal()
+            except: pass
+            
+    end_time = get_jordan_time() + timedelta(minutes=minutes)
+    timer_completed[user_id] = False
+    
+    emoji = "🚬" if type_ == 'smoke' else "☕"
+    
+    # إرسال الرسالة الأولية
+    try:
+        msg = await context.bot.send_message(
+            user_id, 
+            f"{emoji} بدأ المؤقت: {minutes} دقائق... جاري التحميل."
+        )
+        
+        jobs = []
+        total_seconds = minutes * 60
+        # التحديث كل 5 ثواني بدلاً من ثانية واحدة (الحل لمشكلة التجميد)
+        update_interval = 5
+        
+        # جدولة التحديثات
+        for i in range(0, total_seconds, update_interval):
+            job = context.job_queue.run_once(
+                update_timer, 
+                i, 
+                data=(user_id, msg.message_id, end_time, type_, minutes),
+                name=f"timer_{user_id}_{i}"
+            )
+            jobs.append(job)
+            
+        # جدولة النهاية الحتمية عند الصفر
+        final_job = context.job_queue.run_once(
+            update_timer,
+            total_seconds,
+            data=(user_id, msg.message_id, end_time, type_, minutes),
+            name=f"timer_final_{user_id}"
+        )
+        jobs.append(final_job)
+        
+        active_timers[user_id] = jobs
+        
+    except Exception as e:
+        logger.error(f"Failed to start timer: {e}")
+
+# ==========================================
+# 🎮 أوامر البوت (Bot Commands)
+# ==========================================
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.message.from_user
@@ -512,11 +640,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         msg = (
             f"مرحبًا {user_name}! 👋\n\n"
             "✅ هويتك مفعلة.\n\n"
-            "🚬 **قوانين التدخين الجديدة:**\n"
+            "🚬 **قوانين التدخين:**\n"
             f"- العدد المسموح: {MAX_DAILY_SMOKES} سجائر.\n"
             f"- مدة السيجارة: {SMOKE_DURATION_MINUTES} دقائق.\n"
-            f"- وقت البدء: بعد الساعة {SMOKE_START_HOUR} صباحاً.\n"
-            f"- الفجوة الزمنية: ساعة ونصف.\n\n"
+            f"- وقت البدء: بعد الساعة {SMOKE_START_HOUR}:00 صباحاً.\n"
+            f"- الفجوة الزمنية: {SMOKE_GAP_HOURS} ساعة.\n\n"
             "📝 **الأوامر المتاحة:**\n"
             "/smoke - طلب استراحة تدخين 🚬\n"
             "/break - طلب استراحة غداء ☕\n"
@@ -540,11 +668,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=markup
         )
 
-async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await start(update, context)
-
-# --- منطق التدخين الجديد ---
-
 async def smoke_request(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.message.from_user
     phone = get_user_phone(user.id)
@@ -553,7 +676,7 @@ async def smoke_request(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ غير مصرح لك. شارك رقم هاتفك أولاً.")
         return
 
-    # التحقق من الوقت (بعد الساعة 10 صباحاً)
+    # 1. التحقق من وقت البدء
     now = get_jordan_time()
     if now.hour < SMOKE_START_HOUR:
         await update.message.reply_text(
@@ -567,7 +690,7 @@ async def smoke_request(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ خطأ في البيانات.")
         return
 
-    # التحقق من الفجوة الزمنية
+    # 2. التحقق من الفجوة الزمنية
     last_cig = get_last_cigarette_time(employee['id'])
     if last_cig:
         diff = now - last_cig
@@ -581,7 +704,7 @@ async def smoke_request(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             return
 
-    # التحقق من العدد
+    # 3. التحقق من العدد
     count = get_smoke_count_db(employee['id'])
     if count >= MAX_DAILY_SMOKES:
         await update.message.reply_text(f"❌ انتهى رصيد السجائر لهذا اليوم ({MAX_DAILY_SMOKES}).")
@@ -589,7 +712,6 @@ async def smoke_request(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # إرسال الطلب للمدير
     name = employee['full_name']
-    remaining = MAX_DAILY_SMOKES - count
     
     await update.message.reply_text("⏳ تم إرسال الطلب للمدير...")
     
@@ -607,7 +729,6 @@ async def smoke_request(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     await send_to_all_admins(context, msg, markup)
 
-# --- منطق الاستراحة ---
 async def break_request(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.message.from_user
     phone = get_user_phone(user.id)
@@ -625,8 +746,6 @@ async def break_request(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ]]
     msg = f"☕ **طلب استراحة غداء**\n👤 الموظف: {employee['full_name']}"
     await send_to_all_admins(context, msg, InlineKeyboardMarkup(keyboard))
-
-# --- المغادرات والإجازات ---
 
 async def leave_request(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.message.from_user
@@ -672,8 +791,7 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("❌ تم الإلغاء.")
     return ConversationHandler.END
 
-# --- إدارة الموظفين والمديرين ---
-
+# --- أوامر الإدارة ---
 async def list_employees(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_admin(update.message.from_user.id): return
     employees = get_all_employees()
@@ -737,8 +855,6 @@ async def remove_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except:
         await update.message.reply_text("خطأ.")
 
-# --- المعالجة والأنيميشن ---
-
 async def handle_contact(update: Update, context: ContextTypes.DEFAULT_TYPE):
     contact = update.message.contact
     if contact.user_id != update.message.from_user.id: return
@@ -751,80 +867,6 @@ async def handle_contact(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("✅ تم تفعيل حسابك بنجاح! يمكنك الآن استخدام البوت.")
     else:
         await update.message.reply_text("⚠️ رقمك غير مسجل في النظام. تواصل مع المدير.")
-
-def create_progress_bar(current, total, length=15):
-    pct = current / total
-    filled = int(pct * length)
-    bar = '█' * filled + '░' * (length - filled)
-    return f"[{bar}]"
-
-async def update_timer(context: ContextTypes.DEFAULT_TYPE):
-    job = context.job
-    user_id, msg_id, end_time, type_, duration = job.data
-    
-    if timer_completed.get(user_id): return
-    
-    now = get_jordan_time()
-    remaining = end_time - now
-    secs = int(remaining.total_seconds())
-    
-    if secs <= 0:
-        timer_completed[user_id] = True
-        # تنظيف المؤقتات
-        if user_id in active_timers:
-            for t in active_timers[user_id]: t.schedule_removal()
-            del active_timers[user_id]
-            
-        # --- التنبيه (الرنين) ---
-        alert_msg = (
-            "🔔🔔🔔 **RIIIIIIING!!!** 🔔🔔🔔\n\n"
-            "🛑 **انتهى الوقت المحدد!**\n"
-            "يرجى العودة للعمل فوراً.\n"
-            "🔔🔔🔔🔔🔔🔔🔔🔔🔔"
-        )
-        key = [[InlineKeyboardButton("✅ تم العودة", callback_data=f"returned_{type_}_{user_id}")]]
-        try:
-            await context.bot.send_message(user_id, alert_msg, reply_markup=InlineKeyboardMarkup(key))
-        except: pass
-        return
-
-    # تحديث الأنيميشن
-    mins = secs // 60
-    s = secs % 60
-    bar = create_progress_bar(secs, duration * 60)
-    emoji = "🚬" if type_ == 'smoke' else "☕"
-    
-    text = (
-        f"{emoji} **العداد التنازلي** {emoji}\n\n"
-        f"⏳ المتبقي: {mins:02d}:{s:02d}\n"
-        f"{bar}\n"
-        f"ينتهي في: {end_time.strftime('%H:%M:%S')}"
-    )
-    
-    try:
-        await context.bot.edit_message_text(chat_id=user_id, message_id=msg_id, text=text)
-    except: pass
-
-async def start_timer(context, user_id, minutes, type_):
-    end = get_jordan_time() + timedelta(minutes=minutes)
-    timer_completed[user_id] = False
-    
-    emoji = "🚬" if type_ == 'smoke' else "☕"
-    msg = await context.bot.send_message(
-        user_id, 
-        f"{emoji} بدأ المؤقت: {minutes} دقائق."
-    )
-    
-    jobs = []
-    # تحديث كل 5 ثواني لتخفيف الضغط، أو كل ثانية للأنيميشن السلس
-    for i in range(minutes * 60 + 2):
-        j = context.job_queue.run_once(
-            update_timer, 
-            i, 
-            data=(user_id, msg.message_id, end, type_, minutes)
-        )
-        jobs.append(j)
-    active_timers[user_id] = jobs
 
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -850,6 +892,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             new_count = increment_smoke_count_db(emp['id'])
             record_cigarette_time(emp['id'])
             msg_text = f"✅ تمت الموافقة! (رصيدك: {new_count}/{MAX_DAILY_SMOKES})\nمدة السيجارة: {SMOKE_DURATION_MINUTES} دقائق."
+            # بدء العداد - هنا يتم الاستدعاء
             await start_timer(context, target_id, SMOKE_DURATION_MINUTES, 'smoke')
         
         elif type_ == 'break':
@@ -874,6 +917,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def my_id_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"🆔: `{update.message.from_user.id}`", parse_mode='Markdown')
 
+# --- Main Function ---
 def main():
     if not BOT_TOKEN:
         print("Error: No Token.")
@@ -881,7 +925,7 @@ def main():
         
     initialize_database_tables()
     
-    # تحميل الموظفين
+    # تحميل الموظفين لقائمة التصريح
     emps = get_all_employees()
     for e in emps: add_employee_to_authorized(e['phone_number'])
     
@@ -889,7 +933,7 @@ def main():
     
     # Handlers
     application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("help", help_command))
+    application.add_handler(CommandHandler("help", start))
     application.add_handler(CommandHandler("smoke", smoke_request))
     application.add_handler(CommandHandler("break", break_request))
     application.add_handler(CommandHandler("my_id", my_id_command))
