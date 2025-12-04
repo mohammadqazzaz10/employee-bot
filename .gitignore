@@ -5,11 +5,51 @@ __pycache__/
 .venv/
 venv/
 ENV/
+*.pyc
+*.pyo
+*.pyd
 
 # Environment
 .env
 .env.*
+.env.local
 
 # IDE
 .vscode/
 .idea/
+*.swp
+*.swo
+*~
+
+# Logs
+*.log
+logs/
+log/
+
+# Database
+*.sqlite
+*.db
+*.sqlite3
+
+# Data files
+smoke_data.json
+*.json
+*.csv
+
+# Configurations
+config.local.yaml
+config.local.json
+config.local.py
+settings.local.py
+
+# Python version
+.python-version
+
+# Cache
+.mypy_cache/
+.dmypy.json
+.ipynb_checkpoints/
+
+# OS
+.DS_Store
+Thumbs.db
