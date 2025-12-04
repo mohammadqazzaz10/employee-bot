@@ -27,16 +27,17 @@ The system is implemented as a Telegram bot using the `python-telegram-bot` libr
 - **Employee Commands:** `/start`, `/help`, `/check_in`, `/check_out`, `/attendance_report`, `/smoke`, `/break`, `/leave`, `/vacation`, `/cancel`, `/my_id`.
 - **Admin Commands:** `/list_employees`, `/add_employee`, `/remove_employee`, `/edit_details`, `/daily_report`, `/weekly_report`, `/list_admins`, `/add_admin` (super admin), `/remove_admin` (super admin).
 - **Business Rules:**
-    - **Work Hours:** 8:00 AM - 7:00 PM (9 regular hours + up to 2 hours overtime).
+    - **Work Hours:** 9 ساعات عمل أساسية، ما بعدها يعتبر إضافي
     - **Late Tolerance:** 15-minute grace period for check-in, followed by an automatic warning.
-    - **Cigarette Breaks:** Max 6 per day, with a minimum 1.5-hour gap between each.
+    - **Cigarette Breaks:** Max 5 per day (6 دقائق لكل سيجارة)، with a minimum 1.5-hour gap between each.
+    - **Smoke Time Restriction:** مسموح بعد الساعة 10:00 صباحاً فقط
     - **Lunch Break:** One 30-minute break per day, deducted if work hours exceed 1 hour.
     - **Leave/Vacation Requests:** Require textual reasons; vacation requests also need an excuse and admin approval.
     - **Check-in/Check-out Prevention:** Duplicate entries on the same day are not allowed.
 - **Admin Approval System:** Interactive accept/reject buttons for all types of employee requests, with real-time notifications.
 - **Conversation Handlers:** Utilized for multi-step interactions (e.g., collecting reasons for leave/vacation).
 - **Employee Verification:** Employees are verified by phone number, supporting various formats and share contact functionality.
-- **Time Logging:** All timestamps are recorded in Jordan time (UTC+3) with DST compatibility.
+- **Time Logging:** All timestamps are recorded in Jordan time (Asia/Amman) with DST compatibility.
 - **Phone Number Normalization:** A `normalize_phone` function ensures consistent phone number formats across the system for unified search and management.
 - **Admin Protection:** All administrative commands are restricted to authorized administrators.
 
@@ -51,6 +52,11 @@ The system is implemented as a Telegram bot using the `python-telegram-bot` libr
 - **PostgreSQL Database:** Utilized for all persistent data storage, including employee records, attendance logs, and request histories.
 
 ## التغييرات الأخيرة / Recent Changes
+- 2025-10-30: **إعدادات النظام المحدثة**
+  - تحديث عدد السجائر اليومية إلى 5 سجائر (بدلاً من 6)
+  - تحديث مدة السيجارة إلى 6 دقائق
+  - تحديث نظام ساعات العمل: 9 ساعات أساسية، ما بعدها إضافي
+  - توقيت الأردن (Asia/Amman) لجميع العمليات
 - 2025-10-30: **نظام إدارة المديرين الديناميكي**
   - إضافة جدول admins في قاعدة البيانات لتخزين قائمة المديرين
   - إضافة نظام المديرين الرئيسيين (Super Admins) والمديرين العاديين
