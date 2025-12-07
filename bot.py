@@ -2453,6 +2453,47 @@ async def get_penalty_statistics():
         return "❌ حدث خطأ في جلب الإحصائيات."
 
 # ==== الدوال الرئيسية للبوت ====
+async def handle_text_messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """معالجة الرسائل النصية (الأزرار)"""
+    try:
+        user = update.message.from_user
+        text = update.message.text
+        
+        logger.info(f"📩 المستخدم {user.id} ({user.first_name}) أرسل نصاً: {text}")
+        print(f"DEBUG: تم استقبال نص من {user.id}: {text}")
+        
+        # التعرف على النص وتوجيهه للدالة المناسبة
+        if text == "تسجيل حضور 📝":
+            return await check_in_command(update, context)
+        elif text == "تسجيل انصراف 🚪":
+            return await check_out_command(update, context)
+        elif text == "طلب سيجارة 🚬":
+            return await smoke_request(update, context)
+        elif text == "طلب استراحة ☕":
+            return await break_request(update, context)
+        elif text == "طلب إذن خروج 🏠":
+            return await leave_request(update, context)
+        elif text == "طلب إجازة 🌴":
+            return await vacation_request(update, context)
+        elif text == "تقرير الحضور 📊":
+            return await attendance_report_command(update, context)
+        elif text == "تقريري الكامل 📈":
+            return await full_report_command(update, context)
+        elif text == "🔧 مدير العقوبات":
+            return await penalty_manager_command(update, context)
+        elif text == "/my_penalties" or text == "عقوباتي":
+            return await my_penalties_command(update, context)
+        else:
+            await update.message.reply_text(
+                "❌ لم أفهم طلبك.\n"
+                "يرجى استخدام الأزرار أدناه أو الأوامر المباشرة مثل:\n"
+                "/start - إعادة عرض القائمة\n"
+                "/help - عرض المساعدة"
+            )
+    except Exception as e:
+        logger.error(f"خطأ في handle_text_messages: {e}")
+        print(f"ERROR in handle_text_messages: {e}")
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """بدء المحادثة مع البوت"""
     user = update.message.from_user
@@ -2480,7 +2521,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 [KeyboardButton("تقرير الحضور 📊"), KeyboardButton("تقريري الكامل 📈")]
             ]
         
-        reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+        reply_markup = ReplyKeyboardMarkup(
+            keyboard, 
+            resize_keyboard=True,
+            one_time_keyboard=False,
+            input_field_placeholder="اختر من القائمة..."
+        )
         
         await update.message.reply_text(
             f"👋 أهلاً بعودتك {employee_name}!\n\n"
@@ -2491,7 +2537,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     # المستخدم جديد - طلب معلومات الاتصال
     contact_button = KeyboardButton("📱 مشاركة رقم الهاتف", request_contact=True)
-    reply_markup = ReplyKeyboardMarkup([[contact_button]], resize_keyboard=True, one_time_keyboard=True)
+    reply_markup = ReplyKeyboardMarkup(
+        [[contact_button]], 
+        resize_keyboard=True, 
+        one_time_keyboard=True,
+        input_field_placeholder="اضغط لارسال رقم الهاتف"
+    )
     
     await update.message.reply_text(
         "👋 مرحباً بك في نظام إدارة حضور الموظفين!\n\n"
@@ -4427,7 +4478,9 @@ def main():
         fallbacks=[CommandHandler("cancel", cancel)],
     )
     
-    # إضافة جميع المعالجات
+    # ⭐⭐ إضافة جميع المعالجات بالترتيب الصحيح ⭐⭐
+    
+    # 1. أولاً: معالجات الأوامر الأساسية
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("help", help_command))
     application.add_handler(CommandHandler("my_id", my_id_command))
@@ -4438,18 +4491,20 @@ def main():
     application.add_handler(CommandHandler("my_penalties", my_penalties_command))
     application.add_handler(CommandHandler("smoke", smoke_request))
     application.add_handler(CommandHandler("break", break_request))
+    
+    # 2. محادثات
     application.add_handler(leave_conv_handler)
     application.add_handler(vacation_conv_handler)
-    
-    # أوامر إدارة العقوبات
     application.add_handler(penalty_conv_handler)
+    
+    # 3. أوامر إدارة العقوبات
     application.add_handler(CommandHandler("penalty_help", smart_penalty_help))
     application.add_handler(CommandHandler("penalty_settings", penalty_settings_command))
     application.add_handler(CommandHandler("penalty_stats", get_penalty_statistics))
     application.add_handler(CommandHandler("list_penalties", list_penalties_command))
     application.add_handler(CommandHandler("all_penalties", all_penalties_command))
     
-    # أوامر الإدارة الأخرى
+    # 4. أوامر الإدارة الأخرى
     application.add_handler(CommandHandler("list_employees", list_employees))
     application.add_handler(CommandHandler("add_employee", add_employee))
     application.add_handler(CommandHandler("remove_employee", remove_employee))
@@ -4459,7 +4514,13 @@ def main():
     application.add_handler(CommandHandler("add_admin", add_admin_command))
     application.add_handler(CommandHandler("remove_admin", remove_admin_command))
     
+    # ⭐⭐ 5. معالج الأزرار المهم - يجب أن يكون هنا ⭐⭐
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_messages))
+    
+    # 6. معالج الاتصال
     application.add_handler(MessageHandler(filters.CONTACT, handle_contact))
+    
+    # 7. معالج Callback Query
     application.add_handler(CallbackQueryHandler(button_callback))
     
     application.add_error_handler(error_handler)
