@@ -2460,7 +2460,6 @@ async def handle_text_messages(update: Update, context: ContextTypes.DEFAULT_TYP
         text = update.message.text
         
         logger.info(f"📩 المستخدم {user.id} ({user.first_name}) أرسل نصاً: {text}")
-        print(f"DEBUG: تم استقبال نص من {user.id}: {text}")
         
         # التعرف على النص وتوجيهه للدالة المناسبة
         if text == "تسجيل حضور 📝":
@@ -2474,6 +2473,7 @@ async def handle_text_messages(update: Update, context: ContextTypes.DEFAULT_TYP
         elif text == "طلب إذن خروج 🏠":
             return await leave_request(update, context)
         elif text == "طلب إجازة 🌴":
+            # ⭐⭐ هذا هو الإصلاح المهم ⭐⭐
             return await vacation_request(update, context)
         elif text == "تقرير الحضور 📊":
             return await attendance_report_command(update, context)
@@ -2492,7 +2492,6 @@ async def handle_text_messages(update: Update, context: ContextTypes.DEFAULT_TYP
             )
     except Exception as e:
         logger.error(f"خطأ في handle_text_messages: {e}")
-        print(f"ERROR in handle_text_messages: {e}")
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """بدء المحادثة مع البوت"""
@@ -4434,7 +4433,7 @@ def main():
         application.bot.get_updates(offset=-1, timeout=1) 
         logger.info("تم مسح الـ Webhook والرسائل العالقة بنجاح.")
     except Exception as e:
-        logger.warning(f"لم نتمكن من مسح الـ Webhook/الرسائل العالقة: {e}") 
+        logger.warning(f"لم نتمكن من مسح الـ Webhook/الرسائل العالقة: {e}")
 
     # محادثة إدارة العقوبات
     penalty_conv_handler = ConversationHandler(
@@ -4478,9 +4477,17 @@ def main():
         fallbacks=[CommandHandler("cancel", cancel)],
     )
     
-    # ⭐⭐ إضافة جميع المعالجات بالترتيب الصحيح ⭐⭐
+    # ⭐⭐ الترتيب الصحيح للـ Handlers ⭐⭐
     
-    # 1. أولاً: معالجات الأوامر الأساسية
+    # 1. المحادثات أولاً (هذا مهم جداً!)
+    application.add_handler(leave_conv_handler)
+    application.add_handler(vacation_conv_handler)
+    application.add_handler(penalty_conv_handler)
+    
+    # 2. معالج الأزرار النصية
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_messages))
+    
+    # 3. أوامر البوت
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("help", help_command))
     application.add_handler(CommandHandler("my_id", my_id_command))
@@ -4491,20 +4498,17 @@ def main():
     application.add_handler(CommandHandler("my_penalties", my_penalties_command))
     application.add_handler(CommandHandler("smoke", smoke_request))
     application.add_handler(CommandHandler("break", break_request))
+    application.add_handler(CommandHandler("leave", leave_request))
+    application.add_handler(CommandHandler("vacation", vacation_request))
     
-    # 2. محادثات
-    application.add_handler(leave_conv_handler)
-    application.add_handler(vacation_conv_handler)
-    application.add_handler(penalty_conv_handler)
-    
-    # 3. أوامر إدارة العقوبات
+    # 4. أوامر العقوبات
     application.add_handler(CommandHandler("penalty_help", smart_penalty_help))
     application.add_handler(CommandHandler("penalty_settings", penalty_settings_command))
     application.add_handler(CommandHandler("penalty_stats", get_penalty_statistics))
     application.add_handler(CommandHandler("list_penalties", list_penalties_command))
     application.add_handler(CommandHandler("all_penalties", all_penalties_command))
     
-    # 4. أوامر الإدارة الأخرى
+    # 5. أوامر الإدارة
     application.add_handler(CommandHandler("list_employees", list_employees))
     application.add_handler(CommandHandler("add_employee", add_employee))
     application.add_handler(CommandHandler("remove_employee", remove_employee))
@@ -4514,13 +4518,8 @@ def main():
     application.add_handler(CommandHandler("add_admin", add_admin_command))
     application.add_handler(CommandHandler("remove_admin", remove_admin_command))
     
-    # ⭐⭐ 5. معالج الأزرار المهم - يجب أن يكون هنا ⭐⭐
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_messages))
-    
-    # 6. معالج الاتصال
+    # 6. معالجات أخرى
     application.add_handler(MessageHandler(filters.CONTACT, handle_contact))
-    
-    # 7. معالج Callback Query
     application.add_handler(CallbackQueryHandler(button_callback))
     
     application.add_error_handler(error_handler)
