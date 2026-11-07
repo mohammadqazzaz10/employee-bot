@@ -1,4 +1,6 @@
 import os
+import subprocess
+import sys
 import unittest
 from pathlib import Path
 
@@ -18,6 +20,17 @@ class PostgreSQLIntegrationTests(unittest.TestCase):
     def setUpClass(cls):
         if not bot.initialize_database_tables():
             raise RuntimeError("Application failed to initialize its PostgreSQL schema")
+        project_root = Path(__file__).resolve().parents[1]
+        subprocess.run(
+            [sys.executable, "-m", "scripts.migrate"],
+            cwd=project_root,
+            check=True,
+        )
+        subprocess.run(
+            [sys.executable, "-m", "scripts.migrate", "--check"],
+            cwd=project_root,
+            check=True,
+        )
 
     def test_schema_admin_bootstrap_request_lifecycle_and_soft_delete(self):
         expected_tables = {
@@ -44,48 +57,6 @@ class PostgreSQLIntegrationTests(unittest.TestCase):
                     (bot.SUPER_ADMIN_TELEGRAM_ID,),
                 )
                 self.assertEqual(cur.fetchone(), (True,))
-        finally:
-            conn.close()
-
-        # Apply branch isolation before exercising request decisions: the
-        # production authorization query intentionally fails closed without it.
-        migration_sql = (
-            Path(__file__).resolve().parents[1]
-            / "migrations"
-            / "001_multibranch_foundation.sql"
-        ).read_text(encoding="utf-8")
-        conn = psycopg2.connect(os.environ["DATABASE_URL"], sslmode="disable")
-        try:
-            with conn.cursor() as cur:
-                cur.execute(migration_sql)
-            conn.commit()
-        finally:
-            conn.close()
-
-        # The timer outbox migration must exist before an approval can commit.
-        integrity_sql = (
-            Path(__file__).resolve().parents[1]
-            / "migrations"
-            / "005_preproduction_integrity.sql"
-        ).read_text(encoding="utf-8")
-        conn = psycopg2.connect(os.environ["DATABASE_URL"], sslmode="disable")
-        try:
-            with conn.cursor() as cur:
-                cur.execute(integrity_sql)
-            conn.commit()
-        finally:
-            conn.close()
-
-        timer_ack_sql = (
-            Path(__file__).resolve().parents[1]
-            / "migrations"
-            / "006_timer_return_acknowledgements.sql"
-        ).read_text(encoding="utf-8")
-        conn = psycopg2.connect(os.environ["DATABASE_URL"], sslmode="disable")
-        try:
-            with conn.cursor() as cur:
-                cur.execute(timer_ack_sql)
-            conn.commit()
         finally:
             conn.close()
 
@@ -202,22 +173,15 @@ class PostgreSQLIntegrationTests(unittest.TestCase):
         finally:
             conn.close()
 
-        # Apply configurable request types after the branch foundation and verify defaults.
-        request_types_sql = (
-            Path(__file__).resolve().parents[1]
-            / "migrations"
-            / "002_configurable_request_types.sql"
-        ).read_text(encoding="utf-8")
+        # Verify migrations 001–006 seeded the main branch and default request buttons.
         conn = psycopg2.connect(os.environ["DATABASE_URL"], sslmode="disable")
         try:
             with conn.cursor() as cur:
-                cur.execute(request_types_sql)
                 cur.execute("""
                     SELECT code, label, duration_minutes
                     FROM branch_request_types
-                    WHERE branch_id = (SELECT id FROM branches WHERE code='main')
-                    ORDER BY code
-                """)
+                    WHERE branch_id=%s ORDER BY code
+                """, (main_branch_id,))
                 defaults = cur.fetchall()
                 self.assertEqual(len(defaults), 2)
                 self.assertEqual({row[0] for row in defaults}, {"bathroom", "prayer"})
@@ -228,15 +192,6 @@ class PostgreSQLIntegrationTests(unittest.TestCase):
                     WHERE table_name='active_timers' AND column_name='timer_type'
                 """)
                 self.assertEqual(cur.fetchone()[0], 40)
-            conn.commit()
-        finally:
-            conn.close()
-
-        conn = psycopg2.connect(os.environ["DATABASE_URL"], sslmode="disable")
-        try:
-            with conn.cursor() as cur:
-                cur.execute("SELECT id FROM branches WHERE code='main'")
-                main_branch_id = cur.fetchone()[0]
         finally:
             conn.close()
 
@@ -383,42 +338,23 @@ class PostgreSQLIntegrationTests(unittest.TestCase):
             conn.close()
         self.assertFalse(bot.is_admin(branch_admin_id))
 
-        # Apply the remaining production migrations and verify they are repeatable.
-        for migration_name in (
-            "003_broadcast_logs.sql",
-            "004_broadcast_acknowledgements.sql",
-            "005_preproduction_integrity.sql",
-            "006_timer_return_acknowledgements.sql",
-        ):
-            migration_sql = (
-                Path(__file__).resolve().parents[1] / "migrations" / migration_name
-            ).read_text(encoding="utf-8")
-            conn = psycopg2.connect(os.environ["DATABASE_URL"], sslmode="disable")
-            try:
-                with conn.cursor() as cur:
-                    cur.execute(migration_sql)
-                conn.commit()
-            finally:
-                conn.close()
-
-        migration_005 = (
-            Path(__file__).resolve().parents[1]
-            / "migrations"
-            / "005_preproduction_integrity.sql"
-        ).read_text(encoding="utf-8")
+        # The actual migration runner must now report a clean, checksum-matched ledger.
+        subprocess.run(
+            [sys.executable, "-m", "scripts.migrate", "--check"],
+            cwd=Path(__file__).resolve().parents[1],
+            check=True,
+        )
         conn = psycopg2.connect(os.environ["DATABASE_URL"], sslmode="disable")
         try:
             with conn.cursor() as cur:
-                cur.execute(migration_005)
                 cur.execute("""
-                    SELECT 1 FROM pg_indexes
-                    WHERE indexname='uq_employees_active_phone'
-                """)
+                    SELECT COUNT(*) FROM schema_migrations
+                    WHERE version = ANY(%s)
+                """, (list(bot.REQUIRED_MIGRATIONS),))
+                self.assertEqual(cur.fetchone()[0], 6)
+                cur.execute("SELECT 1 FROM pg_indexes WHERE indexname='uq_employees_active_phone'")
                 self.assertIsNotNone(cur.fetchone())
-                cur.execute("""
-                    SELECT 1 FROM pg_indexes
-                    WHERE indexname='uq_employees_active_telegram_id'
-                """)
+                cur.execute("SELECT 1 FROM pg_indexes WHERE indexname='uq_employees_active_telegram_id'")
                 self.assertIsNotNone(cur.fetchone())
                 cur.execute("""
                     SELECT 1 FROM pg_constraint
@@ -432,7 +368,6 @@ class PostgreSQLIntegrationTests(unittest.TestCase):
                 self.assertEqual(cur.fetchone()[0], 1)
                 cur.execute("SELECT to_regclass('public.broadcast_recipients')")
                 self.assertIsNotNone(cur.fetchone()[0])
-            conn.commit()
         finally:
             conn.close()
 
