@@ -14,8 +14,9 @@ class SecurityContractTests(unittest.TestCase):
         handler = self.source.split("async def handle_contact", 1)[1].split(
             "\ndef create_progress_bar", 1
         )[0]
-        self.assertLess(handler.index("if not verify_employee(phone):"),
-                        handler.index("save_employee(contact.user_id, phone, name)"))
+        self.assertLess(handler.index("registered_employee = get_employee_by_phone(phone)"),
+                        handler.index("save_employee(contact.user_id, phone, registered_name)"))
+        self.assertIn("if not registered_employee", handler)
 
     def test_callback_actions_are_validated(self):
         handler = self.source.split("async def button_callback", 1)[1].split(
