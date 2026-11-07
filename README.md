@@ -15,15 +15,15 @@ Telegram employee operations bot for break requests, leave/vacation requests, br
 
 ## Local setup
 1. Install dependencies: `python -m pip install .`
-2. Copy `.env.example` to `.env` and set the local database URL and Telegram token.
-3. Initialize base tables by starting the application once, or run the migration runner after the base schema exists.
-4. Apply numbered migrations in order after taking and verifying a database backup:
+2. Copy `.env.example` to `.env` and set `DATABASE_URL` and `DATABASE_SSLMODE`; leave `TELEGRAM_BOT_TOKEN` empty for the bootstrap.
+3. Run `python bot.py` once. It creates the base tables and exits without starting Telegram.
+4. Take and verify a database backup, then apply numbered migrations:
    `python -m scripts.migrate`
-5. Verify applied migration checksums:
+5. Verify the migration ledger and checksums:
    `python -m scripts.migrate --check`
-6. Start the bot: `python bot.py`
+6. Only then add `TELEGRAM_BOT_TOKEN` and `SUPER_ADMIN_TELEGRAM_ID`, and start the bot with `python bot.py`.
 
-The application refuses to start without `TELEGRAM_BOT_TOKEN` and `DATABASE_URL`. Never commit `.env`, Telegram tokens, or database URLs.
+The bot runtime refuses to start without `TELEGRAM_BOT_TOKEN`, `DATABASE_URL`, and all migrations 001–006. The one-time database bootstrap needs only `DATABASE_URL`. Never commit `.env`, Telegram tokens, webhook secrets, or database URLs.
 
 ## Employee and branch administration
 Every employee profile includes a full name, job title, phone number, and branch. An employee links their own Telegram account by sending `/start` and sharing their own contact. Linking is allowed only for an active pre-registered employee and cannot move an account or claim another employee's phone.
