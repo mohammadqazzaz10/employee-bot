@@ -402,8 +402,25 @@ def decide_request(request_id, employee_id, request_type, decision, admin_id):
                 updated_at = CURRENT_TIMESTAMP
             WHERE id = %s AND employee_id = %s
               AND request_type = %s AND status = 'pending'
+              AND EXISTS (
+                  SELECT 1
+                  FROM employees e
+                  WHERE e.id = requests.employee_id
+                    AND (
+                        EXISTS (
+                            SELECT 1 FROM admins a
+                            WHERE a.telegram_id = %s AND a.is_super_admin = TRUE
+                        )
+                        OR EXISTS (
+                            SELECT 1 FROM admin_branch_roles r
+                            WHERE r.telegram_id = %s
+                              AND r.branch_id = e.branch_id
+                              AND r.role IN ('branch_manager', 'supervisor')
+                        )
+                    )
+              )
             RETURNING id
-        """, (decision, admin_id, request_id, employee_id, request_type))
+        """, (decision, admin_id, request_id, employee_id, request_type, admin_id, admin_id))
         changed = cur.fetchone()
         conn.commit()
         cur.close()
