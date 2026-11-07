@@ -274,8 +274,15 @@ async def request_type_text_handler(update: Update, context: ContextTypes.DEFAUL
         return
     raw = (update.effective_message.text or "").strip()
     if state == "label":
+        reserved_labels = {
+            "🚬 طلب استراحة التدخين", "☕ طلب استراحة الغداء",
+            "🚪 طلب مغادرة", "🌴 طلب إجازة", "ℹ️ المساعدة",
+        }
         if not 2 <= len(raw) <= 32:
             await update.effective_message.reply_text("اسم الزر يجب أن يكون بين حرفين و32 حرفاً.")
+            return
+        if raw in reserved_labels:
+            await update.effective_message.reply_text("هذا الاسم محجوز لزر أساسي. اختر اسماً مختلفاً.")
             return
         context.user_data["new_request_type_label"] = raw
         context.user_data["new_request_type_state"] = "new_duration"
