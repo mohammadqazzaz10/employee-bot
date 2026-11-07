@@ -347,8 +347,7 @@ def create_request(employee_id, request_type, notes=None):
             VALUES (%s, %s, 'pending', %s)
             RETURNING id
         """, (employee_id, request_type, notes))
-        request_id = cur.fetchone()[0]
-        conn.commit()
+        request_id = cur.fetchone()[0]        conn.commit()
         cur.close()
         conn.close()
         return request_id
@@ -641,6 +640,16 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_phone = get_user_phone(user.id)
     
     if user_phone and verify_employee(user_phone):
+        menu_keyboard = [
+            [KeyboardButton("🚬 طلب استراحة التدخين"), KeyboardButton("☕ طلب استراحة الغداء")],
+            [KeyboardButton("🚪 طلب مغادرة"), KeyboardButton("🌴 طلب إجازة")],
+            [KeyboardButton("ℹ️ المساعدة")],
+        ]
+        menu_markup = ReplyKeyboardMarkup(
+            menu_keyboard,
+            resize_keyboard=True,
+            input_field_placeholder="اختر الخدمة المطلوبة…",
+        )
         msg = (
             f"مرحبًا {user_name}! 👋\n\n"
             "✅ هويتك مفعلة.\n\n"
@@ -663,7 +672,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "/remove_employee - حذف موظف\n"
                 "/list_admins - عرض المديرين\n"
             )
-        await update.message.reply_text(msg)
+        await update.message.reply_text(msg, reply_markup=menu_markup)
     else:
         keyboard = [[KeyboardButton("مشاركة رقم الهاتف 📱", request_contact=True)]]
         markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
@@ -698,7 +707,6 @@ async def smoke_request(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not employee:
         await update.message.reply_text("❌ خطأ في البيانات.")
         return
-
     # التحقق من الفجوة الزمنية
     last_cig = get_last_cigarette_time(employee['id'])
     if last_cig:
@@ -1047,8 +1055,7 @@ async def update_timer(context: ContextTypes.DEFAULT_TYPE):
             if "Message is not modified" not in str(exc):
                 logger.warning("Could not finalize timer message for %s: %s", user_id, exc)
         try:
-            await context.bot.send_message(
-                chat_id=user_id,
+            await context.bot.send_message(                chat_id=user_id,
                 text=alert_text,
                 reply_markup=keyboard,
             )
@@ -1262,6 +1269,10 @@ def main():
     application.add_handler(CommandHandler("help", help_command))
     application.add_handler(CommandHandler("smoke", smoke_request))
     application.add_handler(CommandHandler("break", break_request))
+    # Friendly reply-keyboard shortcuts map to the same validated command handlers.
+    application.add_handler(MessageHandler(filters.Regex(r"^🚬 طلب استراحة التدخين$"), smoke_request))
+    application.add_handler(MessageHandler(filters.Regex(r"^☕ طلب استراحة الغداء$"), break_request))
+    application.add_handler(MessageHandler(filters.Regex(r"^ℹ️ المساعدة$"), help_command))
     application.add_handler(CommandHandler("my_id", my_id_command))
     
     # Admin Handlers
@@ -1274,12 +1285,12 @@ def main():
     
     # Conversations
     leave_conv = ConversationHandler(
-        entry_points=[CommandHandler("leave", leave_request)],
+        entry_points=[CommandHandler("leave", leave_request), MessageHandler(filters.Regex(r"^🚪 طلب مغادرة$"), leave_request)],
         states={LEAVE_REASON: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_leave_reason)]},
         fallbacks=[CommandHandler("cancel", cancel)]
     )
     vacation_conv = ConversationHandler(
-        entry_points=[CommandHandler("vacation", vacation_request)],
+        entry_points=[CommandHandler("vacation", vacation_request), MessageHandler(filters.Regex(r"^🌴 طلب إجازة$"), vacation_request)],
         states={VACATION_REASON: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_vacation_reason)]},
         fallbacks=[CommandHandler("cancel", cancel)]
     )
