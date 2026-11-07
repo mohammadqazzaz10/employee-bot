@@ -310,6 +310,53 @@ class PostgreSQLIntegrationTests(unittest.TestCase):
             conn.close()
         self.assertFalse(bot.is_admin(branch_admin_id))
 
+        # Apply the remaining production migrations and verify they are repeatable.
+        for migration_name in (
+            "003_broadcast_logs.sql",
+            "004_broadcast_acknowledgements.sql",
+            "005_preproduction_integrity.sql",
+        ):
+            migration_sql = (
+                Path(__file__).resolve().parents[1] / "migrations" / migration_name
+            ).read_text(encoding="utf-8")
+            conn = psycopg2.connect(os.environ["DATABASE_URL"], sslmode="disable")
+            try:
+                with conn.cursor() as cur:
+                    cur.execute(migration_sql)
+                conn.commit()
+            finally:
+                conn.close()
+
+        migration_005 = (
+            Path(__file__).resolve().parents[1]
+            / "migrations"
+            / "005_preproduction_integrity.sql"
+        ).read_text(encoding="utf-8")
+        conn = psycopg2.connect(os.environ["DATABASE_URL"], sslmode="disable")
+        try:
+            with conn.cursor() as cur:
+                cur.execute(migration_005)
+                cur.execute("""
+                    SELECT 1 FROM pg_indexes
+                    WHERE indexname='uq_employees_active_phone'
+                """)
+                self.assertIsNotNone(cur.fetchone())
+                cur.execute("""
+                    SELECT 1 FROM pg_constraint
+                    WHERE conname='branch_settings_branch_id_fkey'
+                """)
+                self.assertIsNotNone(cur.fetchone())
+                cur.execute(
+                    "SELECT COUNT(*) FROM branch_settings WHERE branch_id=%s",
+                    (second_branch_id,),
+                )
+                self.assertEqual(cur.fetchone()[0], 1)
+                cur.execute("SELECT to_regclass('public.broadcast_recipients')")
+                self.assertIsNotNone(cur.fetchone()[0])
+            conn.commit()
+        finally:
+            conn.close()
+
 
 if __name__ == "__main__":
     unittest.main()
