@@ -400,7 +400,6 @@ async def broadcast_send_callback(update: Update, context: ContextTypes.DEFAULT_
 
 async def broadcast_ack_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
-    await q.answer()
     parts = (q.data or "").split(":")
     if len(parts) != 3 or not parts[2].isdigit():
         await q.answer("بيانات التأكيد غير صالحة.", show_alert=True)
@@ -412,6 +411,7 @@ async def broadcast_ack_callback(update: Update, context: ContextTypes.DEFAULT_T
     if not _db("ack", broadcast_id, q.from_user.id):
         await q.answer("هذا التنبيه غير مرتبط بحسابك أو سبق تأكيده.", show_alert=True)
         return
+    await q.answer()
     for job in context.job_queue.get_jobs_by_name(
         _reminder_job_name(broadcast_id, q.from_user.id)
     ) if context.job_queue else []:
