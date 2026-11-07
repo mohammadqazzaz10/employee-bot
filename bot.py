@@ -307,42 +307,16 @@ def save_employee_in_branch(phone_number, full_name, job_title, branch_id, actor
 
 
 def save_employee(telegram_id, phone_number, full_name):
-    """Link a Telegram account only to an existing, active, pre-registered employee.
-
-    A non-null telegram_id never creates a new employee and cannot move an
-    already-linked account to another phone number.
-    """
+    """Link a Telegram account only to an existing active pre-registered employee."""
     conn = None
     try:
         normalized_phone = normalize_phone(phone_number)
-        if not normalized_phone:
+        if not normalized_phone or not telegram_id:
             return None
         conn = get_db_connection()
         with conn.cursor() as cur:
-            # Legacy internal provisioning path; Telegram linking always supplies an ID
-            # and therefore follows the strict registration-only branch below.
-            cur.execute("SELECT pg_advisory_xact_lock(hashtext(%s))", (normalized_phone,))
-            if telegram_id is None:
-                cur.execute(
-                    """SELECT id FROM employees
-                       WHERE phone_number=%s AND is_active=TRUE
-                       ORDER BY id DESC LIMIT 1 FOR UPDATE""",
-                    (normalized_phone,),
-                )
-                existing = cur.fetchone()
-                if existing:
-                    conn.commit()
-                    return existing[0]
-                cur.execute(
-                    """INSERT INTO employees (phone_number, full_name, last_active)
-                       VALUES (%s, %s, CURRENT_TIMESTAMP) RETURNING id""",
-                    (normalized_phone, full_name),
-                )
-                created = cur.fetchone()[0]
-                conn.commit()
-                return created
-
             # Serialize attempts to claim the same registered phone.
+            cur.execute("SELECT pg_advisory_xact_lock(hashtext(%s))", (normalized_phone,))
             cur.execute(
                 """SELECT id, telegram_id
                    FROM employees
