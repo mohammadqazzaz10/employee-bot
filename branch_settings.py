@@ -39,6 +39,13 @@ def get_branch_settings(branch_id):
     try:
         conn = bot.get_db_connection()
         cur = conn.cursor()
+        cur.execute(
+            "SELECT 1 FROM branches WHERE id=%s AND is_active=TRUE FOR SHARE",
+            (branch_id,),
+        )
+        if not cur.fetchone():
+            conn.rollback()
+            return None
         cur.execute("INSERT INTO branch_settings(branch_id) VALUES(%s) ON CONFLICT DO NOTHING", (branch_id,))
         cur.execute("SELECT smoke_enabled, smoke_daily_limit, smoke_duration_minutes, smoke_start_time, smoke_end_time, smoke_gap_minutes, lunch_enabled, lunch_duration_minutes, lunch_start_time, lunch_end_time FROM branch_settings WHERE branch_id=%s", (branch_id,))
         row = cur.fetchone()
