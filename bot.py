@@ -684,7 +684,7 @@ async def break_request(update: Update, context: ContextTypes.DEFAULT_TYPE):
         InlineKeyboardButton("✅ قبول", callback_data=f"approve_break_{request_id}_{user.id}"),
         InlineKeyboardButton("❌ رفض", callback_data=f"reject_break_{request_id}_{user.id}")
     ]]
-    msg = f"☕ **طلب استراحة غداء**\\n👤 الموظف: {employee['full_name']}"
+    msg = f"☕ **طلب استراحة غداء**\n👤 الموظف: {employee['full_name']}"
     await send_to_all_admins(context, msg, InlineKeyboardMarkup(keyboard))
     
 # --- المغادرات والإجازات (لم يتم تغييرها) ---
