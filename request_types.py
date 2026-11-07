@@ -1,5 +1,6 @@
 """Branch-scoped configurable employee request buttons with timed approvals."""
 import logging
+import uuid
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import CommandHandler, CallbackQueryHandler, MessageHandler, filters
@@ -99,14 +100,19 @@ def _save_new(branch_id, label, duration, user_id):
     try:
         conn = _db()
         with conn.cursor() as cur:
+            temporary_code = f"new-{uuid.uuid4().hex[:16]}"
             cur.execute("""INSERT INTO branch_request_types
                            (branch_id, code, label, duration_minutes, is_active, created_by, updated_by)
-                           VALUES (%s, 'pending', %s, %s, TRUE, %s, %s)
+                           VALUES (%s, %s, %s, %s, TRUE, %s, %s)
                            RETURNING id""",
-                        (branch_id, label, duration, user_id, user_id))
+                        (branch_id, temporary_code, label, duration, user_id, user_id))
             type_id = cur.fetchone()[0]
             code = f"custom-{type_id}"
             cur.execute("UPDATE branch_request_types SET code=%s WHERE id=%s", (code, type_id))
+            cur.execute("""INSERT INTO branch_request_types_audit
+                           (branch_id, request_type_id, action, changed_by, new_value)
+                           VALUES (%s,%s,'created',%s,%s)""",
+                        (branch_id, type_id, user_id, f"{label} | {duration} minutes"))
         conn.commit()
         return type_id
     except Exception:
@@ -264,7 +270,7 @@ async def request_type_text_handler(update: Update, context: ContextTypes.DEFAUL
     if not ok:
         await update.effective_message.reply_text("❌ تعذر حفظ التعديل في قاعدة البيانات.")
         return
-    await update.effective_message.reply_text("✅ تم الحفظ. سيظهر الزر للموظفين في هذا الفرع مباشرة.")
+    await update.effective_message.reply_text("✅ تم الحفظ. سيظهر الزر للموظفين في هذا الفرع عند تحديث القائمة بالأمر /start.")
     await _show_types(update.effective_message, branch_id)
 
 
