@@ -49,10 +49,6 @@ logger = logging.getLogger(__name__)
 daily_smoke_count = {}
 
 # --- إعدادات السجائر الجديدة ---
-MAX_DAILY_SMOKES = 5        # عدد السجائر المسموحة
-SMOKE_DURATION_MINUTES = 6  # مدة السيجارة بالدقائق
-SMOKE_START_HOUR = 10       # بداية وقت التدخين (العاشرة صباحاً)
-SMOKE_GAP_HOURS = 1.5       # الفجوة بين السجائر بالساعات
 
 JORDAN_TZ = ZoneInfo('Asia/Amman')
 
@@ -1258,6 +1254,13 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text("⚠️ الموظف المرتبط بهذا الطلب لم يعد موجوداً.")
         return
 
+    settings = None
+    if action == "approve" and type_ in {"smoke", "break"}:
+        settings = get_branch_settings(emp.get('branch_id')) if emp.get('branch_id') else None
+        if not settings:
+            await query.edit_message_text("❌ إعدادات فرع الموظف غير متاحة؛ تعذر تنفيذ الموافقة.")
+            return
+
     decision = "approved" if action == "approve" else "rejected"
     if not request_id or not decide_request(request_id, emp['id'], type_, decision, query.from_user.id):
         await query.edit_message_text("ℹ️ تم التعامل مع هذا الطلب مسبقاً أو لم يعد صالحاً.")
@@ -1266,10 +1269,6 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if action == "approve":
         msg_text = ""
         timer_minutes = 0
-        settings = get_branch_settings(emp.get('branch_id')) if emp.get('branch_id') else None
-        if not settings:
-            await query.edit_message_text("❌ إعدادات فرع الموظف غير متاحة؛ تعذر تشغيل المؤقت.")
-            return
         if type_ == 'smoke':
             new_count = increment_smoke_count_db(emp['id'])
             record_cigarette_time(emp['id'])
