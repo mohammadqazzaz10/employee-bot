@@ -1,6 +1,17 @@
 -- Configurable branch-scoped request buttons (toilet, prayer, and admin-created types).
 BEGIN;
 
+CREATE TABLE IF NOT EXISTS active_timers (
+    user_id BIGINT PRIMARY KEY,
+    message_id BIGINT NOT NULL,
+    timer_type VARCHAR(40) NOT NULL,
+    start_at TIMESTAMPTZ NOT NULL,
+    end_at TIMESTAMPTZ NOT NULL,
+    completed BOOLEAN NOT NULL DEFAULT FALSE,
+    completed_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
 ALTER TABLE active_timers ALTER COLUMN timer_type TYPE VARCHAR(40);
 
 CREATE TABLE IF NOT EXISTS branch_request_types (
