@@ -23,6 +23,31 @@ BEGIN
     END IF;
 END $$;
 
+DO $
+DECLARE duplicate_telegram_ids TEXT;
+BEGIN
+    SELECT string_agg(telegram_id::TEXT, ', ' ORDER BY telegram_id)
+      INTO duplicate_telegram_ids
+    FROM (
+        SELECT telegram_id
+        FROM employees
+        WHERE is_active = TRUE AND telegram_id IS NOT NULL
+        GROUP BY telegram_id
+        HAVING COUNT(*) > 1
+        ORDER BY telegram_id
+        LIMIT 20
+    ) duplicates;
+    IF duplicate_telegram_ids IS NOT NULL THEN
+        RAISE EXCEPTION
+            'Migration 005 blocked: duplicate active Telegram employee IDs: %. Resolve duplicates before retrying.',
+            duplicate_telegram_ids;
+    END IF;
+END $;
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_employees_active_telegram_id
+    ON employees (telegram_id)
+    WHERE is_active = TRUE AND telegram_id IS NOT NULL;
+
 CREATE UNIQUE INDEX IF NOT EXISTS uq_employees_active_phone
     ON employees (phone_number)
     WHERE is_active = TRUE;
