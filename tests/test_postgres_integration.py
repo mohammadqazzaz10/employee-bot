@@ -5,6 +5,7 @@ from pathlib import Path
 import psycopg2
 
 import bot
+from request_types import _save_new, _update_type, get_request_type
 
 
 @unittest.skipUnless(
@@ -145,6 +146,28 @@ class PostgreSQLIntegrationTests(unittest.TestCase):
             conn.commit()
         finally:
             conn.close()
+
+        conn = psycopg2.connect(os.environ["DATABASE_URL"], sslmode="disable")
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT id FROM branches WHERE code='main'")
+                main_branch_id = cur.fetchone()[0]
+        finally:
+            conn.close()
+
+        custom_type_id = _save_new(
+            main_branch_id, "CI Custom Request", 7, bot.SUPER_ADMIN_TELEGRAM_ID
+        )
+        self.assertIsNotNone(custom_type_id)
+        custom_type = get_request_type(main_branch_id, custom_type_id)
+        self.assertEqual(custom_type[2:4], ("CI Custom Request", 7))
+        self.assertTrue(
+            _update_type(
+                main_branch_id, custom_type_id, bot.SUPER_ADMIN_TELEGRAM_ID,
+                duration=9,
+            )
+        )
+        self.assertEqual(get_request_type(main_branch_id, custom_type_id)[3], 9)
 
         # Legacy INSERT statements must inherit the default branch via the trigger.
         second_employee_id = bot.save_employee(
