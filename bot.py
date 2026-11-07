@@ -1571,7 +1571,11 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if custom:
                 timer_label = custom[2]
         await query.edit_message_text(f"✅ شكراً {name}، تم تسجيل عودتك للعمل.\n\n(تم إنهاء مؤقت {timer_label})")
-        await send_to_branch_admins(context, employee["branch_id"], f"🔙 الموظف **{name}** عاد من **{timer_label}**.")
+        if employee and employee.get("branch_id"):
+            await send_to_branch_admins(
+                context, employee["branch_id"],
+                f"🔙 الموظف **{name}** عاد من **{timer_label}**."
+            )
         return
 
     # Approval/rejection is an administrative action, never trust the button alone.
