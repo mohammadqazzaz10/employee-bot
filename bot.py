@@ -1335,6 +1335,17 @@ def _timer_db(operation, *values):
                     SET completed = TRUE, completed_at = CURRENT_TIMESTAMP
                     WHERE user_id = %s
                 """, values)
+            elif operation == "clear_matching":
+                cur.execute("""
+                    UPDATE active_timers
+                    SET completed = TRUE, completed_at = CURRENT_TIMESTAMP
+                    WHERE user_id = %s AND timer_type = %s
+                      AND message_id = %s AND completed = FALSE
+                    RETURNING user_id
+                """, values)
+                changed = cur.fetchone()
+                conn.commit()
+                return bool(changed)
             else:
                 raise ValueError("Unknown timer database operation")
         conn.commit()
@@ -1386,7 +1397,10 @@ async def update_timer(context: ContextTypes.DEFAULT_TYPE):
             "يرجى العودة إلى العمل وتأكيد العودة بالزر أدناه."
         )
         keyboard = InlineKeyboardMarkup([[
-            InlineKeyboardButton("✅ عدت إلى العمل", callback_data=f"returned_{type_}_{user_id}")
+            InlineKeyboardButton(
+                "✅ عدت إلى العمل",
+                callback_data=f"returned_{type_}_{user_id}_{msg_id}",
+            )
         ]])
         try:
             await context.bot.edit_message_text(
@@ -1517,10 +1531,10 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     action = data[0]
     if action == "returned":
-        if len(data) != 3:
+        if len(data) != 4:
             await query.edit_message_text("⚠️ بيانات العودة غير صالحة.")
             return
-        type_, raw_target_id = data[1], data[2]
+        type_, raw_target_id, raw_timer_message_id = data[1], data[2], data[3]
         raw_request_id = None
     else:
         if len(data) != 4:
@@ -1534,6 +1548,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         target_id = int(raw_target_id)
         request_id = int(raw_request_id) if raw_request_id is not None else None
+        timer_message_id = int(raw_timer_message_id) if action == "returned" else None
     except (TypeError, ValueError):
         await query.edit_message_text("⚠️ بيانات الطلب غير صالحة.")
         return
@@ -1544,7 +1559,9 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.edit_message_text("⚠️ هذا الزر مخصص للموظف صاحب الاستراحة.")
             return
         user_id = target_id
-        _timer_db("clear", user_id)
+        if not _timer_db("clear_matching", user_id, type_, timer_message_id):
+            await query.edit_message_text("ℹ️ هذا المؤقت انتهى أو تم استبداله بمؤقت أحدث.")
+            return
         _remove_timer_job(context, user_id)
         name = get_employee_name(user_id)
         timer_label = type_
