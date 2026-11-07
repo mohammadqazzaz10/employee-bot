@@ -10,6 +10,16 @@ class SecurityContractTests(unittest.TestCase):
     def setUpClass(cls):
         cls.source = BOT.read_text(encoding="utf-8")
 
+    def test_first_time_onboarding_does_not_depend_on_undefined_phone_cache(self):
+        phone_helper = self.source.split("def get_user_phone", 1)[1].split(
+            "\\ndef get_employee_name", 1
+        )[0]
+        self.assertNotIn("user_database", phone_helper)
+        contact_handler = self.source.split("async def handle_contact", 1)[1].split(
+            "\\ndef create_progress_bar", 1
+        )[0]
+        self.assertIn("await start(update, context)", contact_handler)
+
     def test_contact_is_authorized_before_employee_record_is_saved(self):
         handler = self.source.split("async def handle_contact", 1)[1].split(
             "\ndef create_progress_bar", 1
