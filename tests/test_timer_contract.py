@@ -15,6 +15,13 @@ class TimerContractTests(unittest.TestCase):
         self.assertIn("interval=5", SOURCE)
         self.assertNotIn("range(duration_seconds + 2)", SOURCE)
 
+    def test_approved_timer_start_is_durable_and_retried(self):
+        self.assertIn("timer_start_outbox", SOURCE)
+        self.assertIn('"save_outbox"', SOURCE)
+        self.assertIn('"outbox_list"', SOURCE)
+        self.assertIn("process_pending_timer_starts", SOURCE)
+        self.assertIn("interval=30", SOURCE)
+
     def test_timer_state_is_persisted_and_restored(self):
         self.assertIn("CREATE TABLE IF NOT EXISTS active_timers", SOURCE)
         self.assertIn("async def restore_active_timers", SOURCE)
