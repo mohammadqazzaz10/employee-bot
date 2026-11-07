@@ -5,11 +5,11 @@
 - PostgreSQL via `DATABASE_URL`
 - Telegram via `TELEGRAM_BOT_TOKEN`
 - First super administrator via `SUPER_ADMIN_TELEGRAM_ID`
-- Render Web Services use `RENDER_EXTERNAL_URL`; Background Workers use long polling.
+- Render Web Services use `RENDER_EXTERNAL_URL` plus `WEBHOOK_SECRET`; Background Workers use long polling.
 - Local secrets belong in `.env`, which is ignored by Git. See `.env.example` and `DEPLOYMENT.md`.
 
 ## Database lifecycle
-The application initializes the base tables on startup. Numbered SQL migrations 001–006 are applied separately with `python -m scripts.migrate` after a verified backup. The runner uses a PostgreSQL advisory lock, applies migrations in numeric order, and records SHA-256 checksums. Use `python -m scripts.migrate --check` to verify the migration ledger without changing the schema.
+The application initializes the base tables when `DATABASE_URL` is present, even if no Telegram token is configured; in that database-only bootstrap mode it exits without starting Telegram. Numbered SQL migrations 001–006 are applied separately with `python -m scripts.migrate` after a verified backup. The bot runtime refuses to start until all six migrations are recorded. The runner uses a PostgreSQL advisory lock, applies migrations in numeric order, and records SHA-256 checksums. Use `python -m scripts.migrate --check` to verify the migration ledger without changing the schema.
 
 Do not edit an applied migration; add a new numbered migration. Migration 005 deliberately stops if duplicate active phone numbers or orphaned branch-settings rows are detected.
 
