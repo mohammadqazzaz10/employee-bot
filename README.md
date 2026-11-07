@@ -26,6 +26,14 @@ Administrators can open `/settings` in Telegram to edit each branch's smoking an
 
 **Important:** Apply `migrations/001_multibranch_foundation.sql` to the database before using branch-scoped settings. The migration is not run automatically. Back up the database first and do not deploy this draft until branch-scoped access and remaining production checks are reviewed.
 
+## Configurable timed request buttons
+
+After applying migrations 001 and 002, each branch receives two default buttons: **🚻 استئذان الذهاب إلى الحمام** and **🕌 استئذان الذهاب إلى الصلاة**, each set to 10 minutes. The timer starts only after an authorized manager approves the request.
+
+A branch manager or super admin can send `/request_types` (or `/request_types BRANCH_ID`) to create additional buttons, set a duration from 1 to 240 minutes, and enable/disable each type. New buttons are shown in the employee keyboard after the employee sends `/start` to refresh it. Request types and their changes are stored and audited in PostgreSQL per branch. Custom request notifications go only to that branch's managers and super admins.
+
+Run `migrations/002_configurable_request_types.sql` after migration 001, with a verified database backup. Do not deploy before both migrations and the latest GitHub Actions checks have succeeded.
+
 ## Render
 Follow [DEPLOYMENT.md](DEPLOYMENT.md). Render supplies the web service's public URL automatically; a Background Worker can use long polling without a public URL. Never commit tokens or database URLs.
 
