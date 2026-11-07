@@ -187,6 +187,20 @@ def initialize_database_tables():
             );
         """)
         
+        # Durable timer state: countdowns survive process restarts and deploys.
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS active_timers (
+                user_id BIGINT PRIMARY KEY,
+                message_id BIGINT NOT NULL,
+                timer_type VARCHAR(20) NOT NULL,
+                start_at TIMESTAMPTZ NOT NULL,
+                end_at TIMESTAMPTZ NOT NULL,
+                completed BOOLEAN NOT NULL DEFAULT FALSE,
+                completed_at TIMESTAMPTZ,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+        """)
+
         if SUPER_ADMIN_TELEGRAM_ID:
             cur.execute("""
                 INSERT INTO admins (telegram_id, added_by, is_super_admin)
@@ -297,8 +311,7 @@ def get_all_employees():
         cur.execute("SELECT * FROM employees WHERE is_active = TRUE ORDER BY full_name")
         employees = cur.fetchall()
         cur.close()
-        conn.close()
-        return [dict(emp) for emp in employees] if employees else []
+        conn.close()        return [dict(emp) for emp in employees] if employees else []
     except Exception as e:
         logger.error(f"Error getting all employees: {e}")
         return []
@@ -597,8 +610,7 @@ def normalize_phone(phone_number):
     if not phone_number:
         return ""
     digits_only = ''.join(filter(str.isdigit, str(phone_number)))
-    while digits_only.startswith("00"):
-        digits_only = digits_only[2:]
+    while digits_only.startswith("00"):        digits_only = digits_only[2:]
     # Normalize common Jordanian local mobile format (07XXXXXXXX) to 9627XXXXXXXX.
     if len(digits_only) == 10 and digits_only.startswith("07"):
         digits_only = "962" + digits_only[1:]
@@ -897,7 +909,6 @@ async def remove_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except (TypeError, ValueError):
         await update.message.reply_text("❌ المعرف يجب أن يكون رقماً صحيحاً موجباً.")
         return
-
     if remove_admin_from_db(target_id):
         await update.message.reply_text("✅ تم حذف صلاحية المدير.")
     else:
@@ -923,100 +934,217 @@ async def handle_contact(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text("✅ تم تفعيل حسابك بنجاح! يمكنك الآن استخدام البوت.")
 
-def create_progress_bar(current, total, length=15):
-    pct = current / total if total > 0 else 0
-    # عكس النسبة لأننا نعد تنازلياً
-    pct_remaining = current / total if total > 0 else 0
-    filled = int(pct_remaining * length)
-    bar = '█' * (length - filled) + '░' * filled # تم عكس الألوان لتناسب العداد التنازلي
-    return f"[{bar}]"
+def create_progress_bar(remaining_seconds, total_seconds, length=12):
+    """Render a compact, readable countdown bar for Telegram clients."""
+    total = max(1, int(total_seconds))
+    remaining = max(0, min(total, int(remaining_seconds)))
+    filled = round((remaining / total) * length)
+    return "🟩" * filled + "⬜" * (length - filled)
+
+
+def _timer_db(operation, *values):
+    """Small synchronous DB helper; every operation owns and closes its connection."""
+    conn = None
+    try:
+        conn = get_db_connection()
+        with conn.cursor() as cur:
+            if operation == "save":
+                cur.execute("""
+                    INSERT INTO active_timers
+                        (user_id, message_id, timer_type, start_at, end_at, completed, completed_at)
+                    VALUES (%s, %s, %s, %s, %s, FALSE, NULL)
+                    ON CONFLICT (user_id) DO UPDATE SET
+                        message_id = EXCLUDED.message_id,
+                        timer_type = EXCLUDED.timer_type,
+                        start_at = EXCLUDED.start_at,
+                        end_at = EXCLUDED.end_at,
+                        completed = FALSE,
+                        completed_at = NULL,
+                        created_at = CURRENT_TIMESTAMP
+                """, values)
+            elif operation == "list":
+                cur.execute("""
+                    SELECT user_id, message_id, timer_type, start_at, end_at
+                    FROM active_timers WHERE completed = FALSE
+                    ORDER BY end_at
+                """)
+                rows = cur.fetchall()
+                conn.commit()
+                return rows
+            elif operation == "complete":
+                cur.execute("""
+                    UPDATE active_timers
+                    SET completed = TRUE, completed_at = CURRENT_TIMESTAMP
+                    WHERE user_id = %s AND completed = FALSE
+                """, values)
+            elif operation == "is_active":
+                cur.execute(
+                    "SELECT 1 FROM active_timers WHERE user_id = %s AND completed = FALSE",
+                    values,
+                )
+                result = cur.fetchone()
+                conn.commit()
+                return bool(result)
+            elif operation == "clear":
+                cur.execute("""
+                    UPDATE active_timers
+                    SET completed = TRUE, completed_at = CURRENT_TIMESTAMP
+                    WHERE user_id = %s
+                """, values)
+            else:
+                raise ValueError("Unknown timer database operation")
+        conn.commit()
+        return True
+    except Exception:
+        if conn:
+            conn.rollback()
+        logger.exception("Timer database operation failed: %s", operation)
+        return False
+    finally:
+        if conn:
+            conn.close()
+
+
+def _timer_job_name(user_id):
+    return f"employee-timer-{int(user_id)}"
+
+
+def _remove_timer_job(context, user_id):
+    if context.job_queue:
+        for job in context.job_queue.get_jobs_by_name(_timer_job_name(user_id)):
+            job.schedule_removal()
+    active_timers.pop(int(user_id), None)
+
 
 async def update_timer(context: ContextTypes.DEFAULT_TYPE):
     job = context.job
-    user_id, msg_id, start_time, duration_seconds, type_ = job.data
-    
-    if timer_completed.get(user_id): return
-    
+    user_id, msg_id, start_time, end_time, type_ = job.data
     now = get_jordan_time()
-    elapsed = (now - start_time).total_seconds()
-    remaining = duration_seconds - elapsed
-    secs = int(max(0, remaining))
-    
-    mins = secs // 60
-    s = secs % 60
-    
-    total_secs = duration_seconds
-    
-    if secs <= 0:
-        # هذه هي آخر تحديث (الصفر) قبل إرسال التنبيه
-        timer_completed[user_id] = True
-        
-        # إرسال التنبيه
-        alert_msg = (
-            "🔔🔔🔔 **RIIIIIIING!!!** 🔔🔔🔔\n\n"
-            "🛑 **انتهى الوقت المحدد!**\n"
-            "يرجى العودة للعمل فوراً.\n"
-            "🔔🔔🔔🔔🔔🔔🔔🔔🔔"
+    remaining = max(0, int((end_time - now).total_seconds()))
+    total_seconds = max(1, int((end_time - start_time).total_seconds()))
+    emoji = "🚬" if type_ == "smoke" else "☕"
+    label = "استراحة التدخين" if type_ == "smoke" else "استراحة الغداء"
+
+    if remaining <= 0:
+        if not _timer_db("is_active", user_id):
+            _remove_timer_job(context, user_id)
+            return
+        alert_text = (
+            f"🔔 انتهت {label}!\n\n"
+            "⏰ انتهى الوقت المحدد للاستراحة.\n"
+            "يرجى العودة إلى العمل وتأكيد العودة بالزر أدناه."
         )
-        key = [[InlineKeyboardButton("✅ تم العودة", callback_data=f"returned_{type_}_{user_id}")]]
+        keyboard = InlineKeyboardMarkup([[
+            InlineKeyboardButton("✅ عدت إلى العمل", callback_data=f"returned_{type_}_{user_id}")
+        ]])
         try:
-            # تحديث الرسالة الأخيرة للمستخدم بانتهاء الوقت
             await context.bot.edit_message_text(
-                chat_id=user_id, 
-                message_id=msg_id, 
-                text=f"**{type_.capitalize()}** انتهت: 00:00"
+                chat_id=user_id,
+                message_id=msg_id,
+                text=f"✅ انتهت {label}\n00:00\n\nبانتظار تأكيد عودتك.",
             )
-            await context.bot.send_message(user_id, alert_msg, reply_markup=InlineKeyboardMarkup(key))
-        except Exception as e:
-            logger.error(f"Error sending final alert: {e}")
-            
-        # تنظيف المؤقتات
-        if user_id in active_timers:
-            for t in active_timers[user_id]: t.schedule_removal()
-            del active_timers[user_id]
+        except Exception as exc:
+            if "Message is not modified" not in str(exc):
+                logger.warning("Could not finalize timer message for %s: %s", user_id, exc)
+        try:
+            await context.bot.send_message(
+                chat_id=user_id,
+                text=alert_text,
+                reply_markup=keyboard,
+            )
+            _timer_db("complete", user_id)
+            _remove_timer_job(context, user_id)
+        except Exception:
+            # Keep the timer active so the next tick retries a failed notification.
+            logger.exception("Could not deliver timer completion alert to %s", user_id)
         return
 
-    # تحديث الأنيميشن
-    bar = create_progress_bar(secs, total_secs)
-    emoji = "🚬" if type_ == 'smoke' else "☕"
-    
-    text = (
-        f"{emoji} **العداد التنازلي** {emoji}\n\n"
-        f"⏳ المتبقي: {mins:02d}:{s:02d}\n"
+    minutes, seconds = divmod(remaining, 60)
+    bar = create_progress_bar(remaining, total_seconds)
+    finish_at = end_time.astimezone(JORDAN_TZ).strftime("%H:%M")
+    timer_text = (
+        f"{emoji} {label}\n"
+        "━━━━━━━━━━━━━━━━━━\n"
+        f"⏳ الوقت المتبقي\n"
+        f"       {minutes:02d}:{seconds:02d}\n\n"
         f"{bar}\n"
-        f"ينتهي في: {(start_time + timedelta(seconds=duration_seconds)).strftime('%H:%M:%S')}"
+        f"🕒 موعد الانتهاء: {finish_at}\n"
+        "━━━━━━━━━━━━━━━━━━\n"
+        "سيصلك تنبيه تلقائي عند انتهاء الوقت."
     )
-    
     try:
-        await context.bot.edit_message_text(chat_id=user_id, message_id=msg_id, text=text, parse_mode='Markdown')
-    except Exception as e: 
-        # يتجاهل الأخطاء العادية المتعلقة بعدم وجود تغيير في الرسالة (Message Not Modified)
-        if "Message is not modified" not in str(e):
-             logger.error(f"Error editing timer message: {e}")
+        await context.bot.edit_message_text(
+            chat_id=user_id,
+            message_id=msg_id,
+            text=timer_text,
+        )
+    except Exception as exc:
+        if "Message is not modified" not in str(exc):
+            logger.warning("Could not refresh timer for %s: %s", user_id, exc)
 
-async def start_timer(context, user_id, minutes, type_):
-    duration_seconds = minutes * 60
+
+async def _schedule_timer(application, user_id, msg_id, start_time, end_time, type_):
+    if not application.job_queue:
+        logger.error("JobQueue is unavailable; cannot schedule timer for %s", user_id)
+        return
+    for old_job in application.job_queue.get_jobs_by_name(_timer_job_name(user_id)):
+        old_job.schedule_removal()
+    delay = max(0, min(5, (end_time - get_jordan_time()).total_seconds()))
+    job = application.job_queue.run_repeating(
+        update_timer,
+        interval=5,
+        first=delay,
+        data=(int(user_id), int(msg_id), start_time, end_time, type_),
+        name=_timer_job_name(user_id),
+    )
+    active_timers[int(user_id)] = job
+
+
+async def start_timer(context: ContextTypes.DEFAULT_TYPE, user_id, minutes, type_):
+    duration_seconds = max(1, int(minutes)) * 60
     start_time = get_jordan_time()
     end_time = start_time + timedelta(seconds=duration_seconds)
-    timer_completed[user_id] = False
-    
-    emoji = "🚬" if type_ == 'smoke' else "☕"
-    
-    msg = await context.bot.send_message(
-        user_id, 
-        f"{emoji} بدأ المؤقت: {minutes} دقائق."
+    emoji = "🚬" if type_ == "smoke" else "☕"
+    label = "استراحة التدخين" if type_ == "smoke" else "استراحة الغداء"
+    message = await context.bot.send_message(
+        chat_id=user_id,
+        text=(
+            f"{emoji} بدأت {label}\n"
+            "━━━━━━━━━━━━━━━━━━\n"
+            f"⏳ الوقت المحدد: {int(minutes)} دقيقة\n"
+            "سيظهر العد التنازلي هنا، وسيصلك تنبيه عند الانتهاء."
+        ),
     )
-    
-    jobs = []
-    # نجدول المهام لكل ثانية. الإضافة +2 تضمن الوصول إلى الصفر لحظياً
-    for i in range(duration_seconds + 2):
-        j = context.job_queue.run_once(
-            update_timer, 
-            i, 
-            data=(user_id, msg.message_id, start_time, duration_seconds, type_)
+    if not _timer_db("save", user_id, message.message_id, type_, start_time, end_time):
+        await context.bot.send_message(
+            chat_id=user_id,
+            text="⚠️ تعذر حفظ المؤقت. أبلغ المدير حتى لا يضيع موعد انتهاء الاستراحة.",
         )
-        jobs.append(j)
-    active_timers[user_id] = jobs
+        return
+    await _schedule_timer(context.application, user_id, message.message_id, start_time, end_time, type_)
+
+
+async def restore_active_timers(application: Application):
+    """Restore every unfinished countdown after a Render restart or deployment."""
+    rows = _timer_db("list")
+    if rows is False:
+        logger.error("Could not restore active timers because PostgreSQL is unavailable")
+        return
+    for user_id, message_id, timer_type, start_time, end_time in rows:
+        if start_time.tzinfo is None:
+            start_time = start_time.replace(tzinfo=timezone.utc)
+        if end_time.tzinfo is None:
+            end_time = end_time.replace(tzinfo=timezone.utc)
+        await _schedule_timer(
+            application,
+            user_id,
+            message_id,
+            start_time.astimezone(JORDAN_TZ),
+            end_time.astimezone(JORDAN_TZ),
+            timer_type,
+        )
+    logger.info("Restored %s active employee timer(s)", len(rows))
+
 
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -1057,6 +1185,8 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.edit_message_text("⚠️ هذا الزر مخصص للموظف صاحب الاستراحة.")
             return
         user_id = target_id
+        _timer_db("clear", user_id)
+        _remove_timer_job(context, user_id)
         name = get_employee_name(user_id)
         # إزالة زر "تم العودة" بعد الضغط عليه
         await query.edit_message_text(f"✅ شكراً {name}، تم تسجيل عودتك للعمل.\n\n(تم إنهاء مؤقت {type_})")
@@ -1125,7 +1255,7 @@ def main():
     if not SUPER_ADMIN_TELEGRAM_ID:
         logger.warning("Set SUPER_ADMIN_TELEGRAM_ID in the hosting environment to activate the first administrator.")
 
-    application = Application.builder().token(BOT_TOKEN).build()
+    application = Application.builder().token(BOT_TOKEN).post_init(restore_active_timers).build()
     
     # Handlers
     application.add_handler(CommandHandler("start", start))
