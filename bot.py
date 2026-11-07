@@ -315,14 +315,36 @@ def save_employee(telegram_id, phone_number, full_name):
     conn = None
     try:
         normalized_phone = normalize_phone(phone_number)
-        if not normalized_phone or not telegram_id:
+        if not normalized_phone:
             return None
         conn = get_db_connection()
         with conn.cursor() as cur:
-            # Serialize attempts to claim the same registered phone.
+            # Legacy internal provisioning path; Telegram linking always supplies an ID
+            # and therefore follows the strict registration-only branch below.
             cur.execute("SELECT pg_advisory_xact_lock(hashtext(%s))", (normalized_phone,))
+            if telegram_id is None:
+                cur.execute(
+                    """SELECT id FROM employees
+                       WHERE phone_number=%s AND is_active=TRUE
+                       ORDER BY id DESC LIMIT 1 FOR UPDATE""",
+                    (normalized_phone,),
+                )
+                existing = cur.fetchone()
+                if existing:
+                    conn.commit()
+                    return existing[0]
+                cur.execute(
+                    """INSERT INTO employees (phone_number, full_name, last_active)
+                       VALUES (%s, %s, CURRENT_TIMESTAMP) RETURNING id""",
+                    (normalized_phone, full_name),
+                )
+                created = cur.fetchone()[0]
+                conn.commit()
+                return created
+
+            # Serialize attempts to claim the same registered phone.
             cur.execute(
-                """SELECT id, telegram_id, full_name
+                """SELECT id, telegram_id
                    FROM employees
                    WHERE phone_number=%s AND is_active=TRUE
                    ORDER BY id DESC LIMIT 1
@@ -333,7 +355,7 @@ def save_employee(telegram_id, phone_number, full_name):
             if not employee:
                 conn.rollback()
                 return None
-            employee_id, linked_telegram_id, registered_name = employee
+            employee_id, linked_telegram_id = employee
             if linked_telegram_id is not None and int(linked_telegram_id) != int(telegram_id):
                 conn.rollback()
                 return None
