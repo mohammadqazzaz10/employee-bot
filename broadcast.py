@@ -9,36 +9,59 @@ from telegram.ext import (
 logger = logging.getLogger(__name__)
 STATE = "pending_broadcast"
 REMINDER_INTERVAL_SECONDS = 60
+EMPLOYEE_PAGE_SIZE = 8
 
 
-def _targets(user_id, audience):
+def _employee_options(user_id, audience):
+    """Return selectable employees after enforcing the manager's audience scope."""
     import bot
     conn = None
     try:
+        if not bot.is_admin(user_id):
+            return None
         conn = bot.get_db_connection()
         cur = conn.cursor()
         if audience == "all":
             if not bot.is_super_admin(user_id):
                 return None
-            cur.execute("""SELECT telegram_id FROM employees
+            cur.execute("""SELECT telegram_id, full_name, COALESCE(job_title, '')
+                           FROM employees
                            WHERE is_active=TRUE AND telegram_id IS NOT NULL
-                           ORDER BY id""")
+                           ORDER BY full_name, id""")
         else:
             branch_id = int(audience)
             from branch_settings import _resolve_branch
-            if not bot.is_admin(user_id) or _resolve_branch(user_id, branch_id) != branch_id:
+            if _resolve_branch(user_id, branch_id) != branch_id:
                 return None
-            cur.execute("""SELECT telegram_id FROM employees
+            cur.execute("""SELECT telegram_id, full_name, COALESCE(job_title, '')
+                           FROM employees
                            WHERE is_active=TRUE AND telegram_id IS NOT NULL
-                             AND branch_id=%s ORDER BY id""", (branch_id,))
-        return [int(row[0]) for row in cur.fetchall()]
+                             AND branch_id=%s
+                           ORDER BY full_name, id""", (branch_id,))
+        return [
+            {"telegram_id": int(row[0]), "name": row[1], "job_title": row[2]}
+            for row in cur.fetchall()
+        ]
     except Exception:
-        logger.exception("Could not resolve announcement recipients")
+        logger.exception("Could not resolve selectable announcement employees")
         return None
     finally:
         if conn:
             conn.close()
 
+
+def _targets(user_id, audience, selected_ids=None):
+    """Revalidate selected recipients immediately before preview and delivery."""
+    options = _employee_options(user_id, audience)
+    if options is None:
+        return None
+    allowed = [item["telegram_id"] for item in options]
+    if selected_ids is None:
+        return allowed
+    selected = [int(uid) for uid in selected_ids]
+    if len(set(selected)) != len(selected) or not set(selected).issubset(set(allowed)):
+        return None
+    return selected
 
 def _branches(user_id):
     import bot
@@ -220,6 +243,102 @@ async def restore_pending_broadcast_reminders(application):
     logger.info("Restored %s pending broadcast acknowledgement reminder(s)", len(rows))
 
 
+async def _render_employee_selection(query, context, page=0):
+    pending = context.user_data.get(STATE) or {}
+    employees = pending.get("employees", [])
+    selected = set(pending.get("selected_ids", []))
+    pages = max(1, (len(employees) + EMPLOYEE_PAGE_SIZE - 1) // EMPLOYEE_PAGE_SIZE)
+    page = max(0, min(int(page), pages - 1))
+    pending["page"] = page
+    start = page * EMPLOYEE_PAGE_SIZE
+    current = employees[start:start + EMPLOYEE_PAGE_SIZE]
+    rows = []
+    for employee in current:
+        telegram_id = employee["telegram_id"]
+        mark = "☑️" if telegram_id in selected else "⬜"
+        name = (employee["name"] or "موظف").strip()
+        if len(name) > 42:
+            name = name[:39] + "..."
+        job = (employee["job_title"] or "").strip()
+        label = f"{mark} {name}" + (f" — {job[:18]}" if job else "")
+        rows.append([InlineKeyboardButton(label, callback_data=f"broadcast:employee:{telegram_id}")])
+    navigation = []
+    if page > 0:
+        navigation.append(InlineKeyboardButton("⬅️ السابق", callback_data=f"broadcast:page:{page - 1}"))
+    navigation.append(InlineKeyboardButton(f"{page + 1}/{pages}", callback_data="broadcast:page:0"))
+    if page + 1 < pages:
+        navigation.append(InlineKeyboardButton("التالي ➡️", callback_data=f"broadcast:page:{page + 1}"))
+    if navigation:
+        rows.append(navigation)
+    rows.append([
+        InlineKeyboardButton("☑️ تحديد الجميع", callback_data="broadcast:select_all"),
+        InlineKeyboardButton("🧹 إلغاء التحديد", callback_data="broadcast:clear"),
+    ])
+    rows.append([InlineKeyboardButton(
+        f"متابعة ({len(selected)} محدد)", callback_data="broadcast:continue"
+    )])
+    await query.edit_message_text(
+        f"👥 اختر الموظفين الذين سيصلهم التنبيه.\n"
+        f"الموظفون المتاحون: {len(employees)} | المحددون: {len(selected)}\n"
+        f"الصفحة {page + 1} من {pages}\n\n"
+        "اضغط على اسم الموظف لتحديده أو إلغاء تحديده. يمكنك التنقل بين الصفحات.",
+        reply_markup=InlineKeyboardMarkup(rows),
+    )
+
+
+async def broadcast_selection_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    import bot
+    query = update.callback_query
+    pending = context.user_data.get(STATE)
+    if not bot.is_admin(query.from_user.id) or not pending or "employees" not in pending:
+        await query.answer("انتهت جلسة الاختيار. ابدأ من جديد عبر /broadcast.", show_alert=True)
+        return
+    data = (query.data or "").split(":")
+    employees = pending["employees"]
+    allowed = {item["telegram_id"] for item in employees}
+    selected = set(pending.get("selected_ids", []))
+    if data[1] == "employee" and len(data) == 3 and data[2].isdigit():
+        telegram_id = int(data[2])
+        if telegram_id not in allowed:
+            await query.answer("هذا الموظف ليس ضمن الجمهور المسموح.", show_alert=True)
+            return
+        if telegram_id in selected:
+            selected.remove(telegram_id)
+        else:
+            selected.add(telegram_id)
+        pending["selected_ids"] = sorted(selected)
+        await query.answer()
+        await _render_employee_selection(query, context, pending.get("page", 0))
+        return
+    if data[1] == "page" and len(data) == 3 and data[2].isdigit():
+        await query.answer()
+        await _render_employee_selection(query, context, int(data[2]))
+        return
+    if data[1] == "select_all":
+        pending["selected_ids"] = sorted(allowed)
+        await query.answer("تم تحديد جميع الموظفين.")
+        await _render_employee_selection(query, context, pending.get("page", 0))
+        return
+    if data[1] == "clear":
+        pending["selected_ids"] = []
+        await query.answer("تم إلغاء تحديد الجميع.")
+        await _render_employee_selection(query, context, pending.get("page", 0))
+        return
+    if data[1] == "continue":
+        if not selected:
+            await query.answer("حدد موظفاً واحداً على الأقل.", show_alert=True)
+            return
+        pending["selected_ids"] = sorted(selected)
+        await query.answer()
+        await query.edit_message_text(
+            f"📢 الجمهور: {pending.get('audience_label', 'الجمهور المحدد')}\n"
+            f"👥 عدد الموظفين المحددين: {len(selected)}\n\n"
+            "أرسل الآن نص الإعلان أو رسالة صوتية/ملفاً صوتياً."
+        )
+        return
+    await query.answer("اختيار غير صالح.", show_alert=True)
+
+
 async def broadcast_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     import bot
     user_id = update.effective_user.id
@@ -268,12 +387,21 @@ async def broadcast_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
     else:
         await q.edit_message_text("اختيار غير صالح.")
         return
-    context.user_data[STATE] = {"audience": audience, "audience_label": audience_label}
-    await q.edit_message_text(
-        f"📢 الجمهور: {audience_label}\n"
-        "أرسل نص الإعلان أو رسالة صوتية/ملفاً صوتياً.\n"
-        "سيصل التنبيه بإشعار Telegram عادي، وستتكرر التذكيرات حتى يؤكد الموظف الاطلاع."
-    )
+    employees = _employee_options(q.from_user.id, audience)
+    if employees is None:
+        await q.edit_message_text("⛔ تعذر التحقق من صلاحيات الجمهور.")
+        return
+    if not employees:
+        await q.edit_message_text("لا يوجد موظفون نشطون لديهم حساب Telegram في هذا الجمهور.")
+        return
+    context.user_data[STATE] = {
+        "audience": audience,
+        "audience_label": audience_label,
+        "employees": employees,
+        "selected_ids": [],
+        "page": 0,
+    }
+    await _render_employee_selection(q, context, page=0)
 
 
 async def broadcast_content(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -292,13 +420,12 @@ async def broadcast_content(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await message.reply_text("أرسل نصاً أو تسجيلاً صوتياً أو ملفاً صوتياً فقط.")
         return
     pending["content"] = content
-    recipients = _targets(update.effective_user.id, pending["audience"])
-    if recipients is None:
+    recipients = _targets(
+        update.effective_user.id, pending["audience"], pending.get("selected_ids", [])
+    )
+    if recipients is None or not recipients:
         context.user_data.pop(STATE, None)
-        await message.reply_text("⛔ تعذر التحقق من صلاحيات الجمهور.")
-        return
-    if not recipients:
-        await message.reply_text("لا يوجد موظفون مسجلون لديهم حساب Telegram في هذا الجمهور.")
+        await message.reply_text("⛔ تغيرت صلاحيات الجمهور أو لم يعد الموظفون المحددون متاحين. ابدأ من جديد.")
         return
     pending["recipients"] = recipients
     keyboard = InlineKeyboardMarkup([[
@@ -329,10 +456,12 @@ async def broadcast_send_callback(update: Update, context: ContextTypes.DEFAULT_
         context.user_data.pop(STATE, None)
         await q.edit_message_text("تم إلغاء الإعلان.")
         return
-    recipients = _targets(q.from_user.id, pending["audience"])
-    if recipients is None:
+    recipients = _targets(
+        q.from_user.id, pending["audience"], pending.get("recipients", [])
+    )
+    if recipients is None or not recipients:
         context.user_data.pop(STATE, None)
-        await q.edit_message_text("⛔ تغيرت الصلاحيات أو تعذر التحقق منها. لم يتم الإرسال.")
+        await q.edit_message_text("⛔ تغيرت الصلاحيات أو لم يعد الموظفون المحددون متاحين. لم يتم الإرسال.")
         return
     content = pending["content"]
     preview = (
@@ -435,6 +564,10 @@ def register_broadcast_handlers(application):
     ), group=-1)
     application.add_handler(CallbackQueryHandler(
         broadcast_callback, pattern=r"^broadcast:(all|branch:[0-9]+)$"
+    ), group=-1)
+    application.add_handler(CallbackQueryHandler(
+        broadcast_selection_callback,
+        pattern=r"^broadcast:(employee:[0-9]+|page:[0-9]+|select_all|clear|continue)$",
     ), group=-1)
     application.add_handler(CallbackQueryHandler(
         broadcast_send_callback, pattern=r"^broadcast:(send|cancel)$"
