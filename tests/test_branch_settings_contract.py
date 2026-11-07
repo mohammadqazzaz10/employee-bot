@@ -26,6 +26,7 @@ class BranchSettingsContractTests(unittest.TestCase):
         self.assertIn("assign_branch_admin", SETTINGS_SOURCE)
         self.assertIn('"supervisor"', SETTINGS_SOURCE)
         self.assertIn('"branch_manager"', SETTINGS_SOURCE)
+        self.assertIn('CommandHandler("remove_branch_admin", remove_branch_admin_command)', SETTINGS_SOURCE)
 
     def test_smoking_policy_is_read_from_branch_settings(self):
         self.assertIn("settings['smoke_daily_limit']", BOT_SOURCE)
