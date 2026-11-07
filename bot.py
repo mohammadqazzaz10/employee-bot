@@ -1526,9 +1526,18 @@ def _timer_db(operation, *values):
             elif operation == "clear":
                 cur.execute("""
                     UPDATE active_timers
-                    SET completed = TRUE, completed_at = CURRENT_TIMESTAMP
+                    SET completed = TRUE, completed_at = CURRENT_TIMESTAMP,
+                        returned_at = CURRENT_TIMESTAMP
                     WHERE user_id = %s
                 """, values)
+            elif operation == "has_unreturned":
+                cur.execute(
+                    "SELECT 1 FROM active_timers WHERE user_id=%s AND returned_at IS NULL",
+                    values,
+                )
+                result = cur.fetchone()
+                conn.commit()
+                return bool(result)
             elif operation == "clear_matching":
                 cur.execute("""
                     UPDATE active_timers
