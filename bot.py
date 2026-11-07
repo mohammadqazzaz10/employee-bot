@@ -1791,7 +1791,7 @@ def main():
     else:
         # وضع Polling (للتشغيل المحلي/الاختبار)
         logger.info("Bot Started with Polling (Local Mode)...")
-        application.run_polling(drop_pending_updates=True)
+        application.run_polling(drop_pending_updates=False)
     # -----------------------------------------------
 
 if __name__ == '__main__':
