@@ -946,7 +946,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if is_admin(user.id):
             msg += (
                 "\n👔 **أوامر مدير الفرع:**\n"
-                "/settings - إعدادات فرعك\n"
+                "/settings أو /settings رقم_الفرع - إعدادات الفرع\n"
                 "/request_types - إدارة أزرار الاستئذان في فرعك\n"
                 "/list_employees - عرض موظفي الفروع المصرح بها\n"
                 "/broadcast - إرسال إعلان لموظفي فرعك\n"
@@ -957,6 +957,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "/add_employee رقم_الفرع رقم_الهاتف الاسم - إضافة موظف\n"
                 "/remove_employee - إيقاف موظف\n"
                 "/list_admins - عرض المديرين\n"
+                "/add_admin TELEGRAM_ID - إضافة مدير\n"
+                "/remove_admin TELEGRAM_ID - إزالة مدير\n"
+                "/assign_branch_admin TELEGRAM_ID BRANCH_ID - ربط مدير بفرع\n"
             )
         await update.message.reply_text(msg, reply_markup=menu_markup)
     else:
