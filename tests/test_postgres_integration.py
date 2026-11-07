@@ -68,6 +68,19 @@ class PostgreSQLIntegrationTests(unittest.TestCase):
         employee = bot.get_employee_by_phone("0781234567")
         self.assertIsNotNone(employee)
 
+        # Telegram linking must claim only the pre-registered row and be single-account.
+        linked_id = bot.save_employee(555000111, "0781234567", "CI Test Employee")
+        self.assertEqual(linked_id, employee_id)
+        self.assertIsNone(bot.save_employee(555000222, "0781234567", "Other Account"))
+        self.assertIsNone(bot.save_employee(555000111, "+962780000001", "Unregistered Number"))
+        conn = psycopg2.connect(os.environ["DATABASE_URL"], sslmode="disable")
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT telegram_id FROM employees WHERE id=%s", (employee_id,))
+                self.assertEqual(cur.fetchone(), (555000111,))
+        finally:
+            conn.close()
+
         employee_settings = bot.get_branch_settings(employee["branch_id"])
         self.assertIsNotNone(employee_settings)
         conn = psycopg2.connect(os.environ["DATABASE_URL"], sslmode="disable")
