@@ -727,37 +727,39 @@ async def smoke_request(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ غير مصرح لك. شارك رقم هاتفك أولاً.")
         return
 
-    # التحقق من الوقت (بعد الساعة 10 صباحاً)
     now = get_jordan_time()
-    if now.hour < SMOKE_START_HOUR:
-        await update.message.reply_text(
-            f"⛔️ لا يمكن طلب سيجارة قبل الساعة {SMOKE_START_HOUR}:00 صباحاً!\n"
-            f"الساعة الآن: {now.strftime('%H:%M')}"
-        )
-        return
-
     employee = get_employee_by_telegram_id(user.id)
     if not employee:
         await update.message.reply_text("❌ خطأ في البيانات.")
+        return
+    settings = get_branch_settings(employee.get('branch_id')) if employee.get('branch_id') else None
+    if not settings:
+        await update.message.reply_text("⚠️ إعدادات الفرع غير جاهزة. أبلغ المدير بتطبيق migration 001.")
+        return
+    if not settings['smoke_enabled']:
+        await update.message.reply_text("🚫 استراحات التدخين متوقفة حالياً بقرار الإدارة.")
+        return
+    current_time = now.time().replace(tzinfo=None)
+    start_time, end_time = settings['smoke_start_time'], settings['smoke_end_time']
+    if current_time < start_time or (end_time and current_time >= end_time):
+        end_text = f" وحتى {end_time.strftime('%H:%M')}" if end_time else ""
+        await update.message.reply_text(f"⛔️ وقت السماح بالتدخين من {start_time.strftime('%H:%M')}{end_text}.\nالساعة الآن: {now.strftime('%H:%M')}")
         return
     # التحقق من الفجوة الزمنية
     last_cig = get_last_cigarette_time(employee['id'])
     if last_cig:
         diff = now - last_cig
-        hours_passed = diff.total_seconds() / 3600
-        if hours_passed < SMOKE_GAP_HOURS:
-            remaining_mins = int((SMOKE_GAP_HOURS - hours_passed) * 60)
-            await update.message.reply_text(
-                f"⏳ يرجى الانتظار!\n"
-                f"يجب مرور ساعة ونصف بين السجائر.\n"
-                f"المتبقي: {remaining_mins} دقيقة."
-            )
+        elapsed_minutes = diff.total_seconds() / 60
+        required_gap = settings['smoke_gap_minutes']
+        if elapsed_minutes < required_gap:
+            remaining_mins = int(required_gap - elapsed_minutes + 0.999)
+            await update.message.reply_text(f"⏳ يرجى الانتظار! يجب مرور {required_gap} دقيقة بين الاستراحات.\nالمتبقي: {remaining_mins} دقيقة.")
             return
 
     # التحقق من العدد
     count = get_smoke_count_db(employee['id'])
-    if count >= MAX_DAILY_SMOKES:
-        await update.message.reply_text(f"❌ انتهى رصيد السجائر لهذا اليوم ({MAX_DAILY_SMOKES}).")
+    if count >= settings['smoke_daily_limit']:
+        await update.message.reply_text(f"❌ انتهى رصيد السجائر لهذا اليوم ({settings['smoke_daily_limit']}).")
         return
 
     # Persist request before sending approval buttons.
@@ -778,8 +780,8 @@ async def smoke_request(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = (
         f"🚬 **طلب تدخين جديد**\n"
         f"👤 الموظف: {name}\n"
-        f"🔢 المستهلك: {count}/{MAX_DAILY_SMOKES}\n"
-        f"⏱ المدة المطلوبة: {SMOKE_DURATION_MINUTES} دقائق"
+        f"🔢 المستهلك: {count}/{settings['smoke_daily_limit']}\n"
+        f"⏱ المدة المطلوبة: {settings['smoke_duration_minutes']} دقائق"
     )
     await send_to_all_admins(context, msg, markup)
 
