@@ -32,6 +32,19 @@ class RuntimeConfigurationContractTests(unittest.TestCase):
         self.assertIn("INSERT INTO admins", self.source)
         self.assertIn("DO UPDATE SET is_super_admin = TRUE", self.source)
 
+    def test_jordanian_local_phone_numbers_are_canonicalized(self):
+        self.assertIn('digits_only.startswith("07")', self.source)
+        self.assertIn('"962" + digits_only[1:]', self.source)
+        self.assertIn("UPDATE employees", self.source)
+        self.assertIn("regexp_replace(phone_number", self.source)
+
+    def test_admin_management_reports_database_write_failures(self):
+        add_admin = self.source.split("async def add_admin", 1)[1].split(
+            "async def remove_admin", 1
+        )[0]
+        self.assertIn("if add_admin_to_db(", add_admin)
+        self.assertIn("تعذرت إضافة المدير", add_admin)
+
     def test_database_failure_does_not_grant_admin_access(self):
         admin_function = self.source.split("def is_admin", 1)[1].split(
             "def is_super_admin", 1
