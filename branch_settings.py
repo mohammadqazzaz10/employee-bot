@@ -208,6 +208,7 @@ async def _show(message, branch_id):
 
 async def settings_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     import bot
+    context.user_data.pop("pending_broadcast", None)
     context.user_data.pop("new_request_type_state", None)
     context.user_data.pop("editing_request_type", None)
     context.user_data.pop("new_request_type_label", None)
