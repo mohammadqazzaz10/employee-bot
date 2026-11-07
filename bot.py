@@ -880,7 +880,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if action == "returned":
         # Only the employee whose timer was created may confirm their return.
         if query.from_user.id != target_id:
-            await query.answer("هذا الزر مخصص للموظف صاحب الاستراحة.", show_alert=True)
+            await query.edit_message_text("⚠️ هذا الزر مخصص للموظف صاحب الاستراحة.")
             return
         user_id = target_id
         name = get_employee_name(user_id)
@@ -891,7 +891,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Approval/rejection is an administrative action, never trust the button alone.
     if not is_admin(query.from_user.id):
-        await query.answer("غير مصرح لك بتنفيذ هذا الإجراء.", show_alert=True)
+        await query.edit_message_text("⛔ غير مصرح لك بتنفيذ هذا الإجراء.")
         return
 
     emp = get_employee_by_telegram_id(target_id)
