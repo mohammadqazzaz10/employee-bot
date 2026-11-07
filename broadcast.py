@@ -257,10 +257,10 @@ async def _render_employee_selection(query, context, page=0):
         telegram_id = employee["telegram_id"]
         mark = "☑️" if telegram_id in selected else "⬜"
         name = (employee["name"] or "موظف").strip()
-        if len(name) > 42:
-            name = name[:39] + "..."
+        if len(name) > 34:
+            name = name[:31] + "..."
         job = (employee["job_title"] or "").strip()
-        label = f"{mark} {name}" + (f" — {job[:18]}" if job else "")
+        label = f"{mark} {name}" + (f" — {job[:16]}" if job else "")
         rows.append([InlineKeyboardButton(label, callback_data=f"broadcast:employee:{telegram_id}")])
     navigation = []
     if page > 0:
