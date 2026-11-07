@@ -111,6 +111,8 @@ def main() -> int:
             logger.info("Migration check complete; applied %d migration(s).", len(pending))
             return 0
     except Exception:
+        if conn:
+            conn.rollback()
         logger.exception("Database migration failed. No secret values are logged.")
         return 1
     finally:
