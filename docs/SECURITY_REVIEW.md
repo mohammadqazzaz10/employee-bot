@@ -1,48 +1,85 @@
 # Security and operational review
 
-## Scope
-This review is based on the repository source and its database initialization code. It is not a penetration test and does not establish that a deployed Render service or database is configured correctly.
+## Scope and limitations
 
-## Findings addressed on this development branch
+This review covers the source code and automated PostgreSQL integration tests on
+`improvements/multibranch-foundation`. It is not a penetration test. It does not
+verify a real Render service, production database, Telegram bot, webhook, or phone
+notification behavior.
 
-1. **Contact onboarding could persist unapproved contacts.** Fixed: `handle_contact` verifies the shared phone against an active employee record in PostgreSQL before linking the Telegram account, and checks that the contact belongs to the sender.
-2. **Approval callbacks lacked authorization.** Fixed: callback payloads are validated; approve/reject actions require a database-backed administrator; return confirmation is restricted to the intended employee.
-3. **Requests were not durable.** Fixed: smoke, lunch, leave and vacation handlers persist a pending row before admin notification. Decisions use a conditional update from `pending`, and record the deciding admin and timestamps.
-4. **Daily limits used the server calendar date.** Fixed: daily smoke and lunch queries use the `Asia/Amman` local date.
-5. **Administrator and employee phone IDs were embedded in source.** Fixed: hard-coded IDs/phone allowlist were removed. The first super administrator is provisioned using `SUPER_ADMIN_TELEGRAM_ID`; employee phone authorization is checked against active database records. Admin checks fail closed when PostgreSQL is unavailable.
-6. **Employee deletion removed historical rows through cascading foreign keys.** Fixed in the command path: employee removal now sets `is_active = FALSE` and retains associated history. Existing inactive employees are excluded from login and active listings.
-7. **Phone number formats could differ between local and international Jordanian forms.** Fixed: local `07XXXXXXXX` numbers are normalized to `9627XXXXXXXX`, and existing database values are normalized during initialization.
+## Controls implemented on this development branch
 
-## Remaining high-priority findings
+1. **Employee onboarding:** a contact must be the sender's own Telegram contact and
+   match an active pre-registered phone. Telegram linking is atomic, registration-only,
+   and cannot move an already-linked account to another employee.
+2. **Administrator authorization:** super-admin and explicit branch roles are read from
+   PostgreSQL. Database errors fail closed. Branch permissions are checked again and
+   locked inside employee creation, settings/type writes, and request decisions.
+3. **Branch isolation:** employee listings, onboarding, request decisions, request
+   notifications, configurable buttons, settings, and broadcast audiences are scoped
+   to assigned branches. Only the super admin can target all branches.
+4. **Request lifecycle:** requests are stored before notification. A conditional
+   pending-to-decided update prevents duplicate decisions and records the deciding
+   administrator and timestamps.
+5. **Transactional smoking/lunch accounting:** policy validation and the daily
+   cigarette/lunch accounting records commit or roll back with the request decision.
+6. **Timer reliability:** approved timed requests create a timer-start outbox record in
+   the same transaction as the decision. Timer state is stored in PostgreSQL, restored
+   after restart, and pending timer-start messages are retried. Delivery is at-least-once;
+   a crash between Telegram accepting a message and database persistence can create a
+   duplicate start notification.
+7. **Return confirmation:** only the employee can confirm their own timer, and the
+   button is bound to the exact timer message/type so an old button cannot clear a
+   newer timer.
+8. **Broadcasts:** recipient selection is revalidated before delivery; delivery and
+   acknowledgement states are stored per recipient; reminders resume after restart.
+9. **Employee history:** employee removal is a soft deactivation. Historical requests
+   and accounting rows remain.
+10. **Phone normalization and uniqueness:** Jordanian local mobile numbers are
+    canonicalized. Migration 005 adds a unique partial index for active employee
+    phone numbers and stops if existing duplicates require manual reconciliation.
+11. **Secrets:** tokens and database URLs are read from environment variables and
+    excluded from repository files. No actual credentials are included in the repo.
 
-1. **Application-level branch isolation is not implemented yet.** Employee and request queries are still global, and existing admins are global. The branch migration creates schema and roles but does not yet scope every command, callback, or query. Do not operate multiple branches until this is complete and tested.
-2. **Timers are process-local.** `active_timers` and `timer_completed` are in-memory dictionaries; jobs are scheduled every second. Restarts lose timer state and frequent edits create unnecessary load.
-3. **Request decisions and business side effects are not one transaction.** The request is marked approved before incrementing counters, marking lunch, or starting a timer. A later database or Telegram failure can require reconciliation.
-4. **Database connection lifecycle needs further hardening.** Some older helper functions close connections only on the success path. A follow-up refactor should consistently use context managers and add retry/timeout policy.
-5. **Database migration has not been applied or exercised against a live PostgreSQL instance in this work.** It is syntax-checked by contract tests only; a real backup/restore rehearsal and integration tests are still required.
+## Database migration and CI
 
-## Database and deployment setup
+- The application initializes base tables on startup.
+- Numbered migrations 001–005 add branches/roles, configurable request types,
+  broadcast logs/acknowledgements, branch settings integrity, active-phone uniqueness,
+  and the timer-start outbox.
+- `scripts/migrate.py` applies migrations in order under a PostgreSQL advisory lock
+  and records SHA-256 checksums in `schema_migrations`.
+- GitHub Actions compiles the Python project and runs contract plus PostgreSQL
+  integration tests against a temporary PostgreSQL 16 service.
 
-- The app requires `TELEGRAM_BOT_TOKEN` and `DATABASE_URL`.
-- It creates/upgrades base tables at startup: `employees`, `requests`, `daily_cigarettes`, `admins`, `lunch_breaks`, `cigarette_times`, and `absences`.
-- The first super admin is inserted into `admins` from `SUPER_ADMIN_TELEGRAM_ID`.
-- Render Web Services use `RENDER_EXTERNAL_URL` as the webhook base URL. Background Workers use polling without a public URL.
-- Local secrets belong in an untracked `.env`; `.env.example` contains placeholders only.
+CI integration tests do not establish that the migrations have been applied to the
+intended Render database or that Telegram delivery succeeds.
 
-See `DEPLOYMENT.md` for the exact Render and first-admin setup.
+## Remaining production gates
 
-## Multi-branch migration
+1. **No live environment validation yet:** migrations 001–005 have not been applied
+   to the intended Render database, and no Render service or environment settings
+   have been changed.
+2. **Backup/restore rehearsal:** take a backup of the intended database, restore it to
+   a separate database, and verify application reads before applying migrations.
+3. **Telegram staging tests:** verify self-contact linking, wrong/duplicate phone
+   rejection, branch-scoped approvals, concurrent approval behavior, timer start and
+   expiry, restart recovery, broadcasts, acknowledgements, and delivery failures.
+4. **At-least-once timer delivery:** staging should test the crash window between
+   Telegram accepting a start message and the database committing the timer message
+   ID. Duplicate notification is possible by design; a timed request must not be lost.
+5. **Operational observability:** review Render logs and alerts for database
+   connection failures, failed Telegram sends, retrying outbox records, and failed
+   broadcast deliveries.
+6. **Release control:** the pull request remains Draft. No merge or production
+   deployment has been performed.
 
-`migrations/001_multibranch_foundation.sql` creates the initial branch, adds employee/request branch references and indexes, creates branch-role assignments, and adds default-branch assignment triggers. It expects the base tables (including `admins`) to exist, so start the app once against the intended database before applying it.
+## Render and credentials
 
-The migration is deliberately not run automatically. Back up and verify restore first. Requests without a linked employee retain a NULL branch and require review.
+The runtime requires `TELEGRAM_BOT_TOKEN` and `DATABASE_URL`; the first super admin
+is configured with `SUPER_ADMIN_TELEGRAM_ID`. Use Render's Environment settings and
+keep all secret values out of GitHub and chat. See `DEPLOYMENT.md` for the staged
+setup and migration procedure.
 
-## Production release gates
-
-- Implement and test branch-scoped authorization and queries for every employee, request, and admin operation.
-- Replace in-memory timers with persistent deadlines and restart recovery.
-- Make approval side effects transactional or use a reliable outbox/reconciliation mechanism.
-- Extend PostgreSQL integration coverage for branch authorization and request side effects, rehearse backup/restore, and add operational health checks.
-- Verify Render environment variables and deploy only after review.
-
-No Render service, environment variable, production database, webhook, or deployment was changed by this work.
+No Render service, environment variable, production database, webhook, or deployment
+has been changed by this work.
