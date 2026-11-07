@@ -76,6 +76,19 @@ class PostgreSQLIntegrationTests(unittest.TestCase):
         finally:
             conn.close()
 
+        timer_ack_sql = (
+            Path(__file__).resolve().parents[1]
+            / "migrations"
+            / "006_timer_return_acknowledgements.sql"
+        ).read_text(encoding="utf-8")
+        conn = psycopg2.connect(os.environ["DATABASE_URL"], sslmode="disable")
+        try:
+            with conn.cursor() as cur:
+                cur.execute(timer_ack_sql)
+            conn.commit()
+        finally:
+            conn.close()
+
         conn = psycopg2.connect(os.environ["DATABASE_URL"], sslmode="disable")
         try:
             with conn.cursor() as cur:
@@ -365,6 +378,7 @@ class PostgreSQLIntegrationTests(unittest.TestCase):
             "003_broadcast_logs.sql",
             "004_broadcast_acknowledgements.sql",
             "005_preproduction_integrity.sql",
+            "006_timer_return_acknowledgements.sql",
         ):
             migration_sql = (
                 Path(__file__).resolve().parents[1] / "migrations" / migration_name
