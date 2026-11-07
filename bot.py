@@ -307,59 +307,68 @@ def save_employee_in_branch(phone_number, full_name, job_title, branch_id, actor
 
 
 def save_employee(telegram_id, phone_number, full_name):
-    """حفظ أو تحديث بيانات الموظف"""
+    """Link a Telegram account only to an existing, active, pre-registered employee.
+
+    A non-null telegram_id never creates a new employee and cannot move an
+    already-linked account to another phone number.
+    """
+    conn = None
     try:
         normalized_phone = normalize_phone(phone_number)
+        if not normalized_phone or not telegram_id:
+            return None
         conn = get_db_connection()
-        cur = conn.cursor()
-        
-        if telegram_id:
-            existing_by_phone = get_employee_by_phone(phone_number)
-            if existing_by_phone and not existing_by_phone.get('telegram_id'):
-                cur.execute("""
-                    UPDATE employees 
-                    SET telegram_id = %s, full_name = %s, last_active = CURRENT_TIMESTAMP
-                    WHERE phone_number = %s
-                    RETURNING id
-                """, (telegram_id, full_name, normalized_phone))
-            else:
-                cur.execute("""
-                    INSERT INTO employees (telegram_id, phone_number, full_name, last_active)
-                    VALUES (%s, %s, %s, CURRENT_TIMESTAMP)
-                    ON CONFLICT (telegram_id) 
-                    DO UPDATE SET 
-                        phone_number = EXCLUDED.phone_number,
-                        full_name = EXCLUDED.full_name,
-                        last_active = CURRENT_TIMESTAMP
-                    RETURNING id
-                """, (telegram_id, normalized_phone, full_name))
-        else:
-            existing = get_employee_by_phone(phone_number)
-            if existing:
-                cur.execute("""
-                    UPDATE employees 
-                    SET full_name = %s, last_active = CURRENT_TIMESTAMP
-                    WHERE phone_number = %s
-                    RETURNING id
-                """, (full_name, normalized_phone))
-            else:
-                cur.execute("""
-                    INSERT INTO employees (phone_number, full_name, last_active)
-                    VALUES (%s, %s, CURRENT_TIMESTAMP)
-                    RETURNING id
-                """, (normalized_phone, full_name))
-        
-        employee_id = cur.fetchone()[0]
+        with conn.cursor() as cur:
+            # Serialize attempts to claim the same registered phone.
+            cur.execute("SELECT pg_advisory_xact_lock(hashtext(%s))", (normalized_phone,))
+            cur.execute(
+                """SELECT id, telegram_id, full_name
+                   FROM employees
+                   WHERE phone_number=%s AND is_active=TRUE
+                   ORDER BY id DESC LIMIT 1
+                   FOR UPDATE""",
+                (normalized_phone,),
+            )
+            employee = cur.fetchone()
+            if not employee:
+                conn.rollback()
+                return None
+            employee_id, linked_telegram_id, registered_name = employee
+            if linked_telegram_id is not None and int(linked_telegram_id) != int(telegram_id):
+                conn.rollback()
+                return None
+            # An account already linked to another employee must not be moved.
+            cur.execute(
+                """SELECT id FROM employees
+                   WHERE telegram_id=%s AND is_active=TRUE AND id<>%s
+                   FOR UPDATE""",
+                (telegram_id, employee_id),
+            )
+            if cur.fetchone():
+                conn.rollback()
+                return None
+            cur.execute(
+                """UPDATE employees
+                   SET telegram_id=%s, last_active=CURRENT_TIMESTAMP
+                   WHERE id=%s AND is_active=TRUE
+                     AND (telegram_id IS NULL OR telegram_id=%s)
+                   RETURNING id""",
+                (telegram_id, employee_id, telegram_id),
+            )
+            linked = cur.fetchone()
+            if not linked:
+                conn.rollback()
+                return None
         conn.commit()
-        cur.close()
-        conn.close()
-        return employee_id
-    except Exception as e:
-        logger.error(f"خطأ في حفظ بيانات الموظف: {e}")
-        if 'conn' in locals():
+        return linked[0]
+    except Exception:
+        if conn:
             conn.rollback()
-            conn.close()
+        logger.exception("Could not securely link Telegram employee account")
         return None
+    finally:
+        if conn:
+            conn.close()
 
 def get_employee_by_telegram_id(telegram_id):
     try:
