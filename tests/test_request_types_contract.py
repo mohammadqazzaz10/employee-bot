@@ -30,8 +30,12 @@ class ConfigurableRequestTypeContractTests(unittest.TestCase):
 
     def test_custom_requests_start_timer_only_after_approval(self):
         self.assertIn('callback_data=f"approve_{request_type}_{request_id}_{update.effective_user.id}"', MODULE)
-        self.assertIn("elif custom_request_type:", BOT)
-        self.assertIn("await start_timer(context, target_id, timer_minutes, type_)", BOT)
+        decision = BOT.split("def decide_request", 1)[1].split(
+            "\\n# --- دوال السجائر", 1
+        )[0]
+        self.assertIn('request_type.startswith("custom-")', decision)
+        self.assertIn("timer_start_outbox", decision)
+        self.assertIn("request_id=request_id", BOT)
         self.assertIn("_can_manage(query.from_user.id, emp.get(\"branch_id\"))", BOT)
 
     def test_custom_button_uses_employee_branch_and_database_name(self):
