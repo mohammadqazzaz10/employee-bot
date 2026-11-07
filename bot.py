@@ -554,11 +554,20 @@ def get_all_admins():
         return []  # Fail closed if PostgreSQL is unavailable.
 
 def is_admin(user_id):
+    """Only super-admins or explicitly branch-assigned admins have access."""
     conn = None
     try:
         conn = get_db_connection()
         cur = conn.cursor()
-        cur.execute("SELECT 1 FROM admins WHERE telegram_id = %s", (user_id,))
+        cur.execute("""
+            SELECT 1 FROM admins a
+            WHERE a.telegram_id = %s AND (
+                a.is_super_admin = TRUE OR EXISTS (
+                    SELECT 1 FROM admin_branch_roles r
+                    WHERE r.telegram_id = a.telegram_id
+                )
+            )
+        """, (user_id,))
         result = cur.fetchone()
         cur.close()
         conn.close()
@@ -568,6 +577,91 @@ def is_admin(user_id):
         if conn:
             conn.close()
         return False
+
+def admin_can_access_branch(user_id, branch_id):
+    """Fail-closed authorization for every branch-owned operation."""
+    if not branch_id:
+        return False
+    if is_super_admin(user_id):
+        return True
+    conn = None
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT 1 FROM admin_branch_roles
+            WHERE telegram_id=%s AND branch_id=%s
+              AND role IN ('branch_manager', 'supervisor')
+        """, (user_id, branch_id))
+        allowed = bool(cur.fetchone())
+        cur.close()
+        conn.close()
+        return allowed
+    except Exception as e:
+        logger.error("Error checking branch access: %s", e)
+        if conn:
+            conn.close()
+        return False
+
+def get_branch_admin_ids(branch_id):
+    """Return only branch administrators plus explicitly global super-admins."""
+    conn = None
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT DISTINCT a.telegram_id
+            FROM admins a
+            LEFT JOIN admin_branch_roles r ON r.telegram_id = a.telegram_id
+            WHERE a.is_super_admin = TRUE
+               OR (r.branch_id = %s AND r.role IN ('branch_manager', 'supervisor'))
+            ORDER BY a.telegram_id
+        """, (branch_id,))
+        ids = [row[0] for row in cur.fetchall()]
+        cur.close()
+        conn.close()
+        return ids
+    except Exception as e:
+        logger.error("Error getting branch administrators: %s", e)
+        if conn:
+            conn.close()
+        return []
+
+async def send_to_branch_admins(context, branch_id, text, reply_markup=None):
+    for admin_id in get_branch_admin_ids(branch_id):
+        try:
+            await context.bot.send_message(
+                chat_id=admin_id, text=text, reply_markup=reply_markup
+            )
+        except Exception as e:
+            logger.error("Failed to notify branch administrator %s: %s", admin_id, e)
+
+def get_employees_for_admin(user_id):
+    """List only employees visible to this administrator."""
+    conn = None
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        if is_super_admin(user_id):
+            cur.execute("SELECT * FROM employees WHERE is_active=TRUE ORDER BY full_name")
+        else:
+            cur.execute("""
+                SELECT e.* FROM employees e
+                JOIN admin_branch_roles r ON r.branch_id=e.branch_id
+                WHERE r.telegram_id=%s
+                  AND r.role IN ('branch_manager','supervisor')
+                  AND e.is_active=TRUE
+                ORDER BY e.full_name
+            """, (user_id,))
+        rows = cur.fetchall()
+        cur.close()
+        conn.close()
+        return [dict(row) for row in rows]
+    except Exception as e:
+        logger.error("Error getting scoped employee list: %s", e)
+        if conn:
+            conn.close()
+        return []
 
 def is_super_admin(user_id):
     conn = None
@@ -619,12 +713,25 @@ def remove_admin_from_db(telegram_id):
         return False
 
 async def send_to_all_admins(context, text, reply_markup=None):
-    admin_ids = get_all_admins()
+    """Global administrative notices are restricted to super-admins."""
+    conn = None
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute("SELECT telegram_id FROM admins WHERE is_super_admin=TRUE ORDER BY telegram_id")
+        admin_ids = [row[0] for row in cur.fetchall()]
+        cur.close()
+        conn.close()
+    except Exception as e:
+        logger.error("Error getting super administrators: %s", e)
+        if conn:
+            conn.close()
+        return
     for admin_id in admin_ids:
         try:
             await context.bot.send_message(chat_id=admin_id, text=text, reply_markup=reply_markup)
         except Exception as e:
-            logger.error(f"Failed to send to admin {admin_id}: {e}")
+            logger.error("Failed to send to super-admin %s: %s", admin_id, e)
 
 # --- أدوات مساعدة (لم يتم تغييرها) ---
 # ... (جميع الأدوات المساعدة)
@@ -786,7 +893,7 @@ async def smoke_request(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"🔢 المستهلك: {count}/{settings['smoke_daily_limit']}\n"
         f"⏱ المدة المطلوبة: {settings['smoke_duration_minutes']} دقائق"
     )
-    await send_to_all_admins(context, msg, markup)
+    await send_to_branch_admins(context, employee["branch_id"], msg, markup)
 
 # --- منطق الاستراحة ---
 async def break_request(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -825,7 +932,7 @@ async def break_request(update: Update, context: ContextTypes.DEFAULT_TYPE):
         InlineKeyboardButton("❌ رفض", callback_data=f"reject_break_{request_id}_{user.id}")
     ]]
     msg = f"☕ **طلب استراحة غداء**\n👤 الموظف: {employee['full_name']}"
-    await send_to_all_admins(context, msg, InlineKeyboardMarkup(keyboard))
+    await send_to_branch_admins(context, employee["branch_id"], msg, InlineKeyboardMarkup(keyboard))
     
 # --- المغادرات والإجازات (لم يتم تغييرها) ---
 # ... (جميع دوال المغادرات والإجازات)
@@ -853,7 +960,7 @@ async def receive_leave_reason(update: Update, context: ContextTypes.DEFAULT_TYP
         InlineKeyboardButton("❌ رفض", callback_data=f"reject_leave_{request_id}_{user.id}")
     ]]
     msg = f"🚪 **طلب مغادرة**\n👤 الموظف: {name}\n📝 السبب: {reason}"
-    await send_to_all_admins(context, msg, InlineKeyboardMarkup(keyboard))
+    await send_to_branch_admins(context, employee["branch_id"], msg, InlineKeyboardMarkup(keyboard))
     await update.message.reply_text("تم إرسال الطلب.")
     return ConversationHandler.END
 
@@ -881,7 +988,7 @@ async def receive_vacation_reason(update: Update, context: ContextTypes.DEFAULT_
         InlineKeyboardButton("❌ رفض", callback_data=f"reject_vacation_{request_id}_{user.id}")
     ]]
     msg = f"🌴 **طلب عطلة**\n👤 الموظف: {name}\n📝 التفاصيل: {reason}"
-    await send_to_all_admins(context, msg, InlineKeyboardMarkup(keyboard))
+    await send_to_branch_admins(context, employee["branch_id"], msg, InlineKeyboardMarkup(keyboard))
     await update.message.reply_text("تم إرسال الطلب.")
     return ConversationHandler.END
 
@@ -892,8 +999,11 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # --- إدارة الموظفين والمديرين (لم يتم تغييرها) ---
 # ... (جميع دوال الإدارة)
 async def list_employees(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not is_admin(update.message.from_user.id): return
-    employees = get_all_employees()
+    user_id = update.effective_user.id
+    if not is_admin(user_id):
+        await update.effective_message.reply_text("⛔ هذا الأمر للمديرين فقط.")
+        return
+    employees = get_employees_for_admin(user_id)
     if not employees:
         await update.message.reply_text("لا يوجد موظفين.")
         return
@@ -1274,11 +1384,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if custom:
                 timer_label = custom[2]
         await query.edit_message_text(f"✅ شكراً {name}، تم تسجيل عودتك للعمل.\n\n(تم إنهاء مؤقت {timer_label})")
-        if type_.startswith("custom-") and employee and employee.get("branch_id"):
-            from request_types import send_to_branch_admins
-            await send_to_branch_admins(context, employee["branch_id"], f"🔙 الموظف **{name}** عاد من **{timer_label}**.")
-        else:
-            await send_to_all_admins(context, f"🔙 الموظف **{name}** عاد من **{timer_label}**.")
+        await send_to_branch_admins(context, employee["branch_id"], f"🔙 الموظف **{name}** عاد من **{timer_label}**.")
         return
 
     # Approval/rejection is an administrative action, never trust the button alone.
@@ -1289,6 +1395,10 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     emp = get_employee_by_telegram_id(target_id)
     if not emp:
         await query.edit_message_text("⚠️ الموظف المرتبط بهذا الطلب لم يعد موجوداً.")
+        return
+
+    if not admin_can_access_branch(query.from_user.id, emp.get("branch_id")):
+        await query.edit_message_text("⛔ لا تملك صلاحية إدارة طلبات هذا الفرع.")
         return
 
     custom_request_type = None
