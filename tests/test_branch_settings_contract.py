@@ -1,7 +1,10 @@
 from pathlib import Path
 import unittest
 
+from datetime import time
+
 from branch_settings import _parse, LABELS, NUMERIC, TIMES, TOGGLES
+from bot import is_within_time_window
 
 ROOT = Path(__file__).resolve().parents[1]
 BOT_SOURCE = (ROOT / "bot.py").read_text(encoding="utf-8")
@@ -49,6 +52,14 @@ class BranchSettingsContractTests(unittest.TestCase):
         self.assertIsNone(_parse("smoke_end_time", "off"))
         with self.assertRaises(ValueError):
             _parse("lunch_start_time", "25:90")
+
+    def test_time_windows_support_overnight_and_open_ended_ranges(self):
+        self.assertTrue(is_within_time_window(time(23, 0), time(22, 0), time(6, 0)))
+        self.assertTrue(is_within_time_window(time(5, 59), time(22, 0), time(6, 0)))
+        self.assertFalse(is_within_time_window(time(12, 0), time(22, 0), time(6, 0)))
+        self.assertTrue(is_within_time_window(time(11, 0), time(10, 0), None))
+        self.assertFalse(is_within_time_window(time(9, 0), time(10, 0), None))
+        self.assertTrue(is_within_time_window(time(12, 0), None, None))
 
     def test_toggle_values_are_explicit(self):
         self.assertTrue(_parse("smoke_enabled", "نعم"))
