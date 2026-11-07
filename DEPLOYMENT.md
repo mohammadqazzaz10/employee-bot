@@ -90,3 +90,16 @@ python bot.py
 ``
 
 The repository's `.gitignore` excludes `.env`. Use `.env.example` only as a template with placeholders.
+
+
+## Manager announcements and attention alerts (migration 003)
+
+After migrations 001 and 002, take/verify a backup and apply `migrations/003_broadcast_logs.sql`. It creates the audit table for announcement delivery summaries.
+
+Managers use `/broadcast`:
+- The super admin can choose all employees across all branches or one branch.
+- A branch manager must explicitly choose one of the branches assigned to that manager; cross-branch broadcast is rejected.
+- The manager can send text, a Telegram voice message, or an audio file. The bot shows the audience and recipient count and requires confirmation before sending.
+- The result reports successful and failed deliveries and records a delivery summary in PostgreSQL.
+
+For a bell/ringing sound, send a short audio clip to the bot as the announcement. Telegram clients control how and whether audio plays automatically; the bot cannot force a recipient's phone to ring or override their notification/silent settings. Employees must have started the bot and have a linked Telegram account to receive broadcasts.
