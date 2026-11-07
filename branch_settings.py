@@ -95,7 +95,29 @@ def _save(branch_id, key, value, user_id):
     try:
         conn = bot.get_db_connection()
         cur = conn.cursor()
-        cur.execute("SELECT 1 FROM branches WHERE id=%s AND is_active=TRUE", (branch_id,))
+        cur.execute(
+            "SELECT is_super_admin FROM admins WHERE telegram_id=%s FOR SHARE",
+            (user_id,),
+        )
+        actor = cur.fetchone()
+        if not actor:
+            conn.rollback()
+            return False
+        if not actor[0]:
+            cur.execute(
+                """SELECT 1 FROM admin_branch_roles
+                   WHERE telegram_id=%s AND branch_id=%s
+                     AND role IN ('branch_manager','supervisor')
+                   FOR SHARE""",
+                (user_id, branch_id),
+            )
+            if not cur.fetchone():
+                conn.rollback()
+                return False
+        cur.execute(
+            "SELECT 1 FROM branches WHERE id=%s AND is_active=TRUE FOR SHARE",
+            (branch_id,),
+        )
         if not cur.fetchone():
             conn.rollback()
             return False
