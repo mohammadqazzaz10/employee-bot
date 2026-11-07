@@ -65,21 +65,16 @@ async def broadcast_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.effective_message.reply_text("⛔ هذا الأمر للمديرين فقط.")
         return
     context.user_data.pop(STATE, None)
+    rows = []
     if bot.is_super_admin(user_id):
-        rows = [[InlineKeyboardButton("📢 جميع الموظفين في كل الفروع", callback_data="broadcast:all")]]
-        for branch_id, name in _branches(user_id):
-            rows.append([InlineKeyboardButton(f"🏬 فرع: {name}", callback_data=f"broadcast:branch:{branch_id}")])
-        await update.effective_message.reply_text(
-            "اختر الجمهور الذي تريد إرسال الإعلان إليه:", reply_markup=InlineKeyboardMarkup(rows))
-    else:
-        branches = _branches(user_id)
-        if not branches:
-            await update.effective_message.reply_text("⛔ لا يوجد فرع مرتبط بصلاحيتك.")
-            return
-        context.user_data[STATE] = {"audience": str(branches[0][0])}
-        await update.effective_message.reply_text(
-            "أرسل نص الإعلان أو أرسل رسالة صوتية/ملفاً صوتياً ليتم تعميمه على موظفي فرعك.\n"
-            "يمكنك كتابة /cancel للإلغاء.")
+        rows.append([InlineKeyboardButton("📢 جميع الموظفين في كل الفروع", callback_data="broadcast:all")])
+    for branch_id, name in _branches(user_id):
+        rows.append([InlineKeyboardButton(f"🏬 فرع: {name}", callback_data=f"broadcast:branch:{branch_id}")])
+    if not rows:
+        await update.effective_message.reply_text("⛔ لا يوجد فرع مرتبط بصلاحيتك.")
+        return
+    await update.effective_message.reply_text(
+        "اختر الفرع أو الجمهور الذي تريد إرسال الإعلان إليه:", reply_markup=InlineKeyboardMarkup(rows))
 
 
 async def broadcast_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
