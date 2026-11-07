@@ -158,6 +158,8 @@ class PostgreSQLIntegrationTests(unittest.TestCase):
         )
         self.assertIsNone(bot._timer_db("outbox_for_request", request_id))
         self.assertTrue(bot._timer_db("is_active", 555000111))
+        self.assertTrue(bot._timer_db("clear_matching", 555000111, "smoke", 777777))
+        self.assertFalse(bot._timer_db("has_unreturned", 555000111))
         self.assertFalse(
             bot.decide_request(
                 request_id,
@@ -184,6 +186,14 @@ class PostgreSQLIntegrationTests(unittest.TestCase):
 
         self.assertTrue(bot.delete_employee_by_phone(phone))
         self.assertFalse(bot.verify_employee(phone))
+        replacement_id = bot.save_employee_in_branch(
+            "+962780000999", "Replacement Employee", "Cashier",
+            main_branch_id, bot.SUPER_ADMIN_TELEGRAM_ID,
+        )
+        self.assertIsNotNone(replacement_id)
+        self.assertIsNone(
+            bot.save_employee(555000111, "+962780000999", "Replacement Employee")
+        )
         conn = psycopg2.connect(os.environ["DATABASE_URL"], sslmode="disable")
         try:
             with conn.cursor() as cur:
