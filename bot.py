@@ -1618,7 +1618,7 @@ async def _schedule_timer(application, user_id, msg_id, start_time, end_time, ty
     active_timers[int(user_id)] = job
 
 
-async def start_timer(context: ContextTypes.DEFAULT_TYPE, user_id, minutes, type_):
+async def _start_timer_for_bot(bot_client, application, user_id, minutes, type_, request_id=None):
     duration_seconds = max(1, int(minutes)) * 60
     start_time = get_jordan_time()
     end_time = start_time + timedelta(seconds=duration_seconds)
@@ -1631,22 +1631,61 @@ async def start_timer(context: ContextTypes.DEFAULT_TYPE, user_id, minutes, type
         custom = get_request_type_by_code(employee.get("branch_id"), type_) if employee and employee.get("branch_id") else None
         label = custom[2] if custom else "الاستئذان"
         emoji = "🕌" if "الصلاة" in label else ("🚻" if "الحمام" in label else "⏳")
-    message = await context.bot.send_message(
-        chat_id=user_id,
-        text=(
-            f"{emoji} بدأت {label}\n"
-            "━━━━━━━━━━━━━━━━━━\n"
-            f"⏳ الوقت المحدد: {int(minutes)} دقيقة\n"
-            "سيظهر العد التنازلي هنا، وسيصلك تنبيه عند الانتهاء."
-        ),
-    )
-    if not _timer_db("save", user_id, message.message_id, type_, start_time, end_time):
-        await context.bot.send_message(
+    try:
+        message = await bot_client.send_message(
             chat_id=user_id,
-            text="⚠️ تعذر حفظ المؤقت. أبلغ المدير حتى لا يضيع موعد انتهاء الاستراحة.",
+            text=(
+                f"{emoji} بدأت {label}\\n"
+                "━━━━━━━━━━━━━━━━━━\\n"
+                f"⏳ الوقت المحدد: {int(minutes)} دقيقة\\n"
+                "سيظهر العد التنازلي هنا، وسيصلك تنبيه عند الانتهاء."
+            ),
         )
+    except Exception as exc:
+        if request_id is not None:
+            _timer_db("outbox_error", str(exc)[:1000], request_id)
+        logger.exception("Could not send approved timer start to employee %s", user_id)
+        return False
+
+    if request_id is not None:
+        saved = _timer_db(
+            "save_outbox", user_id, message.message_id, type_,
+            start_time, end_time, request_id,
+        )
+    else:
+        saved = _timer_db("save", user_id, message.message_id, type_, start_time, end_time)
+    if not saved:
+        logger.error(
+            "Timer message %s was sent to %s but durable timer state was not saved; "
+            "the pending outbox will retry if this was an approved request.",
+            message.message_id, user_id,
+        )
+        return False
+    await _schedule_timer(
+        application, user_id, message.message_id, start_time, end_time, type_
+    )
+    return True
+
+
+async def start_timer(context: ContextTypes.DEFAULT_TYPE, user_id, minutes, type_, request_id=None):
+    return await _start_timer_for_bot(
+        context.bot, context.application, user_id, minutes, type_, request_id
+    )
+
+
+async def process_pending_timer_starts(application):
+    rows = _timer_db("outbox_list")
+    if rows is False:
+        logger.error("Could not read pending approved timer starts")
         return
-    await _schedule_timer(context.application, user_id, message.message_id, start_time, end_time, type_)
+    for request_id, user_id, timer_type, minutes in rows:
+        await _start_timer_for_bot(
+            application.bot, application, user_id, minutes, timer_type, request_id
+        )
+
+
+async def retry_pending_timer_starts(context: ContextTypes.DEFAULT_TYPE):
+    await process_pending_timer_starts(context.application)
 
 
 async def restore_active_timers(application: Application):
