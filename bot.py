@@ -420,7 +420,7 @@ def save_employee(telegram_id, phone_number, full_name):
             # An account already linked to another employee must not be moved.
             cur.execute(
                 """SELECT id FROM employees
-                   WHERE telegram_id=%s AND is_active=TRUE AND id<>%s
+                   WHERE telegram_id=%s AND id<>%s
                    FOR UPDATE""",
                 (telegram_id, employee_id),
             )
