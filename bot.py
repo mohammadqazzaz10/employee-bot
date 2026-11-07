@@ -250,18 +250,36 @@ def save_employee_in_branch(phone_number, full_name, branch_id, actor_id):
     """Create an unlinked employee only when the actor can administer the target branch."""
     conn = None
     try:
-        if not (is_super_admin(actor_id) or admin_can_access_branch(actor_id, branch_id)):
-            logger.warning("Denied employee creation in branch %s by %s", branch_id, actor_id)
-            return None
         normalized_phone = normalize_phone(phone_number)
         if not normalized_phone or not full_name.strip() or not branch_id:
             return None
         conn = get_db_connection()
         with conn.cursor() as cur:
-            cur.execute("SELECT 1 FROM branches WHERE id=%s AND is_active=TRUE", (branch_id,))
+            # Check and lock the actor's identity/branch grant in this same transaction.
+            cur.execute(
+                "SELECT is_super_admin FROM admins WHERE telegram_id=%s FOR SHARE",
+                (actor_id,),
+            )
+            actor = cur.fetchone()
+            if not actor:
+                conn.rollback()
+                return None
+            if not actor[0]:
+                cur.execute("""
+                    SELECT 1 FROM admin_branch_roles
+                    WHERE telegram_id=%s AND branch_id=%s
+                      AND role IN ('branch_manager', 'supervisor')
+                    FOR SHARE
+                """, (actor_id, branch_id))
+                if not cur.fetchone():
+                    conn.rollback()
+                    logger.warning("Denied employee creation in branch %s by %s", branch_id, actor_id)
+                    return None
+            cur.execute("SELECT 1 FROM branches WHERE id=%s AND is_active=TRUE FOR SHARE", (branch_id,))
             if not cur.fetchone():
                 conn.rollback()
                 return None
+            cur.execute("SELECT pg_advisory_xact_lock(hashtext(%s))", (normalized_phone,))
             cur.execute(
                 "SELECT id FROM employees WHERE phone_number=%s AND is_active=TRUE",
                 (normalized_phone,),
