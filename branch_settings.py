@@ -250,5 +250,5 @@ async def save_setting_value(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
 def register_settings_handlers(application):
     application.add_handler(CommandHandler("settings", settings_command))
-    application.add_handler(CallbackQueryHandler(settings_callback, pattern=r"^branchcfg:"))
+    application.add_handler(CallbackQueryHandler(settings_callback, pattern=r"^branchcfg:"), group=-1)
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, save_setting_value), group=1)
