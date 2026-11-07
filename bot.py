@@ -474,48 +474,62 @@ def decide_request(request_id, employee_id, request_type, decision, admin_id):
                 conn.rollback()
                 return False
             branch_id = employee_row[0]
-            cur.execute(
-                "SELECT smoke_enabled, smoke_daily_limit, lunch_enabled "
-                "FROM branch_settings WHERE branch_id=%s FOR UPDATE",
-                (branch_id,),
-            )
+            cur.execute("""
+                SELECT smoke_enabled, smoke_daily_limit, smoke_start_time,
+                       smoke_end_time, smoke_gap_minutes, lunch_enabled,
+                       lunch_start_time, lunch_end_time
+                FROM branch_settings WHERE branch_id=%s FOR UPDATE
+            """, (branch_id,))
             settings_row = cur.fetchone()
             if not settings_row:
                 conn.rollback()
                 return False
-            smoke_enabled, smoke_limit, lunch_enabled = settings_row
+            (smoke_enabled, smoke_limit, smoke_start, smoke_end, smoke_gap,
+             lunch_enabled, lunch_start, lunch_end) = settings_row
+            now = get_jordan_time()
+            today = now.date()
+            current_time = now.time().replace(tzinfo=None)
             if request_type == "smoke":
-                if not smoke_enabled:
+                if not smoke_enabled or current_time < smoke_start or (smoke_end and current_time >= smoke_end):
                     conn.rollback()
                     return False
-                today = get_jordan_time().date()
+                cur.execute("""
+                    SELECT taken_at FROM cigarette_times
+                    WHERE employee_id=%s ORDER BY taken_at DESC LIMIT 1
+                """, (employee_id,))
+                last_smoke = cur.fetchone()
+                if last_smoke and (now - last_smoke[0]).total_seconds() < int(smoke_gap) * 60:
+                    conn.rollback()
+                    return False
                 cur.execute("""
                     INSERT INTO daily_cigarettes (employee_id, date, count, updated_at)
-                    VALUES (%s, %s, 1, CURRENT_TIMESTAMP)
+                    SELECT %s, %s, 1, CURRENT_TIMESTAMP
+                    WHERE %s > 0
                     ON CONFLICT (employee_id, date)
                     DO UPDATE SET count = daily_cigarettes.count + 1,
                                   updated_at = CURRENT_TIMESTAMP
                     WHERE daily_cigarettes.count < %s
                     RETURNING count
-                """, (employee_id, today, smoke_limit))
+                """, (employee_id, today, smoke_limit, smoke_limit))
                 if not cur.fetchone():
                     conn.rollback()
                     return False
                 cur.execute(
                     "INSERT INTO cigarette_times(employee_id, taken_at) VALUES(%s, %s)",
-                    (employee_id, get_jordan_time()),
+                    (employee_id, now),
                 )
             else:
-                if not lunch_enabled:
+                if (not lunch_enabled or
+                    (lunch_start and current_time < lunch_start) or
+                    (lunch_end and current_time >= lunch_end)):
                     conn.rollback()
                     return False
-                today = get_jordan_time().date()
                 cur.execute("""
                     INSERT INTO lunch_breaks(employee_id, date, taken, taken_at)
                     VALUES(%s, %s, TRUE, %s)
                     ON CONFLICT(employee_id, date) DO NOTHING
                     RETURNING id
-                """, (employee_id, today, get_jordan_time()))
+                """, (employee_id, today, now))
                 if not cur.fetchone():
                     conn.rollback()
                     return False
