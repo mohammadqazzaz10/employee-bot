@@ -189,6 +189,7 @@ def _update_type(branch_id, type_id, user_id, *, duration=None, active=None):
 async def request_types_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     import bot
     from branch_settings import _resolve_branch
+    context.user_data.pop("pending_branch_setting", None)
     user_id = update.effective_user.id
     if not bot.is_admin(user_id):
         await update.effective_message.reply_text("⛔ هذه الإدارة للمديرين فقط.")
