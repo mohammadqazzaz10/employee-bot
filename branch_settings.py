@@ -248,7 +248,58 @@ async def save_setting_value(update: Update, context: ContextTypes.DEFAULT_TYPE)
     await _show(update.effective_message, branch_id)
 
 
+
+async def assign_branch_admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    import bot
+    user_id = update.effective_user.id
+    if not bot.is_super_admin(user_id):
+        await update.effective_message.reply_text("⛔ هذا الأمر للمدير العام فقط.")
+        return
+    if len(context.args) != 2:
+        await update.effective_message.reply_text("الاستخدام: /assign_branch_admin TELEGRAM_ID BRANCH_ID")
+        return
+    try:
+        admin_id, branch_id = int(context.args[0]), int(context.args[1])
+        if admin_id <= 0 or branch_id <= 0:
+            raise ValueError
+    except ValueError:
+        await update.effective_message.reply_text("يجب إدخال معرفي Telegram والفرع كأرقام موجبة.")
+        return
+    conn = None
+    try:
+        conn = bot.get_db_connection()
+        cur = conn.cursor()
+        cur.execute("SELECT 1 FROM admins WHERE telegram_id=%s", (admin_id,))
+        if not cur.fetchone():
+            await update.effective_message.reply_text("أضف حساب المدير أولاً باستخدام /add_admin TELEGRAM_ID.")
+            conn.close()
+            return
+        cur.execute("SELECT name FROM branches WHERE id=%s AND is_active=TRUE", (branch_id,))
+        branch = cur.fetchone()
+        if not branch:
+            await update.effective_message.reply_text("رقم الفرع غير موجود أو غير نشط.")
+            conn.close()
+            return
+        cur.execute("""
+            INSERT INTO admin_branch_roles(telegram_id, branch_id, role, granted_by)
+            VALUES(%s, %s, 'branch_manager', %s)
+            ON CONFLICT(telegram_id, branch_id)
+            DO UPDATE SET role='branch_manager', granted_by=EXCLUDED.granted_by, granted_at=CURRENT_TIMESTAMP
+        """, (admin_id, branch_id, user_id))
+        conn.commit()
+        cur.close()
+        conn.close()
+        await update.effective_message.reply_text(f"✅ تم منح المدير {admin_id} صلاحية إدارة إعدادات الفرع {branch_id} فقط.")
+    except Exception as exc:
+        logger.exception("Could not assign branch manager: %s", exc)
+        if conn:
+            conn.rollback()
+            conn.close()
+        await update.effective_message.reply_text("❌ تعذر منح الصلاحية. تأكد من تطبيق migration 001.")
+
+
 def register_settings_handlers(application):
     application.add_handler(CommandHandler("settings", settings_command))
+    application.add_handler(CommandHandler("assign_branch_admin", assign_branch_admin_command))
     application.add_handler(CallbackQueryHandler(settings_callback, pattern=r"^branchcfg:"), group=-1)
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, save_setting_value), group=1)
