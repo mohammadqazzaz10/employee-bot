@@ -131,7 +131,7 @@ python -m pip install .
 cp .env.example .env
 # Edit .env locally; do not commit it.
 python bot.py
-``
+```
 
 The repository's `.gitignore` excludes `.env`. Use `.env.example` only as a template with placeholders.
 
