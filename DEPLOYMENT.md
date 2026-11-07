@@ -73,6 +73,7 @@ Application-level branch controls are now implemented in the development branch 
 - Standard and custom request approvals are checked against the employee's branch; the final decision SQL repeats the authorization condition atomically.
 - Smoke, lunch, leave, vacation, custom-request, and return notifications are routed to the employee's branch managers/supervisors plus super admins, not to unrelated branch managers.
 - `/list_employees` shows all active employees to the super admin and only assigned branches to branch managers.
+- `/add_branch CODE | NAME` creates a branch with its own settings and default bathroom/prayer request buttons; `/list_branches` lists branch IDs, codes, status, and active employee counts.
 - `/assign_branch_admin TELEGRAM_ID BRANCH_ID [branch_manager|supervisor]` grants a branch-specific manager or supervisor role; the default is `branch_manager`. `/remove_branch_admin TELEGRAM_ID BRANCH_ID` revokes only that branch assignment.
 - `/add_employee BRANCH_ID PHONE FULL_NAME | JOB_TITLE` creates an employee profile with full name and job title in the selected active branch. The super admin can choose any active branch; a branch manager or supervisor can add employees only to a branch assigned to that account. Authorization is checked and locked inside the database transaction.
 - Employee deactivation and administrator management remain super-admin-only; employee deactivation is currently performed by phone number and retains historical records.
