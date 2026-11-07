@@ -11,6 +11,7 @@ load_dotenv()
 from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardRemove
 from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, ConversationHandler, filters, ContextTypes
 from branch_settings import get_branch_settings, register_settings_handlers
+from request_types import get_employee_buttons, get_request_type, get_request_type_by_code, register_request_type_handlers
 
 # تعريف مراحل المحادثة
 LEAVE_REASON, VACATION_REASON = range(2)
@@ -672,8 +673,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         menu_keyboard = [
             [KeyboardButton("🚬 طلب استراحة التدخين"), KeyboardButton("☕ طلب استراحة الغداء")],
             [KeyboardButton("🚪 طلب مغادرة"), KeyboardButton("🌴 طلب إجازة")],
-            [KeyboardButton("ℹ️ المساعدة")],
         ]
+        for request_label in get_employee_buttons(employee["branch_id"]):
+            menu_keyboard.append([KeyboardButton(request_label)])
+        menu_keyboard.append([KeyboardButton("ℹ️ المساعدة")])
         menu_markup = ReplyKeyboardMarkup(
             menu_keyboard,
             resize_keyboard=True,
@@ -1074,8 +1077,15 @@ async def update_timer(context: ContextTypes.DEFAULT_TYPE):
     now = get_jordan_time()
     remaining = max(0, int((end_time - now).total_seconds()))
     total_seconds = max(1, int((end_time - start_time).total_seconds()))
-    emoji = "🚬" if type_ == "smoke" else "☕"
-    label = "استراحة التدخين" if type_ == "smoke" else "استراحة الغداء"
+    if type_ == "smoke":
+        emoji, label = "🚬", "استراحة التدخين"
+    elif type_ == "break":
+        emoji, label = "☕", "استراحة الغداء"
+    else:
+        employee = get_employee_by_telegram_id(user_id)
+        custom = get_request_type_by_code(employee.get("branch_id"), type_) if employee and employee.get("branch_id") else None
+        label = custom[2] if custom else "الاستئذان"
+        emoji = "🕌" if "الصلاة" in label else ("🚻" if "الحمام" in label else "⏳")
 
     if remaining <= 0:
         if not _timer_db("is_active", user_id):
@@ -1156,8 +1166,15 @@ async def start_timer(context: ContextTypes.DEFAULT_TYPE, user_id, minutes, type
     duration_seconds = max(1, int(minutes)) * 60
     start_time = get_jordan_time()
     end_time = start_time + timedelta(seconds=duration_seconds)
-    emoji = "🚬" if type_ == "smoke" else "☕"
-    label = "استراحة التدخين" if type_ == "smoke" else "استراحة الغداء"
+    if type_ == "smoke":
+        emoji, label = "🚬", "استراحة التدخين"
+    elif type_ == "break":
+        emoji, label = "☕", "استراحة الغداء"
+    else:
+        employee = get_employee_by_telegram_id(user_id)
+        custom = get_request_type_by_code(employee.get("branch_id"), type_) if employee and employee.get("branch_id") else None
+        label = custom[2] if custom else "الاستئذان"
+        emoji = "🕌" if "الصلاة" in label else ("🚻" if "الحمام" in label else "⏳")
     message = await context.bot.send_message(
         chat_id=user_id,
         text=(
@@ -1221,7 +1238,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         type_, raw_request_id, raw_target_id = data[1], data[2], data[3]
 
-    if type_ not in {"smoke", "break", "leave", "vacation"}:
+    if type_ not in {"smoke", "break", "leave", "vacation"} and not __import__("re").fullmatch(r"custom-[0-9]+", type_):
         await query.edit_message_text("⚠️ نوع الطلب غير صالح.")
         return
     try:
@@ -1255,6 +1272,19 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text("⚠️ الموظف المرتبط بهذا الطلب لم يعد موجوداً.")
         return
 
+    custom_request_type = None
+    if type_.startswith("custom-"):
+        try:
+            custom_id = int(type_.split("-", 1)[1])
+        except ValueError:
+            await query.edit_message_text("⚠️ نوع الاستئذان غير صالح.")
+            return
+        custom_request_type = get_request_type(emp.get("branch_id"), custom_id)
+        from request_types import _can_manage
+        if not custom_request_type or custom_request_type[1] != type_ or not _can_manage(query.from_user.id, emp.get("branch_id")):
+            await query.edit_message_text("⛔ لا تملك صلاحية إدارة هذا الاستئذان أو أنه غير موجود.")
+            return
+
     settings = None
     if action == "approve" and type_ in {"smoke", "break"}:
         settings = get_branch_settings(emp.get('branch_id')) if emp.get('branch_id') else None
@@ -1281,7 +1311,10 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             timer_minutes = settings['lunch_duration_minutes']
             msg_text = f"✅ تمت الموافقة على الغداء ({timer_minutes} دقيقة)."
             await start_timer(context, target_id, timer_minutes, 'break')
-            
+        elif custom_request_type:
+            timer_minutes = custom_request_type[3]
+            msg_text = f"✅ تمت الموافقة على {custom_request_type[2]} ({timer_minutes} دقائق)."
+            await start_timer(context, target_id, timer_minutes, type_)
         else:
             msg_text = f"✅ تمت الموافقة على طلبك ({type_})."
             try:
@@ -1352,6 +1385,7 @@ def main():
     application.add_handler(MessageHandler(filters.CONTACT, handle_contact))
     application.add_handler(CallbackQueryHandler(button_callback))
     register_settings_handlers(application)
+    register_request_type_handlers(application)
     
     # -----------------------------------------------
     # 🚨 التعديل لتشغيل Webhook بدلاً من Polling
