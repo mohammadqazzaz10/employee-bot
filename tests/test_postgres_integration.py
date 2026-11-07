@@ -61,6 +61,20 @@ class PostgreSQLIntegrationTests(unittest.TestCase):
         finally:
             conn.close()
 
+        # The timer outbox migration must exist before an approval can commit.
+        integrity_sql = (
+            Path(__file__).resolve().parents[1]
+            / "migrations"
+            / "005_preproduction_integrity.sql"
+        ).read_text(encoding="utf-8")
+        conn = psycopg2.connect(os.environ["DATABASE_URL"], sslmode="disable")
+        try:
+            with conn.cursor() as cur:
+                cur.execute(integrity_sql)
+            conn.commit()
+        finally:
+            conn.close()
+
         phone = "+962781234567"
         employee_id = bot.save_employee(None, phone, "CI Test Employee")
         self.assertIsNotNone(employee_id)
@@ -107,6 +121,18 @@ class PostgreSQLIntegrationTests(unittest.TestCase):
         )
         self.assertEqual(bot.get_smoke_count_db(employee_id), 1)
         self.assertIsNotNone(bot.get_last_cigarette_time(employee_id))
+        timer_outbox = bot._timer_db("outbox_for_request", request_id)
+        self.assertEqual(timer_outbox, (555000111, "smoke", employee_settings["smoke_duration_minutes"]))
+        timer_start = bot.get_jordan_time()
+        self.assertTrue(
+            bot._timer_db(
+                "save_outbox", 555000111, 777777, "smoke",
+                timer_start, timer_start + __import__("datetime").timedelta(minutes=6),
+                request_id,
+            )
+        )
+        self.assertIsNone(bot._timer_db("outbox_for_request", request_id))
+        self.assertTrue(bot._timer_db("is_active", 555000111))
         self.assertFalse(
             bot.decide_request(
                 request_id,
