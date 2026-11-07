@@ -23,6 +23,10 @@ class BroadcastContractTests(unittest.TestCase):
         for method in ('send_message', 'send_voice', 'send_audio'):
             self.assertIn(f'context.bot.{method}', self.source)
 
+    def test_manager_must_choose_a_branch_explicitly(self):
+        self.assertIn('اختر الفرع أو الجمهور', self.source)
+        self.assertIn('for branch_id, name in _branches(user_id):', self.source)
+
     def test_confirmation_and_delivery_audit(self):
         self.assertIn('broadcast:send', self.source)
         self.assertIn('INSERT INTO broadcast_logs', self.source)
