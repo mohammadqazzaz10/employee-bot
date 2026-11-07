@@ -42,7 +42,7 @@ The migration is deliberately not run automatically. Back up and verify restore 
 - Implement and test branch-scoped authorization and queries for every employee, request, and admin operation.
 - Replace in-memory timers with persistent deadlines and restart recovery.
 - Make approval side effects transactional or use a reliable outbox/reconciliation mechanism.
-- Add PostgreSQL integration tests, migration backup/restore procedures, and operational health checks.
+- Extend PostgreSQL integration coverage for branch authorization and request side effects, rehearse backup/restore, and add operational health checks.
 - Verify Render environment variables and deploy only after review.
 
 No Render service, environment variable, production database, webhook, or deployment was changed by this work.
