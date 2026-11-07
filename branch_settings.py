@@ -258,15 +258,20 @@ async def assign_branch_admin_command(update: Update, context: ContextTypes.DEFA
     if not bot.is_super_admin(user_id):
         await update.effective_message.reply_text("⛔ هذا الأمر للمدير العام فقط.")
         return
-    if len(context.args) != 2:
-        await update.effective_message.reply_text("الاستخدام: /assign_branch_admin TELEGRAM_ID BRANCH_ID")
+    if len(context.args) not in {2, 3}:
+        await update.effective_message.reply_text(
+            "الاستخدام: /assign_branch_admin TELEGRAM_ID BRANCH_ID [branch_manager|supervisor]"
+        )
         return
     try:
         admin_id, branch_id = int(context.args[0]), int(context.args[1])
-        if admin_id <= 0 or branch_id <= 0:
+        role = context.args[2].strip().lower() if len(context.args) == 3 else "branch_manager"
+        if admin_id <= 0 or branch_id <= 0 or role not in {"branch_manager", "supervisor"}:
             raise ValueError
     except ValueError:
-        await update.effective_message.reply_text("يجب إدخال معرفي Telegram والفرع كأرقام موجبة.")
+        await update.effective_message.reply_text(
+            "أدخل معرفات موجبة، والدور branch_manager أو supervisor."
+        )
         return
     conn = None
     try:
@@ -285,14 +290,17 @@ async def assign_branch_admin_command(update: Update, context: ContextTypes.DEFA
             return
         cur.execute("""
             INSERT INTO admin_branch_roles(telegram_id, branch_id, role, granted_by)
-            VALUES(%s, %s, 'branch_manager', %s)
+            VALUES(%s, %s, %s, %s)
             ON CONFLICT(telegram_id, branch_id)
-            DO UPDATE SET role='branch_manager', granted_by=EXCLUDED.granted_by, granted_at=CURRENT_TIMESTAMP
-        """, (admin_id, branch_id, user_id))
+            DO UPDATE SET role=EXCLUDED.role, granted_by=EXCLUDED.granted_by, granted_at=CURRENT_TIMESTAMP
+        """, (admin_id, branch_id, role, user_id))
         conn.commit()
         cur.close()
         conn.close()
-        await update.effective_message.reply_text(f"✅ تم منح المدير {admin_id} صلاحية إدارة إعدادات الفرع {branch_id} فقط.")
+        role_label = "مدير فرع" if role == "branch_manager" else "مشرف فرع"
+        await update.effective_message.reply_text(
+            f"✅ تم تعيين الحساب {admin_id} بصفة {role_label} في {branch[0]} (رقم {branch_id}) فقط."
+        )
     except Exception as exc:
         logger.exception("Could not assign branch manager: %s", exc)
         if conn:
