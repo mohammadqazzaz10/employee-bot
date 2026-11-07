@@ -52,6 +52,23 @@ def get_request_type(branch_id, type_id):
             conn.close()
 
 
+def get_request_type_by_code(branch_id, code):
+    conn = None
+    try:
+        conn = _db()
+        with conn.cursor() as cur:
+            cur.execute("""SELECT id, code, label, duration_minutes, is_active
+                           FROM branch_request_types
+                           WHERE branch_id=%s AND code=%s""", (branch_id, code))
+            return cur.fetchone()
+    except Exception:
+        logger.exception("Could not resolve request type code")
+        return None
+    finally:
+        if conn:
+            conn.close()
+
+
 def get_employee_buttons(branch_id):
     return [row[2] for row in list_request_types(branch_id, active_only=True)]
 
