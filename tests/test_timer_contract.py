@@ -22,9 +22,9 @@ class TimerContractTests(unittest.TestCase):
         self.assertIn("WHERE completed = FALSE", SOURCE)
 
     def test_expiry_notification_has_return_confirmation_button(self):
-        self.assertIn('callback_data=f"returned_{type_}_{user_id}"', SOURCE)
+        self.assertIn('callback_data=f"returned_{type_}_{user_id}_{msg_id}"', SOURCE)
         self.assertIn("Keep the timer active so the next tick retries", SOURCE)
-        self.assertIn('_timer_db("clear", user_id)', SOURCE)
+        self.assertIn('_timer_db("clear_matching", user_id, type_, timer_message_id)', SOURCE)
 
     def test_employee_menu_buttons_are_wired_to_real_handlers(self):
         for label in (
@@ -79,7 +79,9 @@ class TimerPostgreSQLTests(unittest.TestCase):
         self.assertTrue(
             bot._timer_db("save", user_id, message_id, "break", start_at, end_at)
         )
-        self.assertTrue(bot._timer_db("clear", user_id))
+        self.assertFalse(bot._timer_db("clear_matching", user_id, "smoke", message_id))
+        self.assertTrue(bot._timer_db("is_active", user_id))
+        self.assertTrue(bot._timer_db("clear_matching", user_id, "break", message_id))
         self.assertFalse(bot._timer_db("is_active", user_id))
 
 
