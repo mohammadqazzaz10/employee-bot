@@ -1101,6 +1101,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "/remove_admin TELEGRAM_ID - إزالة مدير\n"
                 "/assign_branch_admin TELEGRAM_ID BRANCH_ID [branch_manager|supervisor] - تعيين صلاحية فرع\n"
                 "/remove_branch_admin TELEGRAM_ID BRANCH_ID - إلغاء صلاحية فرع\n"
+                "/add_branch CODE | NAME - إنشاء فرع جديد\n"
+                "/list_branches - عرض الفروع\n"
             )
         await update.message.reply_text(msg, reply_markup=menu_markup)
     else:
