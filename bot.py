@@ -246,6 +246,45 @@ def initialize_database_tables():
 
 # --- دوال الموظفين وقاعدة البيانات (لم يتم تغييرها) ---
 # ... (دوال save_employee, get_employee_by_telegram_id, get_employee_by_phone, get_all_employees, delete_employee_by_phone)
+def save_employee_in_branch(phone_number, full_name, branch_id):
+    """Create an unlinked employee in an explicitly selected, active branch."""
+    conn = None
+    try:
+        normalized_phone = normalize_phone(phone_number)
+        if not normalized_phone or not full_name.strip() or not branch_id:
+            return None
+        conn = get_db_connection()
+        with conn.cursor() as cur:
+            cur.execute("SELECT 1 FROM branches WHERE id=%s AND is_active=TRUE", (branch_id,))
+            if not cur.fetchone():
+                conn.rollback()
+                return None
+            cur.execute(
+                "SELECT id FROM employees WHERE phone_number=%s AND is_active=TRUE",
+                (normalized_phone,),
+            )
+            if cur.fetchone():
+                conn.rollback()
+                return None
+            cur.execute("""
+                INSERT INTO employees
+                    (phone_number, full_name, branch_id, last_active, is_active)
+                VALUES (%s, %s, %s, CURRENT_TIMESTAMP, TRUE)
+                RETURNING id
+            """, (normalized_phone, full_name.strip(), branch_id))
+            employee_id = cur.fetchone()[0]
+        conn.commit()
+        return employee_id
+    except Exception:
+        if conn:
+            conn.rollback()
+        logger.exception("Could not create employee in branch %s", branch_id)
+        return None
+    finally:
+        if conn:
+            conn.close()
+
+
 def save_employee(telegram_id, phone_number, full_name):
     """حفظ أو تحديث بيانات الموظف"""
     try:
@@ -832,7 +871,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if is_super_admin(user.id):
             msg += (
                 "\n🛡️ **أوامر المدير العام:**\n"
-                "/add_employee - إضافة موظف (للفرع الرئيسي حالياً)\n"
+                "/add_employee رقم_الفرع رقم_الهاتف الاسم - إضافة موظف\n"
                 "/remove_employee - إيقاف موظف\n"
                 "/list_admins - عرض المديرين\n"
             )
@@ -1034,20 +1073,38 @@ async def list_employees(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(msg)
 
 async def add_employee(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not is_super_admin(update.effective_user.id):
-        await update.effective_message.reply_text("⛔ إضافة الموظفين متاحة حالياً للمدير العام فقط، حتى لا يُسجل الموظف في فرع غير مقصود.")
+    user_id = update.effective_user.id
+    if len(context.args) < 3:
+        await update.effective_message.reply_text(
+            "الاستخدام: /add_employee رقم_الفرع رقم_الهاتف الاسم_الكامل\n"
+            "مثال: /add_employee 1 0791234567 محمد أحمد"
+        )
         return
-    if len(context.args) < 2:
-        await update.message.reply_text("الاستخدام: /add_employee رقم_الهاتف الاسم")
+    try:
+        branch_id = int(context.args[0])
+        if branch_id <= 0:
+            raise ValueError
+    except ValueError:
+        await update.effective_message.reply_text("رقم الفرع يجب أن يكون رقماً موجباً.")
         return
-    phone = context.args[0]
-    name = ' '.join(context.args[1:])
-    if not phone.startswith('+'): phone = '+' + phone
-    
-    if save_employee(None, phone, name):
-        await update.message.reply_text(f"✅ تم إضافة {name}.")
+    if not (is_super_admin(user_id) or admin_can_access_branch(user_id, branch_id)):
+        await update.effective_message.reply_text("⛔ لا تملك صلاحية إضافة موظفين إلى هذا الفرع.")
+        return
+    phone = context.args[1]
+    name = " ".join(context.args[2:]).strip()
+    if len(name) < 3:
+        await update.effective_message.reply_text("أدخل الاسم الكامل للموظف.")
+        return
+    employee_id = save_employee_in_branch(phone, name, branch_id)
+    if employee_id:
+        await update.effective_message.reply_text(
+            f"✅ تمت إضافة الموظف {name} إلى الفرع رقم {branch_id}.\n"
+            "يمكنه الآن بدء البوت ومشاركة رقم هاتفه لربط حسابه."
+        )
     else:
-        await update.message.reply_text("❌ حدث خطأ.")
+        await update.effective_message.reply_text(
+            "❌ لم تتم الإضافة. تحقق من رقم الفرع، وأنه نشط، وأن رقم الهاتف غير مسجل مسبقاً."
+        )
 
 async def remove_employee(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_super_admin(update.effective_user.id):
