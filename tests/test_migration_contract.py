@@ -31,6 +31,13 @@ class MigrationContractTests(unittest.TestCase):
         self.assertIn("'supervisor'", sql)
         self.assertIn("unique (telegram_id, branch_id)", sql)
 
+    def test_legacy_inserts_receive_default_branch_context(self):
+        sql = MIGRATION.read_text(encoding="utf-8").lower()
+        self.assertIn("assign_default_employee_branch", sql)
+        self.assertIn("trg_employees_default_branch", sql)
+        self.assertIn("assign_request_employee_branch", sql)
+        self.assertIn("trg_requests_employee_branch", sql)
+
 
 if __name__ == "__main__":
     unittest.main()
