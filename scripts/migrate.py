@@ -58,6 +58,13 @@ def main() -> int:
         with conn.cursor() as cur:
             cur.execute("SELECT pg_advisory_lock(%s)", (LOCK_KEY,))
             locked = True
+            cur.execute("SELECT to_regclass('public.schema_migrations')")
+            ledger_exists = bool(cur.fetchone()[0])
+            if not ledger_exists and args.check:
+                logger.error(
+                    "Migration ledger does not exist; migrations 001–006 are not recorded as applied."
+                )
+                return 3
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS schema_migrations (
                     version VARCHAR(120) PRIMARY KEY,
