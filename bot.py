@@ -347,7 +347,8 @@ def create_request(employee_id, request_type, notes=None):
             VALUES (%s, %s, 'pending', %s)
             RETURNING id
         """, (employee_id, request_type, notes))
-        request_id = cur.fetchone()[0]        conn.commit()
+        request_id = cur.fetchone()[0]
+        conn.commit()
         cur.close()
         conn.close()
         return request_id
@@ -1055,7 +1056,8 @@ async def update_timer(context: ContextTypes.DEFAULT_TYPE):
             if "Message is not modified" not in str(exc):
                 logger.warning("Could not finalize timer message for %s: %s", user_id, exc)
         try:
-            await context.bot.send_message(                chat_id=user_id,
+            await context.bot.send_message(
+                chat_id=user_id,
                 text=alert_text,
                 reply_markup=keyboard,
             )
