@@ -453,6 +453,34 @@ def decide_request(request_id, employee_id, request_type, decision, admin_id):
     try:
         conn = get_db_connection()
         cur = conn.cursor()
+        # Lock the actor's admin identity and branch grant so a concurrent
+        # revocation cannot race an approval already in progress.
+        cur.execute(
+            "SELECT is_super_admin FROM admins WHERE telegram_id=%s FOR SHARE",
+            (admin_id,),
+        )
+        actor = cur.fetchone()
+        if not actor:
+            conn.rollback()
+            return False
+        cur.execute(
+            "SELECT branch_id FROM employees WHERE id=%s AND is_active=TRUE FOR SHARE",
+            (employee_id,),
+        )
+        employee_branch = cur.fetchone()
+        if not employee_branch:
+            conn.rollback()
+            return False
+        if not actor[0]:
+            cur.execute("""
+                SELECT 1 FROM admin_branch_roles
+                WHERE telegram_id=%s AND branch_id=%s
+                  AND role IN ('branch_manager', 'supervisor')
+                FOR SHARE
+            """, (admin_id, employee_branch[0]))
+            if not cur.fetchone():
+                conn.rollback()
+                return False
         cur.execute("""
             UPDATE requests
             SET status = %s,
