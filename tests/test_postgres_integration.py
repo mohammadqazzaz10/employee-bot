@@ -226,6 +226,17 @@ class PostgreSQLIntegrationTests(unittest.TestCase):
         self.assertTrue(bot.is_admin(branch_admin_id))
         self.assertTrue(bot.admin_can_access_branch(branch_admin_id, main_branch_id))
         self.assertFalse(bot.admin_can_access_branch(branch_admin_id, second_branch_id))
+
+        # Branch managers may onboard employees only into their assigned branch.
+        scoped_employee_id = bot.save_employee_in_branch(
+            "+962780003333", "Scoped Branch Employee", main_branch_id
+        )
+        self.assertIsNotNone(scoped_employee_id)
+        self.assertIsNone(
+            bot.save_employee_in_branch(
+                "+962780004444", "Unauthorized Branch Employee", second_branch_id
+            )
+        )
         visible_employee_ids = {
             row["id"] for row in bot.get_employees_for_admin(branch_admin_id)
         }
