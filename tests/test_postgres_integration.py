@@ -275,6 +275,18 @@ class PostgreSQLIntegrationTests(unittest.TestCase):
             )
         )
 
+        conn = psycopg2.connect(os.environ["DATABASE_URL"], sslmode="disable")
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "DELETE FROM admin_branch_roles WHERE telegram_id=%s AND branch_id=%s",
+                    (branch_admin_id, main_branch_id),
+                )
+            conn.commit()
+        finally:
+            conn.close()
+        self.assertFalse(bot.is_admin(branch_admin_id))
+
 
 if __name__ == "__main__":
     unittest.main()
