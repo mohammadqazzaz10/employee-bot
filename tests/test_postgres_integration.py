@@ -190,6 +190,65 @@ class PostgreSQLIntegrationTests(unittest.TestCase):
         finally:
             conn.close()
 
+        # Verify that a branch manager can see/decide only within assigned branches.
+        branch_admin_id = 987654321
+        self.assertTrue(bot.add_admin_to_db(branch_admin_id, bot.SUPER_ADMIN_TELEGRAM_ID))
+        main_employee_id = bot.save_employee(
+            None, "+962780001111", "Main Branch Employee"
+        )
+        second_employee_id = bot.save_employee(
+            None, "+962780002222", "Second Branch Employee"
+        )
+        self.assertIsNotNone(main_employee_id)
+        self.assertIsNotNone(second_employee_id)
+
+        conn = psycopg2.connect(os.environ["DATABASE_URL"], sslmode="disable")
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "INSERT INTO branches(code, name) VALUES('second', 'Second Branch') RETURNING id"
+                )
+                second_branch_id = cur.fetchone()[0]
+                cur.execute(
+                    "UPDATE employees SET branch_id=%s WHERE id=%s",
+                    (second_branch_id, second_employee_id),
+                )
+                cur.execute(
+                    """INSERT INTO admin_branch_roles
+                       (telegram_id, branch_id, role, granted_by)
+                       VALUES (%s, %s, 'branch_manager', %s)""",
+                    (branch_admin_id, main_branch_id, bot.SUPER_ADMIN_TELEGRAM_ID),
+                )
+            conn.commit()
+        finally:
+            conn.close()
+
+        self.assertTrue(bot.is_admin(branch_admin_id))
+        self.assertTrue(bot.admin_can_access_branch(branch_admin_id, main_branch_id))
+        self.assertFalse(bot.admin_can_access_branch(branch_admin_id, second_branch_id))
+        visible_employee_ids = {
+            row["id"] for row in bot.get_employees_for_admin(branch_admin_id)
+        }
+        self.assertIn(main_employee_id, visible_employee_ids)
+        self.assertNotIn(second_employee_id, visible_employee_ids)
+
+        second_branch_request = bot.create_request(
+            second_employee_id, "leave", "branch isolation test"
+        )
+        self.assertIsNotNone(second_branch_request)
+        self.assertFalse(
+            bot.decide_request(
+                second_branch_request, second_employee_id, "leave",
+                "approved", branch_admin_id,
+            )
+        )
+        self.assertTrue(
+            bot.decide_request(
+                second_branch_request, second_employee_id, "leave",
+                "approved", bot.SUPER_ADMIN_TELEGRAM_ID,
+            )
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
