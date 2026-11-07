@@ -38,12 +38,10 @@ class SecurityContractTests(unittest.TestCase):
         function = self.source.split("def save_employee(", 1)[1].split(
             "\\ndef get_employee_by_telegram_id", 1
         )[0]
-        self.assertIn("if not normalized_phone:", function)
-        self.assertIn("if telegram_id is None:", function)
-        linking_path = function.split("# Serialize attempts to claim the same registered phone.", 1)[1]
-        self.assertIn("WHERE phone_number=%s AND is_active=TRUE", linking_path)
-        self.assertIn("AND (telegram_id IS NULL OR telegram_id=%s)", linking_path)
-        self.assertNotIn("INSERT INTO employees", linking_path)
+        self.assertIn("if not normalized_phone or not telegram_id", function)
+        self.assertIn("WHERE phone_number=%s AND is_active=TRUE", function)
+        self.assertIn("AND (telegram_id IS NULL OR telegram_id=%s)", function)
+        self.assertNotIn("INSERT INTO employees", function)
 
     def test_callback_actions_are_validated(self):
         handler = self.source.split("async def button_callback", 1)[1].split(
