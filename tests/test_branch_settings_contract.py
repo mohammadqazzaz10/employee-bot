@@ -37,7 +37,11 @@ class BranchSettingsContractTests(unittest.TestCase):
 
     def test_lunch_policy_is_read_from_branch_settings(self):
         self.assertIn("settings['lunch_enabled']", BOT_SOURCE)
-        self.assertIn("settings['lunch_duration_minutes']", BOT_SOURCE)
+        decision = BOT_SOURCE.split("def decide_request", 1)[1].split(
+            "\\n# --- دوال السجائر", 1
+        )[0]
+        self.assertIn("lunch_duration_minutes", decision)
+        self.assertIn("timer_duration = smoke_duration if request_type == \"smoke\" else lunch_duration", decision)
         self.assertIn("settings['lunch_start_time']", BOT_SOURCE)
         self.assertIn("settings['lunch_end_time']", BOT_SOURCE)
 
