@@ -118,8 +118,6 @@ async def broadcast_content(update: Update, context: ContextTypes.DEFAULT_TYPE):
         content.update(kind="voice", value=message.voice.file_id)
     elif message.audio:
         content.update(kind="audio", value=message.audio.file_id)
-    elif message.document and (message.document.mime_type or "").startswith("audio/"):
-        content.update(kind="audio", value=message.document.file_id)
     else:
         await message.reply_text("أرسل نصاً أو تسجيلاً صوتياً أو ملفاً صوتياً فقط.")
         return
@@ -208,5 +206,5 @@ def register_broadcast_handlers(application):
     application.add_handler(CallbackQueryHandler(broadcast_callback, pattern=r"^broadcast:(all|branch:[0-9]+)$"), group=-1)
     application.add_handler(CallbackQueryHandler(broadcast_send_callback, pattern=r"^broadcast:(send|cancel)$"), group=-1)
     application.add_handler(MessageHandler(
-        (filters.TEXT | filters.VOICE | filters.AUDIO | filters.Document.AUDIO) & ~filters.COMMAND,
+        (filters.TEXT | filters.VOICE | filters.AUDIO) & ~filters.COMMAND,
         broadcast_content), group=4)
