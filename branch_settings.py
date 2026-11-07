@@ -298,8 +298,16 @@ async def assign_branch_admin_command(update: Update, context: ContextTypes.DEFA
         await update.effective_message.reply_text("❌ تعذر منح الصلاحية. تأكد من تطبيق migration 001.")
 
 
+async def cancel_settings_edit(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if context.user_data.pop("pending_branch_setting", None):
+        await update.effective_message.reply_text("تم إلغاء تعديل الإعدادات.")
+    else:
+        await update.effective_message.reply_text("لا يوجد تعديل إعدادات قيد الانتظار.")
+
+
 def register_settings_handlers(application):
     application.add_handler(CommandHandler("settings", settings_command))
+    application.add_handler(CommandHandler("cancel", cancel_settings_edit))
     application.add_handler(CommandHandler("assign_branch_admin", assign_branch_admin_command))
     application.add_handler(CallbackQueryHandler(settings_callback, pattern=r"^branchcfg:"), group=-1)
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, save_setting_value), group=1)
