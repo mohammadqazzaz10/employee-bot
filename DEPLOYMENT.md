@@ -71,7 +71,9 @@ Application-level branch controls are now implemented in the development branch 
 - Standard and custom request approvals are checked against the employee's branch; the final decision SQL repeats the authorization condition atomically.
 - Smoke, lunch, leave, vacation, custom-request, and return notifications are routed to the employee's branch managers/supervisors plus super admins, not to unrelated branch managers.
 - `/list_employees` shows all active employees to the super admin and only assigned branches to branch managers.
-- Global employee add/remove and administrator-list commands are super-admin-only for now. Employee creation currently assigns to the initial `main` branch; branch-specific employee onboarding is a remaining enhancement.
+- `/add_employee BRANCH_ID PHONE FULL_NAME` creates an employee in the selected active branch. The super admin can choose any active branch; a branch manager can add employees only to a branch assigned to that manager. The authorization is checked both in the command handler and in the database helper.
+- Employee deactivation and administrator management remain super-admin-only; employee deactivation is currently performed by phone number and retains historical records.
+- Smoke and lunch approvals now commit the request decision and their corresponding daily counter/time records in one PostgreSQL transaction. The current branch policy (enabled state, allowed time window, daily smoking limit, minimum gap, and one-lunch-per-day rule) is revalidated at approval time.
 - Broadcast targeting and branch settings/request-type management also validate branch roles.
 
 This is not a production deployment approval. Apply migrations 001–004 in order after a verified backup, verify branch-role assignments, and complete a staging/Telegram end-to-end test before using multiple branches in production. If the branch migrations are absent, branch authorization fails closed; existing admins will need explicit branch roles or super-admin status.
@@ -134,3 +136,18 @@ are normal Telegram notifications (`disable_notification=false`), not guaranteed
 continuous audio. Employees should enable notifications for the bot chat and choose
 a noticeable chat notification sound in Telegram settings. The attached voice/audio
 is a message attachment and is not autoplayed by Telegram.
+
+
+## Branch-aware employee onboarding and approval safeguards
+
+Use `/add_employee BRANCH_ID PHONE FULL_NAME` after assigning a branch manager with
+`/assign_branch_admin TELEGRAM_ID BRANCH_ID`. The employee is created without a
+Telegram link; they link their own Telegram account by sending `/start` and
+sharing their own phone contact. Duplicate active phone numbers and inactive or
+unknown branches are rejected.
+
+For smoke/lunch requests, approval rechecks the branch's current policy while
+holding the employee and settings rows in a PostgreSQL transaction. The request
+decision and its daily cigarette/lunch accounting records commit together or are
+rolled back together. The timer's Telegram message and persisted message ID are
+still a subsequent operation, so test those delivery/recovery paths in staging.
