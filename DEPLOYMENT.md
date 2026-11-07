@@ -99,8 +99,10 @@ After migrations 001 and 002, take/verify a backup and apply `migrations/003_bro
 Managers use `/broadcast`:
 - The super admin can choose all employees across all branches or one branch.
 - A branch manager must explicitly choose one of the branches assigned to that manager; cross-branch broadcast is rejected.
-- The manager can send text, a Telegram voice message, or an audio file. The bot shows the audience and recipient count and requires confirmation before sending.
-- The result reports successful and failed deliveries and records a delivery summary in PostgreSQL.
+- After choosing the audience, the manager sees employees by name and can select or deselect individual people, move between pages, select everyone in that audience, or clear the selection.
+- Only active employees with a linked Telegram account are listed. Branch managers can only see and select employees in branches assigned to them; the recipient list is checked again immediately before delivery.
+- The manager can send text, a Telegram voice message, or an audio file. The bot shows the selected recipient count and requires confirmation before sending.
+- The result reports successful and failed deliveries and records a delivery summary and per-recipient delivery/acknowledgement state in PostgreSQL.
 
 For a bell/ringing sound, send a short audio clip to the bot as the announcement. Telegram clients control how and whether audio plays automatically; the bot cannot force a recipient's phone to ring or override their notification/silent settings. Employees must have started the bot and have a linked Telegram account to receive broadcasts.
 
