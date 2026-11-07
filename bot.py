@@ -490,7 +490,7 @@ def decide_request(request_id, employee_id, request_type, decision, admin_id):
             today = now.date()
             current_time = now.time().replace(tzinfo=None)
             if request_type == "smoke":
-                if not smoke_enabled or current_time < smoke_start or (smoke_end and current_time >= smoke_end):
+                if not smoke_enabled or not is_within_time_window(current_time, smoke_start, smoke_end):
                     conn.rollback()
                     return False
                 cur.execute("""
@@ -519,9 +519,7 @@ def decide_request(request_id, employee_id, request_type, decision, admin_id):
                     (employee_id, now),
                 )
             else:
-                if (not lunch_enabled or
-                    (lunch_start and current_time < lunch_start) or
-                    (lunch_end and current_time >= lunch_end)):
+                if not lunch_enabled or not is_within_time_window(current_time, lunch_start, lunch_end):
                     conn.rollback()
                     return False
                 cur.execute("""
@@ -866,6 +864,19 @@ async def send_to_all_admins(context, text, reply_markup=None):
 def get_jordan_time():
     return datetime.now(JORDAN_TZ)
 
+
+def is_within_time_window(current_time, start_time=None, end_time=None):
+    """Support open-ended, daytime, and overnight operating windows."""
+    if start_time is None and end_time is None:
+        return True
+    if start_time is None:
+        return current_time < end_time
+    if end_time is None:
+        return current_time >= start_time
+    if start_time <= end_time:
+        return start_time <= current_time < end_time
+    return current_time >= start_time or current_time < end_time
+
 def normalize_phone(phone_number):
     if not phone_number:
         return ""
@@ -983,7 +994,7 @@ async def smoke_request(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     current_time = now.time().replace(tzinfo=None)
     start_time, end_time = settings['smoke_start_time'], settings['smoke_end_time']
-    if current_time < start_time or (end_time and current_time >= end_time):
+    if not is_within_time_window(current_time, start_time, end_time):
         end_text = f" وحتى {end_time.strftime('%H:%M')}" if end_time else ""
         await update.message.reply_text(f"⛔️ وقت السماح بالتدخين من {start_time.strftime('%H:%M')}{end_text}.\nالساعة الآن: {now.strftime('%H:%M')}")
         return
@@ -1046,7 +1057,7 @@ async def break_request(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     now_time = get_jordan_time().time().replace(tzinfo=None)
     lunch_start, lunch_end = settings['lunch_start_time'], settings['lunch_end_time']
-    if (lunch_start and now_time < lunch_start) or (lunch_end and now_time >= lunch_end):
+    if not is_within_time_window(now_time, lunch_start, lunch_end):
         await update.message.reply_text("⛔️ طلب الغداء خارج الوقت المحدد من الإدارة.")
         return
     if has_taken_lunch_break_today(employee['id']):
