@@ -56,7 +56,7 @@ class RuntimeConfigurationContractTests(unittest.TestCase):
             "def create_request", 1
         )[0]
         self.assertIn("UPDATE employees", delete_function)
-        self.assertIn("is_active = FALSE", delete_function)
+        self.assertIn("is_active=FALSE", delete_function)
         self.assertNotIn("DELETE FROM employees", delete_function)
 
     def test_trigger_functions_use_valid_dollar_quoting(self):
