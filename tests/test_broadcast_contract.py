@@ -20,6 +20,7 @@ class BroadcastContractTests(unittest.TestCase):
 
     def test_branch_recipients_are_scoped(self):
         self.assertIn('AND branch_id=%s', self.source)
+        self.assertIn('_resolve_branch(user_id, branch_id)', self.source)
         self.assertIn('_resolve_branch(q.from_user.id, int(audience))', self.source)
 
     def test_text_and_audio_broadcast_supported(self):
@@ -29,6 +30,19 @@ class BroadcastContractTests(unittest.TestCase):
     def test_manager_must_choose_a_branch_explicitly(self):
         self.assertIn('اختر الفرع أو الجمهور', self.source)
         self.assertIn('for branch_id, name in _branches(user_id):', self.source)
+
+    def test_individual_employee_selection_is_available(self):
+        self.assertIn('EMPLOYEE_PAGE_SIZE = 8', self.source)
+        self.assertIn('broadcast:employee:{telegram_id}', self.source)
+        self.assertIn('broadcast:select_all', self.source)
+        self.assertIn('broadcast:clear', self.source)
+        self.assertIn('broadcast:continue', self.source)
+        self.assertIn('broadcast_selection_callback', self.source)
+
+    def test_selected_recipients_are_revalidated_before_sending(self):
+        self.assertIn('pending.get("selected_ids", [])', self.source)
+        self.assertIn('pending.get("recipients", [])', self.source)
+        self.assertIn('not set(selected).issubset(set(allowed))', self.source)
 
     def test_acknowledgement_is_persisted_per_recipient(self):
         self.assertIn('broadcast_recipients', self.source)
@@ -40,6 +54,7 @@ class BroadcastContractTests(unittest.TestCase):
         self.assertIn('REMINDER_INTERVAL_SECONDS = 60', self.source)
         self.assertIn('run_repeating', self.source)
         self.assertIn('restore_pending_broadcast_reminders', self.source)
+        self.assertIn('await restore_pending_broadcast_reminders(application)', self.bot)
         self.assertIn('disable_notification=False', self.source)
 
     def test_confirmation_and_delivery_audit(self):
