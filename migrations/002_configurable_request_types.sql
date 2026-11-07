@@ -1,6 +1,8 @@
 -- Configurable branch-scoped request buttons (toilet, prayer, and admin-created types).
 BEGIN;
 
+ALTER TABLE active_timers ALTER COLUMN timer_type TYPE VARCHAR(40);
+
 CREATE TABLE IF NOT EXISTS branch_request_types (
     id BIGSERIAL PRIMARY KEY,
     branch_id BIGINT NOT NULL REFERENCES branches(id) ON DELETE CASCADE,
