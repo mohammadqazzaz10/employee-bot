@@ -1296,7 +1296,7 @@ async def list_employees(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def add_employee(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    if len(context.args) < 4 or "|" not in " ".join(context.args[2:]):
+    if len(context.args) < 3 or "|" not in " ".join(context.args[2:]):
         await update.effective_message.reply_text(
             "الاستخدام: /add_employee رقم_الفرع رقم_الهاتف الاسم_الكامل | المسمى_الوظيفي\n"
             "مثال: /add_employee 1 0791234567 محمد أحمد | كاشير"
