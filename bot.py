@@ -1021,6 +1021,7 @@ def get_employee_name(user_id, default="المستخدم"):
 # --- أوامر البوت (لم يتم تغييرها) ---
 # ... (جميع أوامر البوت: start, help_command)
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data.pop("pending_broadcast", None)
     user = update.message.from_user
     user_name = get_employee_name(user.id)
     user_phone = get_user_phone(user.id)
@@ -1093,6 +1094,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # --- منطق التدخين الجديد (لم يتم تغييرها) ---
 # ... (smoke_request, break_request)
 async def smoke_request(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data.pop("pending_broadcast", None)
     user = update.message.from_user
     phone = get_user_phone(user.id)
     
@@ -1160,6 +1162,7 @@ async def smoke_request(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # --- منطق الاستراحة ---
 async def break_request(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data.pop("pending_broadcast", None)
     user = update.message.from_user
     phone = get_user_phone(user.id)
     if not phone or not verify_employee(phone): return
@@ -1200,6 +1203,7 @@ async def break_request(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # --- المغادرات والإجازات (لم يتم تغييرها) ---
 # ... (جميع دوال المغادرات والإجازات)
 async def leave_request(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data.pop("pending_broadcast", None)
     user = update.message.from_user
     if not verify_employee(get_user_phone(user.id)): return ConversationHandler.END
     await update.message.reply_text("📝 اكتب سبب المغادرة:")
@@ -1228,6 +1232,7 @@ async def receive_leave_reason(update: Update, context: ContextTypes.DEFAULT_TYP
     return ConversationHandler.END
 
 async def vacation_request(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data.pop("pending_broadcast", None)
     user = update.message.from_user
     if not verify_employee(get_user_phone(user.id)): return ConversationHandler.END
     await update.message.reply_text("🌴 اكتب سبب العطلة وتاريخها:")
@@ -1256,6 +1261,7 @@ async def receive_vacation_reason(update: Update, context: ContextTypes.DEFAULT_
     return ConversationHandler.END
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data.pop("pending_broadcast", None)
     await update.message.reply_text("❌ تم الإلغاء.")
     return ConversationHandler.END
     
