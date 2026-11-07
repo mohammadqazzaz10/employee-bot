@@ -1770,7 +1770,7 @@ def main():
     application.add_handler(vacation_conv)
     
     application.add_handler(MessageHandler(filters.CONTACT, handle_contact))
-    application.add_handler(CallbackQueryHandler(button_callback))
+    application.add_handler(CallbackQueryHandler(button_callback, pattern=r"^(approve|reject|returned)_"))
     register_settings_handlers(application)
     register_request_type_handlers(application)
     register_broadcast_handlers(application)
