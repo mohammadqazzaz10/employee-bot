@@ -80,7 +80,7 @@ Application-level branch controls are now implemented in the development branch 
 - Smoke and lunch approvals now commit the request decision and their corresponding daily counter/time records in one PostgreSQL transaction. The current branch policy (enabled state, allowed time window, daily smoking limit, minimum gap, and one-lunch-per-day rule) is revalidated at approval time.
 - Broadcast targeting and branch settings/request-type management also validate branch roles.
 
-This is not a production deployment approval. Apply migrations 001–005 in order after a verified backup, verify branch-role assignments, and complete a staging/Telegram end-to-end test before using multiple branches in production. If the branch migrations are absent, branch authorization fails closed; existing admins will need explicit branch roles or super-admin status.
+This is not a production deployment approval. Apply migrations 001–006 in order after a verified backup, verify branch-role assignments, and complete a staging/Telegram end-to-end test before using multiple branches in production. If the branch migrations are absent, branch authorization fails closed; existing admins will need explicit branch roles or super-admin status.
 
 ## Configurable request buttons (migration 002)
 
@@ -107,6 +107,10 @@ If Telegram delivery or timer persistence temporarily fails, the worker retries 
 pending intent and restores it after restart. Delivery is at-least-once: a process crash
 between Telegram accepting a message and the database recording its message ID can
 produce a duplicate start notification.
+
+Migration 006 adds `returned_at` to distinguish timer expiry from an employee's
+explicit return. A timed request remains blocked after expiry until the employee
+presses the return button; expiry alone is not treated as a return acknowledgement.
 
 ## Migration safety and backup/restore
 
