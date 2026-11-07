@@ -21,7 +21,7 @@ class SecurityContractTests(unittest.TestCase):
         handler = self.source.split("async def button_callback", 1)[1].split(
             "\nasync def my_id_command", 1
         )[0]
-        self.assertIn('action not in {"approve", "reject", "returned"}', handler)
+        self.assertIn('data[0] not in {"approve", "reject", "returned"}', handler)
         self.assertIn('type_ not in {"smoke", "break", "leave", "vacation"}', handler)
 
     def test_only_target_employee_can_confirm_return(self):
