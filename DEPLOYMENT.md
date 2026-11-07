@@ -72,7 +72,7 @@ Application-level branch controls are now implemented in the development branch 
 - Smoke, lunch, leave, vacation, custom-request, and return notifications are routed to the employee's branch managers/supervisors plus super admins, not to unrelated branch managers.
 - `/list_employees` shows all active employees to the super admin and only assigned branches to branch managers.
 - `/assign_branch_admin TELEGRAM_ID BRANCH_ID [branch_manager|supervisor]` grants a branch-specific manager or supervisor role; the default is `branch_manager`. `/remove_branch_admin TELEGRAM_ID BRANCH_ID` revokes only that branch assignment.
-- `/add_employee BRANCH_ID PHONE FULL_NAME` creates an employee in the selected active branch. The super admin can choose any active branch; a branch manager or supervisor can add employees only to a branch assigned to that account. Authorization is checked and locked inside the database transaction.
+- `/add_employee BRANCH_ID PHONE FULL_NAME | JOB_TITLE` creates an employee profile with full name and job title in the selected active branch. The super admin can choose any active branch; a branch manager or supervisor can add employees only to a branch assigned to that account. Authorization is checked and locked inside the database transaction.
 - Employee deactivation and administrator management remain super-admin-only; employee deactivation is currently performed by phone number and retains historical records.
 - Smoke and lunch approvals now commit the request decision and their corresponding daily counter/time records in one PostgreSQL transaction. The current branch policy (enabled state, allowed time window, daily smoking limit, minimum gap, and one-lunch-per-day rule) is revalidated at approval time.
 - Broadcast targeting and branch settings/request-type management also validate branch roles.
@@ -141,7 +141,7 @@ is a message attachment and is not autoplayed by Telegram.
 
 ## Branch-aware employee onboarding and approval safeguards
 
-Use `/add_employee BRANCH_ID PHONE FULL_NAME` after assigning a branch manager or
+Use `/add_employee BRANCH_ID PHONE FULL_NAME | JOB_TITLE` after assigning a branch manager or
 supervisor with `/assign_branch_admin TELEGRAM_ID BRANCH_ID [branch_manager|supervisor]`.
 Use `/remove_branch_admin TELEGRAM_ID BRANCH_ID` to revoke only that branch role. The employee is created without a
 Telegram link; they link their own Telegram account by sending `/start` and
