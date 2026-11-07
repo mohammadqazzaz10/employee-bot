@@ -66,7 +66,15 @@ The separate `migrations/001_multibranch_foundation.sql` adds branches, branch r
 4. Apply the migration once using a PostgreSQL SQL client.
 5. Verify the branch and row counts.
 
-Important: the current application still needs branch-scoped authorization and queries before multiple branches can safely be used. Creating the schema alone does not provide branch isolation. Keep production on one branch until those controls and PostgreSQL integration tests are complete.
+Application-level branch controls are now implemented in the development branch and covered by contract/integration tests:
+- A user is an administrator only if they are a super admin or have an explicit active branch role. An ordinary admin record without a branch role does not grant branch access.
+- Standard and custom request approvals are checked against the employee's branch; the final decision SQL repeats the authorization condition atomically.
+- Smoke, lunch, leave, vacation, custom-request, and return notifications are routed to the employee's branch managers/supervisors plus super admins, not to unrelated branch managers.
+- `/list_employees` shows all active employees to the super admin and only assigned branches to branch managers.
+- Global employee add/remove and administrator-list commands are super-admin-only for now. Employee creation currently assigns to the initial `main` branch; branch-specific employee onboarding is a remaining enhancement.
+- Broadcast targeting and branch settings/request-type management also validate branch roles.
+
+This is not a production deployment approval. Apply migrations 001–004 in order after a verified backup, verify branch-role assignments, and complete a staging/Telegram end-to-end test before using multiple branches in production. If the branch migrations are absent, branch authorization fails closed; existing admins will need explicit branch roles or super-admin status.
 
 ## Configurable request buttons (migration 002)
 
