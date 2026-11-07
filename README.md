@@ -22,7 +22,7 @@ The application creates its base PostgreSQL tables on startup. It refuses to sta
 
 ## Branch policy settings
 
-Administrators can open `/settings` in Telegram to edit each branch's smoking and lunch rules. Changes are stored in PostgreSQL and take effect immediately; every change is recorded in `branch_settings_audit`. The initial defaults preserve the existing policy: 5 cigarettes per day, 6 minutes per smoking break, smoking from 10:00, a 90-minute gap, and a 30-minute lunch break. Optional end times and lunch windows are unrestricted until configured. Branch managers must have an `admin_branch_roles` assignment; super admins can select an active branch with `/settings BRANCH_ID`.
+Administrators can open `/settings` in Telegram to edit each branch's smoking and lunch rules. Changes are stored in PostgreSQL and take effect immediately; every change is recorded in `branch_settings_audit`. The initial defaults preserve the existing policy: 5 cigarettes per day, 6 minutes per smoking break, smoking from 10:00, a 90-minute gap, and a 30-minute lunch break. Optional end times and lunch windows are unrestricted until configured. Branch managers must have an `admin_branch_roles` assignment; the super admin grants it with `/assign_branch_admin TELEGRAM_ID BRANCH_ID`. Super admins can select an active branch with `/settings BRANCH_ID`.
 
 **Important:** Apply `migrations/001_multibranch_foundation.sql` to the database before using branch-scoped settings. The migration is not run automatically. Back up the database first and do not deploy this draft until branch-scoped access and remaining production checks are reviewed.
 
