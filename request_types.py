@@ -95,6 +95,33 @@ def _can_manage(user_id, branch_id):
             conn.close()
 
 
+async def send_to_branch_admins(context, branch_id, message, reply_markup=None):
+    conn = None
+    try:
+        conn = _db()
+        with conn.cursor() as cur:
+            cur.execute("""SELECT DISTINCT a.telegram_id
+                           FROM admins a
+                           LEFT JOIN admin_branch_roles r ON r.telegram_id=a.telegram_id
+                           WHERE a.is_super_admin=TRUE
+                              OR (r.branch_id=%s AND r.role IN ('branch_manager','supervisor'))
+                           ORDER BY a.telegram_id""", (branch_id,))
+            admin_ids = [row[0] for row in cur.fetchall()]
+    except Exception:
+        logger.exception("Could not find administrators for branch %s", branch_id)
+        return
+    finally:
+        if conn:
+            conn.close()
+    for admin_id in admin_ids:
+        try:
+            await context.bot.send_message(
+                chat_id=admin_id, text=message, reply_markup=reply_markup
+            )
+        except Exception:
+            logger.exception("Could not notify branch administrator %s", admin_id)
+
+
 def _save_new(branch_id, label, duration, user_id):
     conn = None
     try:
@@ -297,8 +324,9 @@ async def custom_request_handler(update: Update, context: ContextTypes.DEFAULT_T
             InlineKeyboardButton("❌ رفض", callback_data=f"reject_{request_type}_{request_id}_{update.effective_user.id}"),
         ]]
         await update.effective_message.reply_text("⏳ تم إرسال طلب الاستئذان للمدير.")
-        await bot.send_to_all_admins(
+        await send_to_branch_admins(
             context,
+            employee["branch_id"],
             f"📝 طلب استئذان جديد\n👤 الموظف: {name}\n📌 النوع: {type_label}\n⏱ المدة بعد الموافقة: {duration} دقائق",
             InlineKeyboardMarkup(keyboard),
         )
