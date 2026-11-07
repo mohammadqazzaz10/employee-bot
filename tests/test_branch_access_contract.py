@@ -41,7 +41,8 @@ class BranchAccessContractTests(unittest.TestCase):
         self.assertIn("employees = get_employees_for_admin(user_id)", self.source)
 
     def test_global_employee_and_admin_management_is_super_admin_only(self):
-        self.assertIn("إضافة الموظفين متاحة حالياً للمدير العام فقط", self.source)
+        self.assertIn("def save_employee_in_branch(phone_number, full_name, branch_id, actor_id):", self.source)
+        self.assertIn("لا تملك صلاحية إضافة موظفين إلى هذا الفرع", self.source)
         self.assertIn("إيقاف الموظفين متاح حالياً للمدير العام فقط", self.source)
         self.assertIn("عرض قائمة المديرين متاح للمدير العام فقط", self.source)
 
