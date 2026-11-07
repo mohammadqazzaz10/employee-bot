@@ -63,12 +63,24 @@ class RuntimeConfigurationContractTests(unittest.TestCase):
         self.assertEqual(self.migration.count("RETURNS TRIGGER AS $$"), 2)
         self.assertEqual(self.migration.count("$$ LANGUAGE plpgsql;"), 2)
 
+    def test_database_bootstrap_precedes_token_and_runtime_requires_all_migrations(self):
+        main = self.source.split("def main():", 1)[1]
+        self.assertLess(main.index("if not DATABASE_URL:"), main.index("if not BOT_TOKEN:"))
+        self.assertIn("verify_required_migrations()", main)
+        self.assertIn("006_timer_return_acknowledgements.sql", self.source)
+
+    def test_webhook_mode_requires_telegram_secret_header(self):
+        self.assertIn('WEBHOOK_SECRET = os.environ.get("WEBHOOK_SECRET"', self.source)
+        self.assertIn("secret_token=WEBHOOK_SECRET", self.source)
+        self.assertIn("WEBHOOK_SECRET", self.deployment)
+
     def test_render_setup_documents_all_required_values(self):
         for key in (
             "TELEGRAM_BOT_TOKEN",
             "DATABASE_URL",
             "SUPER_ADMIN_TELEGRAM_ID",
             "RENDER_EXTERNAL_URL",
+            "WEBHOOK_SECRET",
         ):
             with self.subTest(key=key):
                 self.assertIn(key, self.deployment)
