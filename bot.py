@@ -264,6 +264,57 @@ def delete_employee_by_phone(phone_number):
     except Exception as e:
         logger.error(f"Error deleting employee: {e}")
         return False
+
+def create_request(employee_id, request_type, notes=None):
+    """Persist every employee request before notifying administrators."""
+    conn = None
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO requests (employee_id, request_type, status, notes)
+            VALUES (%s, %s, 'pending', %s)
+            RETURNING id
+        """, (employee_id, request_type, notes))
+        request_id = cur.fetchone()[0]
+        conn.commit()
+        cur.close()
+        conn.close()
+        return request_id
+    except Exception as e:
+        logger.error("Error creating request: %s", e)
+        if conn:
+            conn.rollback()
+            conn.close()
+        return None
+
+
+def decide_request(request_id, employee_id, request_type, decision):
+    """Atomically allow one administrator to decide a pending request once."""
+    if decision not in {"approved", "rejected"}:
+        return False
+    conn = None
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute("""
+            UPDATE requests
+            SET status = %s, responded_at = CURRENT_TIMESTAMP
+            WHERE id = %s AND employee_id = %s
+              AND request_type = %s AND status = 'pending'
+            RETURNING id
+        """, (decision, request_id, employee_id, request_type))
+        changed = cur.fetchone()
+        conn.commit()
+        cur.close()
+        conn.close()
+        return bool(changed)
+    except Exception as e:
+        logger.error("Error deciding request %s: %s", request_id, e)
+        if conn:
+            conn.rollback()
+            conn.close()
+        return False
 # --- دوال السجائر والاستراحات (لم يتم تغييرها) ---
 # ... (جميع دوال السجائر والاستراحات)
 def get_smoke_count_db(employee_id):
@@ -589,15 +640,18 @@ async def smoke_request(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"❌ انتهى رصيد السجائر لهذا اليوم ({MAX_DAILY_SMOKES}).")
         return
 
-    # إرسال الطلب للمدير
+    # Persist request before sending approval buttons.
     name = employee['full_name']
-    remaining = MAX_DAILY_SMOKES - count
-    
-    await update.message.reply_text("⏳ تم إرسال الطلب للمدير...")
+    request_id = create_request(employee['id'], 'smoke')
+    if not request_id:
+        await update.message.reply_text("❌ تعذر حفظ الطلب. حاول مرة أخرى.")
+        return
+
+    await update.message.reply_text("⏳ تم حفظ الطلب وإرساله للمدير...")
     
     keyboard = [[
-        InlineKeyboardButton("✅ قبول", callback_data=f"approve_smoke_{user.id}"),
-        InlineKeyboardButton("❌ رفض", callback_data=f"reject_smoke_{user.id}")
+        InlineKeyboardButton("✅ قبول", callback_data=f"approve_smoke_{request_id}_{user.id}"),
+        InlineKeyboardButton("❌ رفض", callback_data=f"reject_smoke_{request_id}_{user.id}")
     ]]
     markup = InlineKeyboardMarkup(keyboard)
     
@@ -620,12 +674,17 @@ async def break_request(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ لقد أخذت استراحة الغداء بالفعل اليوم.")
         return
 
-    await update.message.reply_text("⏳ جاري طلب الاستراحة...")
+    request_id = create_request(employee['id'], 'break')
+    if not request_id:
+        await update.message.reply_text("❌ تعذر حفظ الطلب. حاول مرة أخرى.")
+        return
+
+    await update.message.reply_text("⏳ تم حفظ طلب الاستراحة وإرساله للمدير...")
     keyboard = [[
-        InlineKeyboardButton("✅ قبول", callback_data=f"approve_break_{user.id}"),
-        InlineKeyboardButton("❌ رفض", callback_data=f"reject_break_{user.id}")
+        InlineKeyboardButton("✅ قبول", callback_data=f"approve_break_{request_id}_{user.id}"),
+        InlineKeyboardButton("❌ رفض", callback_data=f"reject_break_{request_id}_{user.id}")
     ]]
-    msg = f"☕ **طلب استراحة غداء**\n👤 الموظف: {employee['full_name']}"
+    msg = f"☕ **طلب استراحة غداء**\\n👤 الموظف: {employee['full_name']}"
     await send_to_all_admins(context, msg, InlineKeyboardMarkup(keyboard))
     
 # --- المغادرات والإجازات (لم يتم تغييرها) ---
@@ -638,12 +697,20 @@ async def leave_request(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def receive_leave_reason(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.message.from_user
-    reason = update.message.text
-    name = get_employee_name(user.id)
+    reason = (update.message.text or "").strip()
+    employee = get_employee_by_telegram_id(user.id)
+    if not employee or not reason:
+        await update.message.reply_text("❌ تعذر تحديد الموظف أو أن سبب المغادرة فارغ.")
+        return ConversationHandler.END
+    request_id = create_request(employee['id'], 'leave', reason)
+    if not request_id:
+        await update.message.reply_text("❌ تعذر حفظ الطلب. حاول مرة أخرى.")
+        return ConversationHandler.END
+    name = employee['full_name']
     
     keyboard = [[
-        InlineKeyboardButton("✅ قبول", callback_data=f"approve_leave_{user.id}"),
-        InlineKeyboardButton("❌ رفض", callback_data=f"reject_leave_{user.id}")
+        InlineKeyboardButton("✅ قبول", callback_data=f"approve_leave_{request_id}_{user.id}"),
+        InlineKeyboardButton("❌ رفض", callback_data=f"reject_leave_{request_id}_{user.id}")
     ]]
     msg = f"🚪 **طلب مغادرة**\n👤 الموظف: {name}\n📝 السبب: {reason}"
     await send_to_all_admins(context, msg, InlineKeyboardMarkup(keyboard))
@@ -658,12 +725,20 @@ async def vacation_request(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def receive_vacation_reason(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.message.from_user
-    reason = update.message.text
-    name = get_employee_name(user.id)
+    reason = (update.message.text or "").strip()
+    employee = get_employee_by_telegram_id(user.id)
+    if not employee or not reason:
+        await update.message.reply_text("❌ تعذر تحديد الموظف أو أن تفاصيل العطلة فارغة.")
+        return ConversationHandler.END
+    request_id = create_request(employee['id'], 'vacation', reason)
+    if not request_id:
+        await update.message.reply_text("❌ تعذر حفظ الطلب. حاول مرة أخرى.")
+        return ConversationHandler.END
+    name = employee['full_name']
     
     keyboard = [[
-        InlineKeyboardButton("✅ قبول", callback_data=f"approve_vacation_{user.id}"),
-        InlineKeyboardButton("❌ رفض", callback_data=f"reject_vacation_{user.id}")
+        InlineKeyboardButton("✅ قبول", callback_data=f"approve_vacation_{request_id}_{user.id}"),
+        InlineKeyboardButton("❌ رفض", callback_data=f"reject_vacation_{request_id}_{user.id}")
     ]]
     msg = f"🌴 **طلب عطلة**\n👤 الموظف: {name}\n📝 التفاصيل: {reason}"
     await send_to_all_admins(context, msg, InlineKeyboardMarkup(keyboard))
@@ -860,19 +935,29 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Validate callback payloads before indexing or converting user-controlled data.
     data = (query.data or "").split('_')
-    if len(data) != 3:
-        await query.edit_message_text("⚠️ هذا الإجراء غير صالح.")
-        return
-
-    action, type_, raw_target_id = data
-    if action not in {"approve", "reject", "returned"}:
+    if not data or data[0] not in {"approve", "reject", "returned"}:
         await query.edit_message_text("⚠️ هذا الإجراء غير معروف.")
         return
+
+    action = data[0]
+    if action == "returned":
+        if len(data) != 3:
+            await query.edit_message_text("⚠️ بيانات العودة غير صالحة.")
+            return
+        type_, raw_target_id = data[1], data[2]
+        raw_request_id = None
+    else:
+        if len(data) != 4:
+            await query.edit_message_text("⚠️ بيانات الطلب غير صالحة.")
+            return
+        type_, raw_request_id, raw_target_id = data[1], data[2], data[3]
+
     if type_ not in {"smoke", "break", "leave", "vacation"}:
         await query.edit_message_text("⚠️ نوع الطلب غير صالح.")
         return
     try:
         target_id = int(raw_target_id)
+        request_id = int(raw_request_id) if raw_request_id is not None else None
     except (TypeError, ValueError):
         await query.edit_message_text("⚠️ بيانات الطلب غير صالحة.")
         return
@@ -897,6 +982,11 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     emp = get_employee_by_telegram_id(target_id)
     if not emp:
         await query.edit_message_text("⚠️ الموظف المرتبط بهذا الطلب لم يعد موجوداً.")
+        return
+
+    decision = "approved" if action == "approve" else "rejected"
+    if not request_id or not decide_request(request_id, emp['id'], type_, decision):
+        await query.edit_message_text("ℹ️ تم التعامل مع هذا الطلب مسبقاً أو لم يعد صالحاً.")
         return
 
     if action == "approve":
