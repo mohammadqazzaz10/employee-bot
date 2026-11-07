@@ -83,6 +83,7 @@ def get_db_connection():
 
 def initialize_database_tables():
     """إنشاء الجداول المطلوبة"""
+    conn = None
     try:
         conn = get_db_connection()
         cur = conn.cursor()
@@ -253,8 +254,11 @@ def initialize_database_tables():
         if not SUPER_ADMIN_TELEGRAM_ID:
             logger.warning("SUPER_ADMIN_TELEGRAM_ID is not set; no administrator has been bootstrapped")
         return True
-    except Exception as e:
-        logger.error(f"Error initializing database tables: {e}")
+    except Exception:
+        if conn:
+            conn.rollback()
+            conn.close()
+        logger.exception("Error initializing database tables")
         return False
 
 # --- دوال الموظفين وقاعدة البيانات (لم يتم تغييرها) ---
