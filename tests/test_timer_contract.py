@@ -81,6 +81,9 @@ class TimerPostgreSQLTests(unittest.TestCase):
         )
         self.assertFalse(bot._timer_db("clear_matching", user_id, "break", message_id))
         self.assertTrue(bot._timer_db("is_active", user_id))
+        self.assertTrue(bot._timer_db("complete", user_id))
+        self.assertFalse(bot._timer_db("is_active", user_id))
+        # Expiry marks the timer complete before the employee presses Return.
         self.assertTrue(bot._timer_db("clear_matching", user_id, "break", message_id + 1))
         self.assertFalse(bot._timer_db("is_active", user_id))
 
