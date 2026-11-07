@@ -667,6 +667,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_phone = get_user_phone(user.id)
     
     if user_phone and verify_employee(user_phone):
+        employee = get_employee_by_telegram_id(user.id)
+        settings = get_branch_settings(employee.get('branch_id')) if employee and employee.get('branch_id') else None
+        if not settings:
+            await update.message.reply_text('⚠️ إعدادات الفرع غير جاهزة. أبلغ المدير بتطبيق migration 001.')
+            return
         menu_keyboard = [
             [KeyboardButton("🚬 طلب استراحة التدخين"), KeyboardButton("☕ طلب استراحة الغداء")],
             [KeyboardButton("🚪 طلب مغادرة"), KeyboardButton("🌴 طلب إجازة")],
@@ -681,10 +686,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"مرحبًا {user_name}! 👋\n\n"
             "✅ هويتك مفعلة.\n\n"
             "🚬 **قوانين التدخين الجديدة:**\n"
-            f"- العدد المسموح: {MAX_DAILY_SMOKES} سجائر.\n"
-            f"- مدة السيجارة: {SMOKE_DURATION_MINUTES} دقائق.\n"
-            f"- وقت البدء: بعد الساعة {SMOKE_START_HOUR} صباحاً.\n"
-            f"- الفجوة الزمنية: ساعة ونصف.\n\n"
+            f"- العدد المسموح: {settings['smoke_daily_limit']} سجائر.\n"
+            f"- مدة السيجارة: {settings['smoke_duration_minutes']} دقائق.\n"
+            f"- وقت البدء: من {settings['smoke_start_time'].strftime('%H:%M')}.\n"
+            f"- الفاصل الزمني: {settings['smoke_gap_minutes']} دقيقة.\n\n"
             "📝 **الأوامر المتاحة:**\n"
             "/smoke - طلب استراحة تدخين 🚬\n"
             "/break - طلب استراحة غداء ☕\n"
@@ -694,6 +699,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if is_admin(user.id):
             msg += (
                 "\n👔 **أوامر المدير:**\n"
+                "/settings - إعدادات الاستراحات\n"
                 "/list_employees - عرض الموظفين\n"
                 "/add_employee - إضافة موظف\n"
                 "/remove_employee - حذف موظف\n"
