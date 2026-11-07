@@ -36,10 +36,10 @@ Run `migrations/002_configurable_request_types.sql` after migration 001, with a 
 
 ## Branch employee onboarding
 
-The super admin or a manager assigned to a branch can add a registered employee with:
+The super admin or a manager/supervisor assigned to a branch can add a registered employee with:
 `/add_employee BRANCH_ID PHONE FULL_NAME`
 
-The super admin can choose any active branch. A branch manager can add employees only to their assigned branch. The employee then links their Telegram account by sending `/start` and sharing their own phone contact.
+The super admin can choose any active branch. A branch manager or supervisor can add employees only to their assigned branch. The super admin assigns roles with `/assign_branch_admin TELEGRAM_ID BRANCH_ID [branch_manager|supervisor]` and revokes one branch assignment with `/remove_branch_admin TELEGRAM_ID BRANCH_ID`. The employee then links their Telegram account by sending `/start` and sharing their own phone contact.
 
 ## Render
 Follow [DEPLOYMENT.md](DEPLOYMENT.md). Render supplies the web service's public URL automatically; a Background Worker can use long polling without a public URL. Never commit tokens or database URLs.
