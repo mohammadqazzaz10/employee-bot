@@ -1013,7 +1013,9 @@ async def list_employees(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(msg)
 
 async def add_employee(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not is_admin(update.message.from_user.id): return
+    if not is_super_admin(update.effective_user.id):
+        await update.effective_message.reply_text("⛔ إضافة الموظفين متاحة حالياً للمدير العام فقط، حتى لا يُسجل الموظف في فرع غير مقصود.")
+        return
     if len(context.args) < 2:
         await update.message.reply_text("الاستخدام: /add_employee رقم_الهاتف الاسم")
         return
@@ -1027,7 +1029,9 @@ async def add_employee(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ حدث خطأ.")
 
 async def remove_employee(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not is_admin(update.message.from_user.id): return
+    if not is_super_admin(update.effective_user.id):
+        await update.effective_message.reply_text("⛔ إيقاف الموظفين متاح حالياً للمدير العام فقط.")
+        return
     if not context.args:
         await update.message.reply_text("الاستخدام: /remove_employee رقم_الهاتف")
         return
@@ -1038,7 +1042,9 @@ async def remove_employee(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ لم يتم العثور على الموظف.")
 
 async def list_admins(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not is_admin(update.message.from_user.id): return
+    if not is_super_admin(update.effective_user.id):
+        await update.effective_message.reply_text("⛔ عرض قائمة المديرين متاح للمدير العام فقط.")
+        return
     admins = get_all_admins()
     await update.message.reply_text(f"عدد المديرين: {len(admins)}\nالمعرفات: {admins}")
 
