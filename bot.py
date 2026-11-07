@@ -700,6 +700,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             msg += (
                 "\n👔 **أوامر المدير:**\n"
                 "/settings - إعدادات الاستراحات\n"
+                "/request_types - إدارة أزرار الاستئذان ومددها\n"
                 "/list_employees - عرض الموظفين\n"
                 "/add_employee - إضافة موظف\n"
                 "/remove_employee - حذف موظف\n"
