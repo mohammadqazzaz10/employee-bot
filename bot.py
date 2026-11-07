@@ -1340,7 +1340,7 @@ def _timer_db(operation, *values):
                     UPDATE active_timers
                     SET completed = TRUE, completed_at = CURRENT_TIMESTAMP
                     WHERE user_id = %s AND timer_type = %s
-                      AND message_id = %s AND completed = FALSE
+                      AND message_id = %s
                     RETURNING user_id
                 """, values)
                 changed = cur.fetchone()
