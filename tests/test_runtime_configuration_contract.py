@@ -21,7 +21,7 @@ class RuntimeConfigurationContractTests(unittest.TestCase):
 
     def test_webhook_uses_render_generated_external_url(self):
         self.assertIn('os.environ.get("RENDER_EXTERNAL_URL")', self.source)
-        self.assertIn("WEBHOOK_URL.rstrip", self.source)
+        self.assertIn('.strip().rstrip("/")', self.source)
 
     def test_no_hardcoded_admin_or_employee_phone_remains(self):
         self.assertNotIn("ADMIN_IDS = [1465191277]", self.source)
