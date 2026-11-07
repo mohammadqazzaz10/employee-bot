@@ -246,12 +246,12 @@ def initialize_database_tables():
 
 # --- دوال الموظفين وقاعدة البيانات (لم يتم تغييرها) ---
 # ... (دوال save_employee, get_employee_by_telegram_id, get_employee_by_phone, get_all_employees, delete_employee_by_phone)
-def save_employee_in_branch(phone_number, full_name, branch_id, actor_id):
+def save_employee_in_branch(phone_number, full_name, job_title, branch_id, actor_id):
     """Create an unlinked employee only when the actor can administer the target branch."""
     conn = None
     try:
         normalized_phone = normalize_phone(phone_number)
-        if not normalized_phone or not full_name.strip() or not branch_id:
+        if not normalized_phone or not full_name.strip() or not job_title.strip() or not branch_id:
             return None
         conn = get_db_connection()
         with conn.cursor() as cur:
@@ -289,10 +289,10 @@ def save_employee_in_branch(phone_number, full_name, branch_id, actor_id):
                 return None
             cur.execute("""
                 INSERT INTO employees
-                    (phone_number, full_name, branch_id, last_active, is_active)
-                VALUES (%s, %s, %s, CURRENT_TIMESTAMP, TRUE)
+                    (phone_number, full_name, job_title, branch_id, last_active, is_active)
+                VALUES (%s, %s, %s, %s, CURRENT_TIMESTAMP, TRUE)
                 RETURNING id
-            """, (normalized_phone, full_name.strip(), branch_id))
+            """, (normalized_phone, full_name.strip(), job_title.strip(), branch_id))
             employee_id = cur.fetchone()[0]
         conn.commit()
         return employee_id
@@ -818,7 +818,9 @@ def get_employees_for_admin(user_id):
             cur.execute("SELECT * FROM employees WHERE is_active=TRUE ORDER BY full_name")
         else:
             cur.execute("""
-                SELECT e.* FROM employees e
+                SELECT e.*, b.name AS branch_name
+                FROM employees e
+                JOIN branches b ON b.id=e.branch_id
                 JOIN admin_branch_roles r ON r.branch_id=e.branch_id
                 WHERE r.telegram_id=%s
                   AND r.role IN ('branch_manager','supervisor')
@@ -1000,7 +1002,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if is_super_admin(user.id):
             msg += (
                 "\n🛡️ **أوامر المدير العام:**\n"
-                "/add_employee رقم_الفرع رقم_الهاتف الاسم - إضافة موظف\n"
+                "/add_employee رقم_الفرع رقم_الهاتف الاسم | المسمى - إضافة موظف\n"
                 "/remove_employee - إيقاف موظف\n"
                 "/list_admins - عرض المديرين\n"
                 "/add_admin TELEGRAM_ID - إضافة مدير\n"
@@ -1202,15 +1204,17 @@ async def list_employees(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     msg = "👥 **قائمة الموظفين:**\n"
     for i, e in enumerate(employees, 1):
-        msg += f"{i}. {e['full_name']} ({e['phone_number']})\n"
+        title = e.get("job_title") or "المسمى غير محدد"
+        branch = e.get("branch_name") or "الفرع غير محدد"
+        msg += f"{i}. {e['full_name']} — {title} — {branch} ({e['phone_number']})\n"
     await update.message.reply_text(msg)
 
 async def add_employee(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    if len(context.args) < 3:
+    if len(context.args) < 4 or "|" not in " ".join(context.args[2:]):
         await update.effective_message.reply_text(
-            "الاستخدام: /add_employee رقم_الفرع رقم_الهاتف الاسم_الكامل\n"
-            "مثال: /add_employee 1 0791234567 محمد أحمد"
+            "الاستخدام: /add_employee رقم_الفرع رقم_الهاتف الاسم_الكامل | المسمى_الوظيفي\n"
+            "مثال: /add_employee 1 0791234567 محمد أحمد | كاشير"
         )
         return
     try:
@@ -1224,14 +1228,16 @@ async def add_employee(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.effective_message.reply_text("⛔ لا تملك صلاحية إضافة موظفين إلى هذا الفرع.")
         return
     phone = context.args[1]
-    name = " ".join(context.args[2:]).strip()
-    if len(name) < 3:
-        await update.effective_message.reply_text("أدخل الاسم الكامل للموظف.")
+    profile = " ".join(context.args[2:]).split("|", 1)
+    name = profile[0].strip()
+    job_title = profile[1].strip() if len(profile) == 2 else ""
+    if len(name) < 3 or not job_title:
+        await update.effective_message.reply_text("أدخل الاسم الكامل والمسمى الوظيفي بعد علامة |.")
         return
-    employee_id = save_employee_in_branch(phone, name, branch_id, user_id)
+    employee_id = save_employee_in_branch(phone, name, job_title, branch_id, user_id)
     if employee_id:
         await update.effective_message.reply_text(
-            f"✅ تمت إضافة الموظف {name} إلى الفرع رقم {branch_id}.\n"
+            f"✅ تمت إضافة الموظف {name} — {job_title} إلى الفرع رقم {branch_id}.\n"
             "يمكنه الآن بدء البوت ومشاركة رقم هاتفه لربط حسابه."
         )
     else:
