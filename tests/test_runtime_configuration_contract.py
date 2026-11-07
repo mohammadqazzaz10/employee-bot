@@ -67,6 +67,8 @@ class RuntimeConfigurationContractTests(unittest.TestCase):
         main = self.source.split("def main():", 1)[1]
         self.assertLess(main.index("if not DATABASE_URL:"), main.index("if not BOT_TOKEN:"))
         self.assertIn("verify_required_migrations()", main)
+        self.assertIn("checksum_sha256", self.source)
+        self.assertIn("hashlib.sha256", self.source)
         self.assertIn("006_timer_return_acknowledgements.sql", self.source)
 
     def test_webhook_mode_requires_telegram_secret_header(self):
