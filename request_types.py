@@ -316,9 +316,12 @@ async def custom_request_handler(update: Update, context: ContextTypes.DEFAULT_T
     if not employee or not employee.get("branch_id"):
         return
     label = (update.effective_message.text or "").strip()
-    for type_id, code, type_label, duration, active in list_request_types(employee["branch_id"], active_only=True):
+    for type_id, code, type_label, duration, active in list_request_types(employee["branch_id"], active_only=False):
         if label != type_label:
             continue
+        if not active:
+            await update.effective_message.reply_text("🚫 هذا النوع من الاستئذان متوقف حالياً. أرسل /start لتحديث القائمة.")
+            return
         if bot._timer_db("is_active", update.effective_user.id):
             await update.effective_message.reply_text("⏳ لديك استراحة أو استئذان جارٍ بالفعل. أكمل العودة أولاً.")
             return
