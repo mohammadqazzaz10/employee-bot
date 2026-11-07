@@ -1,6 +1,7 @@
 """Database-backed, branch-scoped operational settings for the employee bot."""
 from datetime import datetime
 import logging
+import re
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
@@ -381,6 +382,124 @@ async def remove_branch_admin_command(update: Update, context: ContextTypes.DEFA
         await update.effective_message.reply_text("❌ تعذر إلغاء الصلاحية.")
 
 
+def create_branch(code, name, actor_id):
+    """Create a branch with its settings and default request buttons atomically."""
+    import bot
+    normalized_code = (code or "").strip().lower()
+    branch_name = (name or "").strip()
+    if not re.fullmatch(r"[a-z0-9][a-z0-9_-]{1,49}", normalized_code):
+        return None
+    if not 2 <= len(branch_name) <= 120:
+        return None
+    conn = None
+    try:
+        conn = bot.get_db_connection()
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT is_super_admin FROM admins WHERE telegram_id=%s FOR SHARE",
+                (actor_id,),
+            )
+            actor = cur.fetchone()
+            if not actor or not actor[0]:
+                conn.rollback()
+                return None
+            cur.execute("SELECT to_regclass('public.branch_request_types')")
+            if not cur.fetchone()[0]:
+                conn.rollback()
+                logger.error("Cannot create a branch before migration 002 is applied")
+                return None
+            cur.execute(
+                "INSERT INTO branches(code,name) VALUES(%s,%s) RETURNING id",
+                (normalized_code, branch_name),
+            )
+            branch_id = cur.fetchone()[0]
+            cur.execute(
+                "INSERT INTO branch_settings(branch_id) VALUES(%s)",
+                (branch_id,),
+            )
+            cur.execute(
+                """INSERT INTO branch_request_types
+                   (branch_id, code, label, duration_minutes, is_active)
+                   VALUES
+                     (%s, 'bathroom', '🚻 استئذان الذهاب إلى الحمام', 10, TRUE),
+                     (%s, 'prayer', '🕌 استئذان الذهاب إلى الصلاة', 10, TRUE)
+                   ON CONFLICT (branch_id, code) DO NOTHING""",
+                (branch_id, branch_id),
+            )
+        conn.commit()
+        return branch_id
+    except Exception:
+        if conn:
+            conn.rollback()
+        logger.exception("Could not create branch %s", normalized_code)
+        return None
+    finally:
+        if conn:
+            conn.close()
+
+
+async def add_branch_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    import bot
+    user_id = update.effective_user.id
+    if not bot.is_super_admin(user_id):
+        await update.effective_message.reply_text("⛔ إنشاء الفروع متاح للمدير العام فقط.")
+        return
+    raw = " ".join(context.args).split("|", 1)
+    if len(raw) != 2:
+        await update.effective_message.reply_text(
+            "الاستخدام: /add_branch CODE | اسم الفرع\\n"
+            "مثال: /add_branch amman-west | فرع غرب عمان"
+        )
+        return
+    code, name = raw[0].strip(), raw[1].strip()
+    branch_id = create_branch(code, name, user_id)
+    if branch_id:
+        await update.effective_message.reply_text(
+            f"✅ تم إنشاء الفرع {name} (رقم {branch_id}). "
+            "أضف مديره عبر /add_admin ثم /assign_branch_admin."
+        )
+    else:
+        await update.effective_message.reply_text(
+            "❌ تعذر إنشاء الفرع. تحقق من الرمز، وعدم تكراره، وتطبيق migrations 001–005."
+        )
+
+
+async def list_branches_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    import bot
+    if not bot.is_super_admin(update.effective_user.id):
+        await update.effective_message.reply_text("⛔ عرض جميع الفروع متاح للمدير العام فقط.")
+        return
+    conn = None
+    try:
+        conn = bot.get_db_connection()
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT b.id, b.code, b.name, b.is_active,
+                       COUNT(e.id) FILTER (WHERE e.is_active=TRUE)
+                FROM branches b
+                LEFT JOIN employees e ON e.branch_id=b.id
+                GROUP BY b.id, b.code, b.name, b.is_active
+                ORDER BY b.id
+            """)
+            rows = cur.fetchall()
+        if not rows:
+            await update.effective_message.reply_text("لا توجد فروع مسجلة.")
+            return
+        lines = ["🏬 الفروع المسجلة:"]
+        for branch_id, code, name, active, employee_count in rows:
+            status = "نشط" if active else "متوقف"
+            lines.append(
+                f"{branch_id}. {name} [{code}] — {status} — {employee_count} موظف"
+            )
+        await update.effective_message.reply_text("\\n".join(lines))
+    except Exception:
+        logger.exception("Could not list branches")
+        await update.effective_message.reply_text("❌ تعذر تحميل قائمة الفروع.")
+    finally:
+        if conn:
+            conn.close()
+
+
 async def cancel_settings_edit(update: Update, context: ContextTypes.DEFAULT_TYPE):
     pending = context.user_data.pop("pending_branch_setting", None)
     request_type_state = context.user_data.pop("new_request_type_state", None)
@@ -397,5 +516,7 @@ def register_settings_handlers(application):
     application.add_handler(CommandHandler("cancel", cancel_settings_edit))
     application.add_handler(CommandHandler("assign_branch_admin", assign_branch_admin_command))
     application.add_handler(CommandHandler("remove_branch_admin", remove_branch_admin_command))
+    application.add_handler(CommandHandler("add_branch", add_branch_command))
+    application.add_handler(CommandHandler("list_branches", list_branches_command))
     application.add_handler(CallbackQueryHandler(settings_callback, pattern=r"^branchcfg:"), group=-1)
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, save_setting_value), group=1)
