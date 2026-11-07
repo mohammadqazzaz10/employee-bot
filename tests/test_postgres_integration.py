@@ -68,6 +68,8 @@ class PostgreSQLIntegrationTests(unittest.TestCase):
         employee = bot.get_employee_by_phone("0781234567")
         self.assertIsNotNone(employee)
 
+        employee_settings = bot.get_branch_settings(employee["branch_id"])
+        self.assertIsNotNone(employee_settings)
         request_id = bot.create_request(employee_id, "smoke", "integration test")
         self.assertIsNotNone(request_id)
         self.assertTrue(
