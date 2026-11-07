@@ -5,6 +5,9 @@ import psycopg2
 from psycopg2.extras import RealDictCursor
 from datetime import datetime, timedelta, date, timezone
 from zoneinfo import ZoneInfo
+from dotenv import load_dotenv
+
+load_dotenv()
 from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardRemove
 from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, ConversationHandler, filters, ContextTypes
 
