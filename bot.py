@@ -806,14 +806,18 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         if is_admin(user.id):
             msg += (
-                "\n👔 **أوامر المدير:**\n"
-                "/settings - إعدادات الاستراحات\n"
-                "/request_types - إدارة أزرار الاستئذان ومددها\n"
-                "/list_employees - عرض الموظفين\n"
-                "/add_employee - إضافة موظف\n"
-                "/remove_employee - حذف موظف\n"
+                "\n👔 **أوامر مدير الفرع:**\n"
+                "/settings - إعدادات فرعك\n"
+                "/request_types - إدارة أزرار الاستئذان في فرعك\n"
+                "/list_employees - عرض موظفي الفروع المصرح بها\n"
+                "/broadcast - إرسال إعلان لموظفي فرعك\n"
+            )
+        if is_super_admin(user.id):
+            msg += (
+                "\n🛡️ **أوامر المدير العام:**\n"
+                "/add_employee - إضافة موظف (للفرع الرئيسي حالياً)\n"
+                "/remove_employee - إيقاف موظف\n"
                 "/list_admins - عرض المديرين\n"
-                "/broadcast - إرسال إعلان أو تنبيه للموظفين\n"
             )
         await update.message.reply_text(msg, reply_markup=menu_markup)
     else:
