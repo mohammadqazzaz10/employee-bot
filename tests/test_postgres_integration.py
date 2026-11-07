@@ -81,6 +81,8 @@ class PostgreSQLIntegrationTests(unittest.TestCase):
                 bot.SUPER_ADMIN_TELEGRAM_ID,
             )
         )
+        self.assertEqual(bot.get_smoke_count_db(employee_id), 1)
+        self.assertIsNotNone(bot.get_last_cigarette_time(employee_id))
         self.assertFalse(
             bot.decide_request(
                 request_id,
