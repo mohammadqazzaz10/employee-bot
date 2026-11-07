@@ -27,10 +27,15 @@ ENV/
 logs/
 log/
 
-# Database
+# Database and backup artifacts
 *.sqlite
 *.db
 *.sqlite3
+*.dump
+*.backup
+*.bak
+*.sql.gz
+backups/
 
 # Data files
 smoke_data.json
