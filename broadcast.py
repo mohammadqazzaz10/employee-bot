@@ -103,7 +103,7 @@ async def broadcast_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
         return
     context.user_data[STATE] = {"audience": audience, "audience_label": audience_label}
     await q.edit_message_text(
-        f"📢 الجمهور: {audience_label}\nأرسل نص الإعلان أو رسالة صوتية/ملفاً صوتياً.\nاكتب /cancel للإلغاء.")
+        f"📢 الجمهور: {audience_label}\nأرسل نص الإعلان أو رسالة صوتية/ملفاً صوتياً.\nاستخدم زر الإلغاء بعد تجهيز الرسالة إذا رغبت بالتراجع.")
 
 
 async def broadcast_content(update: Update, context: ContextTypes.DEFAULT_TYPE):
