@@ -2,7 +2,7 @@
 BEGIN;
 
 -- Do not silently choose between duplicate active employee phone records.
-DO $$$
+DO $$
 DECLARE duplicate_phones TEXT;
 BEGIN
     SELECT string_agg(phone_number, ', ' ORDER BY phone_number)
@@ -57,7 +57,7 @@ INSERT INTO branch_settings (branch_id)
 SELECT id FROM branches
 ON CONFLICT (branch_id) DO NOTHING;
 
-DO $$$
+DO $$
 BEGIN
     IF EXISTS (
         SELECT 1
