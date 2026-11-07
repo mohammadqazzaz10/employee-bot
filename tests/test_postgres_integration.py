@@ -76,8 +76,19 @@ class PostgreSQLIntegrationTests(unittest.TestCase):
         finally:
             conn.close()
 
+        conn = psycopg2.connect(os.environ["DATABASE_URL"], sslmode="disable")
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT id FROM branches WHERE code='main'")
+                main_branch_id = cur.fetchone()[0]
+        finally:
+            conn.close()
+
         phone = "+962781234567"
-        employee_id = bot.save_employee(None, phone, "CI Test Employee")
+        employee_id = bot.save_employee_in_branch(
+            phone, "CI Test Employee", "Cashier", main_branch_id,
+            bot.SUPER_ADMIN_TELEGRAM_ID,
+        )
         self.assertIsNotNone(employee_id)
         self.assertTrue(bot.verify_employee("0781234567"))
         employee = bot.get_employee_by_phone("0781234567")
@@ -220,9 +231,9 @@ class PostgreSQLIntegrationTests(unittest.TestCase):
         )
         self.assertEqual(get_request_type(main_branch_id, custom_type_id)[3], 9)
 
-        # Legacy INSERT statements must inherit the default branch via the trigger.
-        second_employee_id = bot.save_employee(
-            None, "+962789876543", "Branch Trigger Employee"
+        second_employee_id = bot.save_employee_in_branch(
+            "+962789876543", "Branch Trigger Employee", "Stock Clerk",
+            main_branch_id, bot.SUPER_ADMIN_TELEGRAM_ID,
         )
         self.assertIsNotNone(second_employee_id)
         second_request_id = bot.create_request(
@@ -248,11 +259,13 @@ class PostgreSQLIntegrationTests(unittest.TestCase):
         # Verify that a branch manager can see/decide only within assigned branches.
         branch_admin_id = 987654321
         self.assertTrue(bot.add_admin_to_db(branch_admin_id, bot.SUPER_ADMIN_TELEGRAM_ID))
-        main_employee_id = bot.save_employee(
-            None, "+962780001111", "Main Branch Employee"
+        main_employee_id = bot.save_employee_in_branch(
+            "+962780001111", "Main Branch Employee", "Cashier",
+            main_branch_id, bot.SUPER_ADMIN_TELEGRAM_ID,
         )
-        second_employee_id = bot.save_employee(
-            None, "+962780002222", "Second Branch Employee"
+        second_employee_id = bot.save_employee_in_branch(
+            "+962780002222", "Second Branch Employee", "Supervisor",
+            main_branch_id, bot.SUPER_ADMIN_TELEGRAM_ID,
         )
         self.assertIsNotNone(main_employee_id)
         self.assertIsNotNone(second_employee_id)
