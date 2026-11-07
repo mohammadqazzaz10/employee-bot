@@ -63,8 +63,10 @@ The separate `migrations/001_multibranch_foundation.sql` adds branches, branch r
 1. Take a PostgreSQL backup and verify that it can be restored.
 2. Confirm the base tables above exist.
 3. Review the migration and check existing rows, especially requests without an employee link.
-4. Apply the migration once using a PostgreSQL SQL client.
-5. Verify the branch and row counts.
+4. Run the ordered migration runner from a trusted environment that can reach PostgreSQL:
+   `python -m scripts.migrate`.
+5. Verify the migration ledger and checksums with `python -m scripts.migrate --check`.
+6. Verify the branch and row counts. The runner takes a PostgreSQL advisory lock, applies numbered migrations in order, and records SHA-256 checksums in `schema_migrations`. It never logs the database URL.
 
 Application-level branch controls are now implemented in the development branch and covered by contract/integration tests:
 - A user is an administrator only if they are a super admin or have an explicit active branch role. An ordinary admin record without a branch role does not grant branch access.
@@ -77,11 +79,11 @@ Application-level branch controls are now implemented in the development branch 
 - Smoke and lunch approvals now commit the request decision and their corresponding daily counter/time records in one PostgreSQL transaction. The current branch policy (enabled state, allowed time window, daily smoking limit, minimum gap, and one-lunch-per-day rule) is revalidated at approval time.
 - Broadcast targeting and branch settings/request-type management also validate branch roles.
 
-This is not a production deployment approval. Apply migrations 001–004 in order after a verified backup, verify branch-role assignments, and complete a staging/Telegram end-to-end test before using multiple branches in production. If the branch migrations are absent, branch authorization fails closed; existing admins will need explicit branch roles or super-admin status.
+This is not a production deployment approval. Apply migrations 001–005 in order after a verified backup, verify branch-role assignments, and complete a staging/Telegram end-to-end test before using multiple branches in production. If the branch migrations are absent, branch authorization fails closed; existing admins will need explicit branch roles or super-admin status.
 
 ## Configurable request buttons (migration 002)
 
-After migration 001, take/verify a backup and apply `migrations/002_configurable_request_types.sql`. It creates the branch-scoped request-type and audit tables and seeds each active branch with bathroom and prayer buttons, both at 10 minutes. The bot does not apply either migration automatically.
+After migration 001, take/verify a backup and apply `migrations/002_configurable_request_types.sql` using the migration runner. It creates the branch-scoped request-type and audit tables and seeds each active branch with bathroom and prayer buttons, both at 10 minutes.
 
 After the migrations:
 - Employees send `/start` to refresh the menu and see the two new buttons.
@@ -90,6 +92,37 @@ After the migrations:
 - Custom request notifications are routed to that branch's managers and super admins.
 
 Do not deploy until migration 001 and 002 have been applied and the latest GitHub Actions workflow has passed.
+
+## Pre-production integrity migration (migration 005)
+
+Migration 005 adds a unique constraint for active employee phone numbers, a foreign key
+from branch settings to branches, operational indexes, and the durable
+`timer_start_outbox` table. It deliberately stops if duplicate active phone numbers or
+orphaned branch-settings rows are found; resolve those records manually rather than
+letting a migration guess which employee or setting to keep.
+
+The outbox ensures an approved timed request and its timer-start intent commit together.
+If Telegram delivery or timer persistence temporarily fails, the worker retries the
+pending intent and restores it after restart. Delivery is at-least-once: a process crash
+between Telegram accepting a message and the database recording its message ID can
+produce a duplicate start notification.
+
+## Migration safety and backup/restore
+
+Before running migrations against an existing database:
+1. Create a PostgreSQL backup using Render's backup facility or `pg_dump`.
+2. Restore that backup into a separate test database and verify that the application
+   can read the restored schema and records.
+3. Run `python -m scripts.migrate --check` to inspect pending migrations/checksums.
+4. Run `python -m scripts.migrate` once against the intended database.
+5. Run `python -m scripts.migrate --check` again; it must report all migrations applied
+   with matching checksums.
+
+Do not edit a migration after it has been recorded in `schema_migrations`; add a new
+numbered migration instead. If migration 005 reports duplicate active phone numbers,
+stop and reconcile those records before retrying. Do not delete or deactivate records
+without reviewing their request history.
+
 
 ## Local development
 
@@ -105,7 +138,7 @@ The repository's `.gitignore` excludes `.env`. Use `.env.example` only as a temp
 
 ## Manager announcements and attention alerts (migration 003)
 
-After migrations 001 and 002, take/verify a backup and apply `migrations/003_broadcast_logs.sql`. It creates the audit table for announcement delivery summaries.
+After migrations 001 and 002, the migration runner applies `migrations/003_broadcast_logs.sql`. It creates the audit table for announcement delivery summaries.
 
 Managers use `/broadcast`:
 - The super admin can choose all employees across all branches or one branch.
@@ -119,10 +152,10 @@ For a bell/ringing sound, send a short audio clip to the bot as the announcement
 
 ## Broadcast acknowledgement reminders (migration 004)
 
-After migrations 001, 002, and 003 have been applied successfully, apply
-`migrations/004_broadcast_acknowledgements.sql` to the same PostgreSQL database.
-Take a database backup first. This migration creates per-recipient delivery and
-acknowledgement records; it does not delete or rewrite existing employee data.
+After migrations 001, 002, and 003 have been applied successfully, the migration
+runner applies `migrations/004_broadcast_acknowledgements.sql` to the same PostgreSQL
+database. This migration creates per-recipient delivery and acknowledgement records;
+it does not delete or rewrite existing employee data.
 
 When a manager sends a Telegram announcement, each successfully reached employee
 gets an individual **👁️ تم الاطلاع** button. Until that employee presses it, the
@@ -151,5 +184,8 @@ unknown branches are rejected.
 For smoke/lunch requests, approval rechecks the branch's current policy while
 holding the employee and settings rows in a PostgreSQL transaction. The request
 decision and its daily cigarette/lunch accounting records commit together or are
-rolled back together. The timer's Telegram message and persisted message ID are
-still a subsequent operation, so test those delivery/recovery paths in staging.
+rolled back together. Approved smoking, lunch, and custom-request decisions also create a durable timer-start
+outbox row in the same database transaction. Telegram message delivery and timer-row
+persistence are retried from that outbox after temporary failures and process restarts.
+A crash after Telegram accepts a message but before the database confirms it can still
+cause a duplicate start message; staging must verify this at-least-once delivery behavior.
