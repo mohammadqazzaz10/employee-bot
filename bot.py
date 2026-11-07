@@ -1030,8 +1030,7 @@ def verify_employee(phone_number):
 
 def get_user_phone(user_id):
     employee = get_employee_by_telegram_id(user_id)
-    if employee: return employee.get('phone_number')
-    return user_database.get(user_id, {}).get('phone')
+    return employee.get("phone_number") if employee else None
 
 def get_employee_name(user_id, default="المستخدم"):
     employee = get_employee_by_telegram_id(user_id)
@@ -1416,6 +1415,7 @@ async def handle_contact(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     await update.message.reply_text(f"✅ أهلاً {registered_name}، تم تفعيل حسابك بنجاح!")
+    await start(update, context)
 
 def create_progress_bar(remaining_seconds, total_seconds, length=12):
     """Render a compact, readable countdown bar for Telegram clients."""
