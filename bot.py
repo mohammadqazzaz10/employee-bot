@@ -82,6 +82,13 @@ def initialize_database_tables():
                 notes TEXT
             );
         """)
+        # Add decision audit fields to existing installations without dropping data.
+        cur.execute("""
+            ALTER TABLE requests
+                ADD COLUMN IF NOT EXISTS decided_by BIGINT,
+                ADD COLUMN IF NOT EXISTS decided_at TIMESTAMPTZ,
+                ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP;
+        """)
         
         # جدول السجائر اليومية
         cur.execute("""
@@ -289,7 +296,7 @@ def create_request(employee_id, request_type, notes=None):
         return None
 
 
-def decide_request(request_id, employee_id, request_type, decision):
+def decide_request(request_id, employee_id, request_type, decision, admin_id):
     """Atomically allow one administrator to decide a pending request once."""
     if decision not in {"approved", "rejected"}:
         return False
@@ -299,11 +306,15 @@ def decide_request(request_id, employee_id, request_type, decision):
         cur = conn.cursor()
         cur.execute("""
             UPDATE requests
-            SET status = %s, responded_at = CURRENT_TIMESTAMP
+            SET status = %s,
+                responded_at = CURRENT_TIMESTAMP,
+                decided_by = %s,
+                decided_at = CURRENT_TIMESTAMP,
+                updated_at = CURRENT_TIMESTAMP
             WHERE id = %s AND employee_id = %s
               AND request_type = %s AND status = 'pending'
             RETURNING id
-        """, (decision, request_id, employee_id, request_type))
+        """, (decision, admin_id, request_id, employee_id, request_type))
         changed = cur.fetchone()
         conn.commit()
         cur.close()
@@ -985,7 +996,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     decision = "approved" if action == "approve" else "rejected"
-    if not request_id or not decide_request(request_id, emp['id'], type_, decision):
+    if not request_id or not decide_request(request_id, emp['id'], type_, decision, query.from_user.id):
         await query.edit_message_text("ℹ️ تم التعامل مع هذا الطلب مسبقاً أو لم يعد صالحاً.")
         return
 
