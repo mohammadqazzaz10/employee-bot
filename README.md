@@ -31,7 +31,7 @@ Every employee profile includes a full name, job title, phone number, and branch
 The super admin or a manager/supervisor assigned to a branch can create an employee profile with:
 `/add_employee BRANCH_ID PHONE FULL_NAME | JOB_TITLE`
 
-The super admin assigns a branch role with `/assign_branch_admin TELEGRAM_ID BRANCH_ID [branch_manager|supervisor]` and revokes one branch assignment with `/remove_branch_admin TELEGRAM_ID BRANCH_ID`. A manager can view and operate only within assigned branches; the super admin has global access.
+The super admin creates a branch with `/add_branch CODE | NAME` and lists branches with `/list_branches`. A new branch is seeded with its own settings and default bathroom/prayer request buttons. The super admin assigns a branch role with `/assign_branch_admin TELEGRAM_ID BRANCH_ID [branch_manager|supervisor]` and revokes one branch assignment with `/remove_branch_admin TELEGRAM_ID BRANCH_ID`. A manager can view and operate only within assigned branches; the super admin has global access.
 
 ## Branch policy settings
 Managers use `/settings` to edit their branch's smoking and lunch policy. A super admin can select a branch with `/settings BRANCH_ID`.
