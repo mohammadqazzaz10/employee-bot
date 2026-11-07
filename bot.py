@@ -246,10 +246,13 @@ def initialize_database_tables():
 
 # --- دوال الموظفين وقاعدة البيانات (لم يتم تغييرها) ---
 # ... (دوال save_employee, get_employee_by_telegram_id, get_employee_by_phone, get_all_employees, delete_employee_by_phone)
-def save_employee_in_branch(phone_number, full_name, branch_id):
-    """Create an unlinked employee in an explicitly selected, active branch."""
+def save_employee_in_branch(phone_number, full_name, branch_id, actor_id):
+    """Create an unlinked employee only when the actor can administer the target branch."""
     conn = None
     try:
+        if not (is_super_admin(actor_id) or admin_can_access_branch(actor_id, branch_id)):
+            logger.warning("Denied employee creation in branch %s by %s", branch_id, actor_id)
+            return None
         normalized_phone = normalize_phone(phone_number)
         if not normalized_phone or not full_name.strip() or not branch_id:
             return None
@@ -1095,7 +1098,7 @@ async def add_employee(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if len(name) < 3:
         await update.effective_message.reply_text("أدخل الاسم الكامل للموظف.")
         return
-    employee_id = save_employee_in_branch(phone, name, branch_id)
+    employee_id = save_employee_in_branch(phone, name, branch_id, user_id)
     if employee_id:
         await update.effective_message.reply_text(
             f"✅ تمت إضافة الموظف {name} إلى الفرع رقم {branch_id}.\n"
