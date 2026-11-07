@@ -1,6 +1,8 @@
 from datetime import timedelta
 from pathlib import Path
 import os
+import subprocess
+import sys
 import unittest
 
 import bot
@@ -63,6 +65,11 @@ class TimerPostgreSQLTests(unittest.TestCase):
     def setUpClass(cls):
         if not bot.initialize_database_tables():
             raise RuntimeError("Could not initialize database for timer integration test")
+        subprocess.run(
+            [sys.executable, "-m", "scripts.migrate"],
+            cwd=ROOT,
+            check=True,
+        )
 
     def test_timer_can_be_saved_listed_completed_and_cleared(self):
         user_id = 987654321000
