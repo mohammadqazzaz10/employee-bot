@@ -6,11 +6,13 @@ import psycopg2
 import bot
 
 
+@unittest.skipUnless(
+    os.environ.get("DATABASE_URL"),
+    "Set DATABASE_URL to run PostgreSQL integration tests",
+)
 class PostgreSQLIntegrationTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        if not os.environ.get("DATABASE_URL"):
-            raise RuntimeError("CI DATABASE_URL must point to the PostgreSQL test service")
         if not bot.initialize_database_tables():
             raise RuntimeError("Application failed to initialize its PostgreSQL schema")
 
