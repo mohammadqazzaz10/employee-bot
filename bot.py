@@ -143,7 +143,9 @@ def initialize_database_tables():
         """)
         cur.execute("""
             ALTER TABLE employees
-            ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE;
+                ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE,
+                ADD COLUMN IF NOT EXISTS job_title VARCHAR(100),
+                ADD COLUMN IF NOT EXISTS last_active TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP;
         """)
         # Normalize legacy phone strings and Jordanian local mobile numbers once.
         cur.execute("""
@@ -197,6 +199,12 @@ def initialize_database_tables():
                 added_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
                 is_super_admin BOOLEAN DEFAULT FALSE
             );
+        """)
+        cur.execute("""
+            ALTER TABLE admins
+                ADD COLUMN IF NOT EXISTS added_by BIGINT,
+                ADD COLUMN IF NOT EXISTS added_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                ADD COLUMN IF NOT EXISTS is_super_admin BOOLEAN NOT NULL DEFAULT FALSE;
         """)
         
         # جدول استراحات الغداء
