@@ -309,6 +309,50 @@ async def assign_branch_admin_command(update: Update, context: ContextTypes.DEFA
         await update.effective_message.reply_text("❌ تعذر منح الصلاحية. تأكد من تطبيق migration 001.")
 
 
+async def remove_branch_admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    import bot
+    user_id = update.effective_user.id
+    if not bot.is_super_admin(user_id):
+        await update.effective_message.reply_text("⛔ هذا الأمر للمدير العام فقط.")
+        return
+    if len(context.args) != 2:
+        await update.effective_message.reply_text(
+            "الاستخدام: /remove_branch_admin TELEGRAM_ID BRANCH_ID"
+        )
+        return
+    try:
+        admin_id, branch_id = int(context.args[0]), int(context.args[1])
+        if admin_id <= 0 or branch_id <= 0:
+            raise ValueError
+    except ValueError:
+        await update.effective_message.reply_text("أدخل معرف Telegram ورقم الفرع كأرقام موجبة.")
+        return
+    conn = None
+    try:
+        conn = bot.get_db_connection()
+        cur = conn.cursor()
+        cur.execute(
+            "DELETE FROM admin_branch_roles WHERE telegram_id=%s AND branch_id=%s RETURNING id",
+            (admin_id, branch_id),
+        )
+        removed = cur.fetchone()
+        conn.commit()
+        cur.close()
+        conn.close()
+        if removed:
+            await update.effective_message.reply_text(
+                f"✅ تم إلغاء صلاحية الحساب {admin_id} في الفرع {branch_id} فقط."
+            )
+        else:
+            await update.effective_message.reply_text("لا توجد صلاحية مرتبطة بهذا الحساب في هذا الفرع.")
+    except Exception as exc:
+        logger.exception("Could not remove branch role: %s", exc)
+        if conn:
+            conn.rollback()
+            conn.close()
+        await update.effective_message.reply_text("❌ تعذر إلغاء الصلاحية.")
+
+
 async def cancel_settings_edit(update: Update, context: ContextTypes.DEFAULT_TYPE):
     pending = context.user_data.pop("pending_branch_setting", None)
     request_type_state = context.user_data.pop("new_request_type_state", None)
@@ -324,5 +368,6 @@ def register_settings_handlers(application):
     application.add_handler(CommandHandler("settings", settings_command))
     application.add_handler(CommandHandler("cancel", cancel_settings_edit))
     application.add_handler(CommandHandler("assign_branch_admin", assign_branch_admin_command))
+    application.add_handler(CommandHandler("remove_branch_admin", remove_branch_admin_command))
     application.add_handler(CallbackQueryHandler(settings_callback, pattern=r"^branchcfg:"), group=-1)
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, save_setting_value), group=1)
