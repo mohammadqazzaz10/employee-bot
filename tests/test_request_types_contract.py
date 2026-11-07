@@ -44,6 +44,16 @@ class ConfigurableRequestTypeContractTests(unittest.TestCase):
         self.assertIn("get_request_type_by_code(employee.get(\"branch_id\"), type_)", BOT)
         self.assertIn("custom[2] if custom else \"الاستئذان\"", BOT)
 
+    def test_manager_text_flow_is_not_consumed_by_employee_text_handler(self):
+        self.assertIn('group=3', MODULE)
+        self.assertIn('if context.user_data.get("new_request_type_state"):', MODULE)
+        self.assertIn('group=2', MODULE)
+
+    def test_request_notifications_use_branch_manager_list(self):
+        self.assertIn("send_to_branch_admins(", MODULE)
+        self.assertIn("r.branch_id=%s", MODULE)
+        self.assertIn("a.is_super_admin=TRUE", MODULE)
+
     def test_new_request_types_have_bounded_durations(self):
         self.assertIn("1 <= int(raw) <= 240", MODULE)
         self.assertIn("duration_minutes INTEGER NOT NULL CHECK (duration_minutes BETWEEN 1 AND 240)", MIGRATION)
