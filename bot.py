@@ -206,6 +206,9 @@ def initialize_database_tables():
                 ADD COLUMN IF NOT EXISTS added_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 ADD COLUMN IF NOT EXISTS is_super_admin BOOLEAN NOT NULL DEFAULT FALSE;
         """)
+        cur.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS uq_admins_telegram_id ON admins(telegram_id)"
+        )
         
         # جدول استراحات الغداء
         cur.execute("""
