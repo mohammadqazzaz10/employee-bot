@@ -464,6 +464,61 @@ def decide_request(request_id, employee_id, request_type, decision, admin_id):
             RETURNING id
         """, (decision, admin_id, request_id, employee_id, request_type, admin_id, admin_id))
         changed = cur.fetchone()
+        if changed and decision == "approved" and request_type in {"smoke", "break"}:
+            cur.execute(
+                "SELECT branch_id FROM employees WHERE id=%s AND is_active=TRUE FOR UPDATE",
+                (employee_id,),
+            )
+            employee_row = cur.fetchone()
+            if not employee_row:
+                conn.rollback()
+                return False
+            branch_id = employee_row[0]
+            cur.execute(
+                "SELECT smoke_enabled, smoke_daily_limit, lunch_enabled "
+                "FROM branch_settings WHERE branch_id=%s FOR UPDATE",
+                (branch_id,),
+            )
+            settings_row = cur.fetchone()
+            if not settings_row:
+                conn.rollback()
+                return False
+            smoke_enabled, smoke_limit, lunch_enabled = settings_row
+            if request_type == "smoke":
+                if not smoke_enabled:
+                    conn.rollback()
+                    return False
+                today = get_jordan_time().date()
+                cur.execute("""
+                    INSERT INTO daily_cigarettes (employee_id, date, count, updated_at)
+                    VALUES (%s, %s, 1, CURRENT_TIMESTAMP)
+                    ON CONFLICT (employee_id, date)
+                    DO UPDATE SET count = daily_cigarettes.count + 1,
+                                  updated_at = CURRENT_TIMESTAMP
+                    WHERE daily_cigarettes.count < %s
+                    RETURNING count
+                """, (employee_id, today, smoke_limit))
+                if not cur.fetchone():
+                    conn.rollback()
+                    return False
+                cur.execute(
+                    "INSERT INTO cigarette_times(employee_id, taken_at) VALUES(%s, %s)",
+                    (employee_id, get_jordan_time()),
+                )
+            else:
+                if not lunch_enabled:
+                    conn.rollback()
+                    return False
+                today = get_jordan_time().date()
+                cur.execute("""
+                    INSERT INTO lunch_breaks(employee_id, date, taken, taken_at)
+                    VALUES(%s, %s, TRUE, %s)
+                    ON CONFLICT(employee_id, date) DO NOTHING
+                    RETURNING id
+                """, (employee_id, today, get_jordan_time()))
+                if not cur.fetchone():
+                    conn.rollback()
+                    return False
         conn.commit()
         cur.close()
         conn.close()
@@ -1517,13 +1572,11 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         msg_text = ""
         timer_minutes = 0
         if type_ == 'smoke':
-            new_count = increment_smoke_count_db(emp['id'])
-            record_cigarette_time(emp['id'])
+            new_count = get_smoke_count_db(emp['id'])
             timer_minutes = settings['smoke_duration_minutes']
             msg_text = f"✅ تمت الموافقة! (رصيدك: {new_count}/{settings['smoke_daily_limit']})\nمدة السيجارة: {timer_minutes} دقائق."
             await start_timer(context, target_id, timer_minutes, 'smoke')
         elif type_ == 'break':
-            mark_lunch_break_taken(emp['id'])
             timer_minutes = settings['lunch_duration_minutes']
             msg_text = f"✅ تمت الموافقة على الغداء ({timer_minutes} دقيقة)."
             await start_timer(context, target_id, timer_minutes, 'break')
