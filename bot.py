@@ -977,18 +977,20 @@ async def handle_contact(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if contact.user_id != update.message.from_user.id: return
     
     phone = contact.phone_number
-    name = contact.first_name
 
-    # Never create or update an employee record until the shared phone is authorized.
-    if not verify_employee(phone):
+    # Preserve the full name entered by management in PostgreSQL. Telegram's
+    # contact first_name is not authoritative and must not overwrite it.
+    registered_employee = get_employee_by_phone(phone)
+    if not registered_employee or not registered_employee.get("is_active", True):
         await update.message.reply_text("⚠️ رقمك غير مسجل في النظام. تواصل مع المدير.")
         return
+    registered_name = registered_employee.get("full_name") or contact.first_name or "موظف"
 
-    if not save_employee(contact.user_id, phone, name):
+    if not save_employee(contact.user_id, phone, registered_name):
         await update.message.reply_text("❌ تعذر تفعيل الحساب حالياً. حاول لاحقاً أو تواصل مع المدير.")
         return
 
-    await update.message.reply_text("✅ تم تفعيل حسابك بنجاح! يمكنك الآن استخدام البوت.")
+    await update.message.reply_text(f"✅ أهلاً {registered_name}، تم تفعيل حسابك بنجاح!")
 
 def create_progress_bar(remaining_seconds, total_seconds, length=12):
     """Render a compact, readable countdown bar for Telegram clients."""
