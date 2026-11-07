@@ -4,6 +4,7 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 MIGRATION = ROOT / "migrations" / "001_multibranch_foundation.sql"
 INTEGRITY_MIGRATION = ROOT / "migrations" / "005_preproduction_integrity.sql"
+TIMER_ACK_MIGRATION = ROOT / "migrations" / "006_timer_return_acknowledgements.sql"
 RUNNER = ROOT / "scripts" / "migrate.py"
 
 
@@ -39,6 +40,11 @@ class MigrationContractTests(unittest.TestCase):
         self.assertIn("branch_settings_branch_id_fkey", sql)
         self.assertIn("timer_start_outbox", sql)
         self.assertIn("duplicate active employee phone numbers", sql)
+
+    def test_timer_return_ack_migration_separates_expiry_from_return(self):
+        sql = TIMER_ACK_MIGRATION.read_text(encoding="utf-8").lower()
+        self.assertIn("returned_at", sql)
+        self.assertIn("idx_active_timers_unreturned", sql)
 
     def test_migration_runner_checks_checksums_and_serializes_execution(self):
         source = RUNNER.read_text(encoding="utf-8")
