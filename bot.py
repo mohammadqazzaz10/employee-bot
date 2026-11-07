@@ -12,6 +12,7 @@ from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboard
 from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, ConversationHandler, filters, ContextTypes
 from branch_settings import get_branch_settings, register_settings_handlers
 from request_types import get_employee_buttons, get_request_type, get_request_type_by_code, register_request_type_handlers
+from broadcast import register_broadcast_handlers
 
 # تعريف مراحل المحادثة
 LEAVE_REASON, VACATION_REASON = range(2)
@@ -705,6 +706,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "/add_employee - إضافة موظف\n"
                 "/remove_employee - حذف موظف\n"
                 "/list_admins - عرض المديرين\n"
+                "/broadcast - إرسال إعلان أو تنبيه للموظفين\n"
             )
         await update.message.reply_text(msg, reply_markup=menu_markup)
     else:
@@ -1404,6 +1406,7 @@ def main():
     application.add_handler(CallbackQueryHandler(button_callback))
     register_settings_handlers(application)
     register_request_type_handlers(application)
+    register_broadcast_handlers(application)
     
     # -----------------------------------------------
     # 🚨 التعديل لتشغيل Webhook بدلاً من Polling
