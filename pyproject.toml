@@ -6,6 +6,6 @@ requires-python = ">=3.11"
 dependencies = [
     "flask>=3.1.2",
     "psycopg2-binary>=2.9.11",
-    "python-telegram-bot[job-queue]>=22.5",
+    "python-telegram-bot[webhooks,job-queue]>=22.5",
     "python-dotenv>=1.1.0",
 ]
