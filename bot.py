@@ -1257,9 +1257,18 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         _timer_db("clear", user_id)
         _remove_timer_job(context, user_id)
         name = get_employee_name(user_id)
-        # إزالة زر "تم العودة" بعد الضغط عليه
-        await query.edit_message_text(f"✅ شكراً {name}، تم تسجيل عودتك للعمل.\n\n(تم إنهاء مؤقت {type_})")
-        await send_to_all_admins(context, f"🔙 الموظف **{name}** عاد من **{type_}**.")
+        timer_label = type_
+        employee = get_employee_by_telegram_id(user_id)
+        if type_.startswith("custom-") and employee and employee.get("branch_id"):
+            custom = get_request_type_by_code(employee["branch_id"], type_)
+            if custom:
+                timer_label = custom[2]
+        await query.edit_message_text(f"✅ شكراً {name}، تم تسجيل عودتك للعمل.\n\n(تم إنهاء مؤقت {timer_label})")
+        if type_.startswith("custom-") and employee and employee.get("branch_id"):
+            from request_types import send_to_branch_admins
+            await send_to_branch_admins(context, employee["branch_id"], f"🔙 الموظف **{name}** عاد من **{timer_label}**.")
+        else:
+            await send_to_all_admins(context, f"🔙 الموظف **{name}** عاد من **{timer_label}**.")
         return
 
     # Approval/rejection is an administrative action, never trust the button alone.
@@ -1324,9 +1333,11 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text(text=f"{query.message.text}\n\n✅ تم القبول بواسطة المدير.")
         
     elif action == "reject":
+        rejected_label = custom_request_type[2] if custom_request_type else type_
         try:
-            await context.bot.send_message(target_id, f"❌ تم رفض طلبك ({type_}).")
-        except: pass
+            await context.bot.send_message(target_id, f"❌ تم رفض طلبك ({rejected_label}).")
+        except Exception:
+            logger.exception("Could not notify employee %s about rejected request", target_id)
         await query.edit_message_text(text=f"{query.message.text}\n\n❌ تم الرفض.")
 
 async def my_id_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
