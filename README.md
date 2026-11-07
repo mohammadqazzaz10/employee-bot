@@ -56,7 +56,7 @@ Managers use `/broadcast` to choose a permitted branch or audience, select emplo
 
 ## Database and deployment
 - Base tables are initialized by the application.
-- Migrations 001–005 add branch isolation schema, configurable request types, broadcast logs and acknowledgements, active-phone uniqueness, branch settings integrity, and the timer outbox.
+- Migrations 001–006 add branch isolation schema, configurable request types, broadcast logs and acknowledgements, active-phone uniqueness, branch settings integrity, timer outbox, and explicit return acknowledgements.
 - `scripts/migrate.py` applies numbered SQL migrations in order, uses a PostgreSQL advisory lock, and records SHA-256 checksums in `schema_migrations`.
 - Render Background Worker mode uses Telegram long polling. Web Service webhook mode is also supported; dependencies include the webhook and job-queue extras.
 - See [DEPLOYMENT.md](DEPLOYMENT.md) for backup, restore, migration, Render, and first-super-admin instructions.
@@ -66,7 +66,7 @@ GitHub Actions compiles Python sources and runs unit/contract plus PostgreSQL in
 
 Before production, complete:
 - Successful latest CI for the current PR head.
-- Verified backup/restore rehearsal and migrations 001–005 on the intended database.
+- Verified backup/restore rehearsal and migrations 001–006 on the intended database.
 - Staging/live Telegram tests for onboarding, request approvals, timers, broadcast delivery/acknowledgements, permissions, and failure recovery.
 - Render environment configuration and a controlled deployment.
 
