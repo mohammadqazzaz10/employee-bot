@@ -57,6 +57,19 @@ JORDAN_TZ = ZoneInfo('Asia/Amman')
 active_timers = {}
 timer_completed = {}
 
+def clear_interactive_drafts(context):
+    """Prevent an unfinished manager/employee workflow from consuming another flow's input."""
+    for key in (
+        "pending_broadcast",
+        "pending_branch_setting",
+        "new_request_type_state",
+        "editing_request_type",
+        "new_request_type_label",
+        "managed_request_branch",
+    ):
+        context.user_data.pop(key, None)
+
+
 def get_db_connection():
     """Connect to PostgreSQL using the URL configured by the hosting provider."""
     if not DATABASE_URL:
@@ -1021,7 +1034,7 @@ def get_employee_name(user_id, default="المستخدم"):
 # --- أوامر البوت (لم يتم تغييرها) ---
 # ... (جميع أوامر البوت: start, help_command)
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data.pop("pending_broadcast", None)
+    clear_interactive_drafts(context)
     user = update.message.from_user
     user_name = get_employee_name(user.id)
     user_phone = get_user_phone(user.id)
