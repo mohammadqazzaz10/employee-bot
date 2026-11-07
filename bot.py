@@ -1222,6 +1222,7 @@ async def restore_active_timers(application: Application):
             timer_type,
         )
     logger.info("Restored %s active employee timer(s)", len(rows))
+    await restore_pending_broadcast_reminders(application)
 
 
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
