@@ -40,7 +40,7 @@ class BranchAccessContractTests(unittest.TestCase):
         self.assertIn("JOIN admin_branch_roles r ON r.branch_id=e.branch_id", self.source)
         self.assertIn("employees = get_employees_for_admin(user_id)", self.source)
 
-    def test_global_employee_and_admin_management_is_super_admin_only(self):
+    def test_employee_onboarding_is_branch_scoped_and_global_admin_commands_are_restricted(self):
         self.assertIn("def save_employee_in_branch(phone_number, full_name, job_title, branch_id, actor_id):", self.source)
         self.assertIn("لا تملك صلاحية إضافة موظفين إلى هذا الفرع", self.source)
         self.assertIn("job_title", self.source)
