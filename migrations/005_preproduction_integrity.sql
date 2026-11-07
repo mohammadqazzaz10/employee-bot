@@ -56,6 +56,23 @@ BEGIN
     END IF;
 END $$;
 
+-- A durable outbox prevents an approved break from being lost if Telegram
+-- message delivery or timer persistence temporarily fails after the decision.
+CREATE TABLE IF NOT EXISTS timer_start_outbox (
+    id BIGSERIAL PRIMARY KEY,
+    request_id INTEGER NOT NULL UNIQUE REFERENCES requests(id) ON DELETE CASCADE,
+    employee_telegram_id BIGINT NOT NULL,
+    timer_type VARCHAR(40) NOT NULL,
+    duration_minutes INTEGER NOT NULL CHECK (duration_minutes BETWEEN 1 AND 240),
+    attempts INTEGER NOT NULL DEFAULT 0,
+    last_error TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_timer_start_outbox_created
+    ON timer_start_outbox (created_at);
+
 CREATE INDEX IF NOT EXISTS idx_active_timers_end_at
     ON active_timers (end_at)
     WHERE completed = FALSE;
