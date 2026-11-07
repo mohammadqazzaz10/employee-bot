@@ -1,9 +1,11 @@
 import os
+import hashlib
 import logging
 import json
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from datetime import datetime, timedelta, date, timezone
+from pathlib import Path
 from zoneinfo import ZoneInfo
 from dotenv import load_dotenv
 
@@ -98,14 +100,31 @@ def verify_required_migrations():
     try:
         conn = get_db_connection()
         with conn.cursor() as cur:
-            cur.execute("SELECT version FROM schema_migrations")
-            applied = {row[0] for row in cur.fetchall()}
+            cur.execute("SELECT version, checksum_sha256 FROM schema_migrations")
+            applied = dict(cur.fetchall())
         missing = [version for version in REQUIRED_MIGRATIONS if version not in applied]
-        if missing:
-            logger.critical(
-                "Required database migrations are missing: %s. Run python -m scripts.migrate.",
-                ", ".join(missing),
-            )
+        mismatched = []
+        migration_dir = Path(__file__).resolve().parent / "migrations"
+        for version in REQUIRED_MIGRATIONS:
+            path = migration_dir / version
+            if version in applied and path.is_file():
+                expected = hashlib.sha256(path.read_bytes()).hexdigest()
+                if applied[version].strip() != expected:
+                    mismatched.append(version)
+            elif version in applied:
+                mismatched.append(version)
+        if missing or mismatched:
+            if missing:
+                logger.critical(
+                    "Required database migrations are missing: %s.",
+                    ", ".join(missing),
+                )
+            if mismatched:
+                logger.critical(
+                    "Applied migration checksums do not match repository files: %s.",
+                    ", ".join(mismatched),
+                )
+            logger.critical("Run python -m scripts.migrate --check and reconcile before startup.")
             return False
         return True
     except Exception:
