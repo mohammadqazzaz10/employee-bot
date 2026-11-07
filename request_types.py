@@ -74,6 +74,27 @@ def get_employee_buttons(branch_id):
     return [row[2] for row in list_request_types(branch_id, active_only=True)]
 
 
+def _lock_branch_permission(cur, user_id, branch_id):
+    """Revalidate and lock the actor's branch grant inside a write transaction."""
+    cur.execute(
+        "SELECT is_super_admin FROM admins WHERE telegram_id=%s FOR SHARE",
+        (user_id,),
+    )
+    actor = cur.fetchone()
+    if not actor:
+        return False
+    if actor[0]:
+        return True
+    cur.execute(
+        """SELECT 1 FROM admin_branch_roles
+           WHERE telegram_id=%s AND branch_id=%s
+             AND role IN ('branch_manager','supervisor')
+           FOR SHARE""",
+        (user_id, branch_id),
+    )
+    return bool(cur.fetchone())
+
+
 def _can_manage(user_id, branch_id):
     import bot
     if bot.is_super_admin(user_id):
@@ -127,6 +148,13 @@ def _save_new(branch_id, label, duration, user_id):
     try:
         conn = _db()
         with conn.cursor() as cur:
+            if not _lock_branch_permission(cur, user_id, branch_id):
+                conn.rollback()
+                return None
+            cur.execute("SELECT 1 FROM branches WHERE id=%s AND is_active=TRUE FOR SHARE", (branch_id,))
+            if not cur.fetchone():
+                conn.rollback()
+                return None
             temporary_code = f"new-{uuid.uuid4().hex[:16]}"
             cur.execute("""INSERT INTO branch_request_types
                            (branch_id, code, label, duration_minutes, is_active, created_by, updated_by)
@@ -157,6 +185,9 @@ def _update_type(branch_id, type_id, user_id, *, duration=None, active=None):
     try:
         conn = _db()
         with conn.cursor() as cur:
+            if not _lock_branch_permission(cur, user_id, branch_id):
+                conn.rollback()
+                return False
             cur.execute("SELECT 1 FROM branch_request_types WHERE id=%s AND branch_id=%s FOR UPDATE",
                         (type_id, branch_id))
             if not cur.fetchone():
