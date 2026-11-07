@@ -44,7 +44,7 @@ class ConfigurableRequestTypeContractTests(unittest.TestCase):
         self.assertIn("registered_employee = get_employee_by_phone(phone)", BOT)
         self.assertIn('registered_name = registered_employee.get("full_name")', BOT)
         self.assertIn("save_employee(contact.user_id, phone, registered_name)", BOT)
-        self.assertIn("linked_telegram_id != int(contact.user_id)", BOT)
+        self.assertIn("int(linked_telegram_id) != int(contact.user_id)", BOT)
         self.assertNotIn("save_employee(contact.user_id, phone, name)", BOT)
         self.assertIn("def get_employee_name(user_id", BOT)
         self.assertIn("employee.get('full_name')", BOT)
