@@ -17,6 +17,8 @@ class TimerContractTests(unittest.TestCase):
 
     def test_approved_timer_start_is_durable_and_retried(self):
         self.assertIn("timer_start_outbox", SOURCE)
+        self.assertIn("returned_at IS NULL", SOURCE)
+        self.assertIn("returned_at = CURRENT_TIMESTAMP", SOURCE)
         self.assertIn('"save_outbox"', SOURCE)
         self.assertIn('"outbox_list"', SOURCE)
         self.assertIn("process_pending_timer_starts", SOURCE)
@@ -78,9 +80,11 @@ class TimerPostgreSQLTests(unittest.TestCase):
         self.assertEqual(row[1], message_id)
         self.assertEqual(row[2], "smoke")
         self.assertTrue(bot._timer_db("is_active", user_id))
+        self.assertTrue(bot._timer_db("has_unreturned", user_id))
 
         self.assertTrue(bot._timer_db("complete", user_id))
         self.assertFalse(bot._timer_db("is_active", user_id))
+        self.assertTrue(bot._timer_db("has_unreturned", user_id))
 
         # Reusing a user ID starts a fresh timer; explicit return clears it again.
         self.assertTrue(
@@ -93,6 +97,7 @@ class TimerPostgreSQLTests(unittest.TestCase):
         # Expiry marks the timer complete before the employee presses Return.
         self.assertTrue(bot._timer_db("clear_matching", user_id, "break", message_id + 1))
         self.assertFalse(bot._timer_db("is_active", user_id))
+        self.assertFalse(bot._timer_db("has_unreturned", user_id))
 
 
 if __name__ == "__main__":
