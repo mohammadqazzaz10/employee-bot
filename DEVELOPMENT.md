@@ -9,7 +9,7 @@
 - Local secrets belong in `.env`, which is ignored by Git. See `.env.example` and `DEPLOYMENT.md`.
 
 ## Database lifecycle
-The application initializes the base tables on startup. Numbered SQL migrations 001–005 are applied separately with `python -m scripts.migrate` after a verified backup. The runner uses a PostgreSQL advisory lock, applies migrations in numeric order, and records SHA-256 checksums. Use `python -m scripts.migrate --check` to verify the migration ledger without changing the schema.
+The application initializes the base tables on startup. Numbered SQL migrations 001–006 are applied separately with `python -m scripts.migrate` after a verified backup. The runner uses a PostgreSQL advisory lock, applies migrations in numeric order, and records SHA-256 checksums. Use `python -m scripts.migrate --check` to verify the migration ledger without changing the schema.
 
 Do not edit an applied migration; add a new numbered migration. Migration 005 deliberately stops if duplicate active phone numbers or orphaned branch-settings rows are detected.
 
@@ -34,7 +34,7 @@ python -m unittest discover -s tests -v
 
 ## Production gates
 - Latest GitHub Actions run must pass on the exact PR head SHA.
-- Apply migrations 001–005 to the intended database only after a backup has been restored successfully in a separate test database.
+- Apply migrations 001–006 to the intended database only after a backup has been restored successfully in a separate test database.
 - Verify existing employee phone uniqueness before migration 005.
 - Exercise Telegram onboarding, approvals, timers, restart recovery, broadcast acknowledgements, and access revocation in staging.
 - Rehearse backup/restore and review logs for delivery failures.
