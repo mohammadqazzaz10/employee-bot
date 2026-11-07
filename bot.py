@@ -815,7 +815,12 @@ def get_employees_for_admin(user_id):
         conn = get_db_connection()
         cur = conn.cursor(cursor_factory=RealDictCursor)
         if is_super_admin(user_id):
-            cur.execute("SELECT * FROM employees WHERE is_active=TRUE ORDER BY full_name")
+            cur.execute("""
+                SELECT e.*, b.name AS branch_name
+                FROM employees e
+                LEFT JOIN branches b ON b.id=e.branch_id
+                WHERE e.is_active=TRUE ORDER BY e.full_name
+            """)
         else:
             cur.execute("""
                 SELECT e.*, b.name AS branch_name
