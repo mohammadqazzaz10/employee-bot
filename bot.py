@@ -747,12 +747,17 @@ async def handle_contact(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     phone = contact.phone_number
     name = contact.first_name
-    save_employee(contact.user_id, phone, name)
-    
-    if verify_employee(phone):
-        await update.message.reply_text("✅ تم تفعيل حسابك بنجاح! يمكنك الآن استخدام البوت.")
-    else:
+
+    # Never create or update an employee record until the shared phone is authorized.
+    if not verify_employee(phone):
         await update.message.reply_text("⚠️ رقمك غير مسجل في النظام. تواصل مع المدير.")
+        return
+
+    if not save_employee(contact.user_id, phone, name):
+        await update.message.reply_text("❌ تعذر تفعيل الحساب حالياً. حاول لاحقاً أو تواصل مع المدير.")
+        return
+
+    await update.message.reply_text("✅ تم تفعيل حسابك بنجاح! يمكنك الآن استخدام البوت.")
 
 def create_progress_bar(current, total, length=15):
     pct = current / total if total > 0 else 0
@@ -852,22 +857,48 @@ async def start_timer(context, user_id, minutes, type_):
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    data = query.data.split('_')
-    action = data[0]
-    
+
+    # Validate callback payloads before indexing or converting user-controlled data.
+    data = (query.data or "").split('_')
+    if len(data) != 3:
+        await query.edit_message_text("⚠️ هذا الإجراء غير صالح.")
+        return
+
+    action, type_, raw_target_id = data
+    if action not in {"approve", "reject", "returned"}:
+        await query.edit_message_text("⚠️ هذا الإجراء غير معروف.")
+        return
+    if type_ not in {"smoke", "break", "leave", "vacation"}:
+        await query.edit_message_text("⚠️ نوع الطلب غير صالح.")
+        return
+    try:
+        target_id = int(raw_target_id)
+    except (TypeError, ValueError):
+        await query.edit_message_text("⚠️ بيانات الطلب غير صالحة.")
+        return
+
     if action == "returned":
-        user_id = int(data[2])
-        type_ = data[1]
+        # Only the employee whose timer was created may confirm their return.
+        if query.from_user.id != target_id:
+            await query.answer("هذا الزر مخصص للموظف صاحب الاستراحة.", show_alert=True)
+            return
+        user_id = target_id
         name = get_employee_name(user_id)
         # إزالة زر "تم العودة" بعد الضغط عليه
         await query.edit_message_text(f"✅ شكراً {name}، تم تسجيل عودتك للعمل.\n\n(تم إنهاء مؤقت {type_})")
         await send_to_all_admins(context, f"🔙 الموظف **{name}** عاد من **{type_}**.")
         return
 
-    type_ = data[1]
-    target_id = int(data[2])
+    # Approval/rejection is an administrative action, never trust the button alone.
+    if not is_admin(query.from_user.id):
+        await query.answer("غير مصرح لك بتنفيذ هذا الإجراء.", show_alert=True)
+        return
+
     emp = get_employee_by_telegram_id(target_id)
-    
+    if not emp:
+        await query.edit_message_text("⚠️ الموظف المرتبط بهذا الطلب لم يعد موجوداً.")
+        return
+
     if action == "approve":
         msg_text = ""
         timer_minutes = 0
