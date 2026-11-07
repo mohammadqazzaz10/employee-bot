@@ -514,7 +514,7 @@ def decide_request(request_id, employee_id, request_type, decision, admin_id):
                 return False
             cur.execute(
                 """SELECT 1 FROM active_timers
-                   WHERE user_id=%s AND completed=FALSE FOR UPDATE""",
+                   WHERE user_id=%s AND returned_at IS NULL FOR UPDATE""",
                 (employee_branch[1],),
             )
             if cur.fetchone():
@@ -1436,8 +1436,8 @@ def _timer_db(operation, *values):
             if operation == "save":
                 cur.execute("""
                     INSERT INTO active_timers
-                        (user_id, message_id, timer_type, start_at, end_at, completed, completed_at)
-                    VALUES (%s, %s, %s, %s, %s, FALSE, NULL)
+                        (user_id, message_id, timer_type, start_at, end_at, completed, completed_at, returned_at)
+                    VALUES (%s, %s, %s, %s, %s, FALSE, NULL, NULL)
                     ON CONFLICT (user_id) DO UPDATE SET
                         message_id = EXCLUDED.message_id,
                         timer_type = EXCLUDED.timer_type,
@@ -1445,6 +1445,7 @@ def _timer_db(operation, *values):
                         end_at = EXCLUDED.end_at,
                         completed = FALSE,
                         completed_at = NULL,
+                        returned_at = NULL,
                         created_at = CURRENT_TIMESTAMP
                 """, values)
             elif operation == "list":
@@ -1477,8 +1478,8 @@ def _timer_db(operation, *values):
                 user_id, message_id, timer_type, start_at, end_at, request_id = values
                 cur.execute(
                     """INSERT INTO active_timers
-                       (user_id, message_id, timer_type, start_at, end_at, completed, completed_at)
-                       VALUES (%s,%s,%s,%s,%s,FALSE,NULL)
+                       (user_id, message_id, timer_type, start_at, end_at, completed, completed_at, returned_at)
+                       VALUES (%s,%s,%s,%s,%s,FALSE,NULL,NULL)
                        ON CONFLICT (user_id) DO UPDATE SET
                            message_id=EXCLUDED.message_id,
                            timer_type=EXCLUDED.timer_type,
@@ -1486,6 +1487,7 @@ def _timer_db(operation, *values):
                            end_at=EXCLUDED.end_at,
                            completed=FALSE,
                            completed_at=NULL,
+                           returned_at=NULL,
                            created_at=CURRENT_TIMESTAMP""",
                     (user_id, message_id, timer_type, start_at, end_at),
                 )
@@ -1530,7 +1532,8 @@ def _timer_db(operation, *values):
             elif operation == "clear_matching":
                 cur.execute("""
                     UPDATE active_timers
-                    SET completed = TRUE, completed_at = CURRENT_TIMESTAMP
+                    SET completed = TRUE, completed_at = CURRENT_TIMESTAMP,
+                        returned_at = CURRENT_TIMESTAMP
                     WHERE user_id = %s AND timer_type = %s
                       AND message_id = %s
                     RETURNING user_id
