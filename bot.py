@@ -473,7 +473,7 @@ def decide_request(request_id, employee_id, request_type, decision, admin_id):
             conn.rollback()
             return False
         cur.execute(
-            "SELECT branch_id FROM employees WHERE id=%s AND is_active=TRUE FOR SHARE",
+            "SELECT branch_id, telegram_id FROM employees WHERE id=%s AND is_active=TRUE FOR SHARE",
             (employee_id,),
         )
         employee_branch = cur.fetchone()
@@ -530,17 +530,18 @@ def decide_request(request_id, employee_id, request_type, decision, admin_id):
                 return False
             branch_id = employee_row[0]
             cur.execute("""
-                SELECT smoke_enabled, smoke_daily_limit, smoke_start_time,
-                       smoke_end_time, smoke_gap_minutes, lunch_enabled,
-                       lunch_start_time, lunch_end_time
+                SELECT smoke_enabled, smoke_daily_limit, smoke_duration_minutes,
+                       smoke_start_time, smoke_end_time, smoke_gap_minutes,
+                       lunch_enabled, lunch_duration_minutes, lunch_start_time,
+                       lunch_end_time
                 FROM branch_settings WHERE branch_id=%s FOR UPDATE
             """, (branch_id,))
             settings_row = cur.fetchone()
             if not settings_row:
                 conn.rollback()
                 return False
-            (smoke_enabled, smoke_limit, smoke_start, smoke_end, smoke_gap,
-             lunch_enabled, lunch_start, lunch_end) = settings_row
+            (smoke_enabled, smoke_limit, smoke_duration, smoke_start, smoke_end, smoke_gap,
+             lunch_enabled, lunch_duration, lunch_start, lunch_end) = settings_row
             now = get_jordan_time()
             today = now.date()
             current_time = now.time().replace(tzinfo=None)
@@ -586,6 +587,40 @@ def decide_request(request_id, employee_id, request_type, decision, admin_id):
                 if not cur.fetchone():
                     conn.rollback()
                     return False
+            timer_duration = smoke_duration if request_type == "smoke" else lunch_duration
+            if not employee_branch[1]:
+                conn.rollback()
+                return False
+            cur.execute(
+                """INSERT INTO timer_start_outbox
+                   (request_id, employee_telegram_id, timer_type, duration_minutes)
+                   VALUES (%s, %s, %s, %s)
+                   ON CONFLICT (request_id) DO NOTHING""",
+                (request_id, employee_branch[1], request_type, timer_duration),
+            )
+        elif changed and decision == "approved" and request_type.startswith("custom-"):
+            try:
+                custom_type_id = int(request_type.split("-", 1)[1])
+            except ValueError:
+                conn.rollback()
+                return False
+            cur.execute(
+                """SELECT duration_minutes FROM branch_request_types
+                   WHERE id=%s AND branch_id=%s AND code=%s AND is_active=TRUE
+                   FOR UPDATE""",
+                (custom_type_id, employee_branch[0], request_type),
+            )
+            custom_duration = cur.fetchone()
+            if not custom_duration or not employee_branch[1]:
+                conn.rollback()
+                return False
+            cur.execute(
+                """INSERT INTO timer_start_outbox
+                   (request_id, employee_telegram_id, timer_type, duration_minutes)
+                   VALUES (%s, %s, %s, %s)
+                   ON CONFLICT (request_id) DO NOTHING""",
+                (request_id, employee_branch[1], request_type, custom_duration[0]),
+            )
         conn.commit()
         cur.close()
         conn.close()
