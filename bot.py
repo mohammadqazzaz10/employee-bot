@@ -44,11 +44,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # --- إعدادات المديرين ---
-# Admin identity is provisioned from SUPER_ADMIN_TELEGRAM_ID into PostgreSQL.
-# Employee phone authorization is checked against active database records.
-authorized_phones = []
-
-user_database = {}
+# The first administrator is provisioned from SUPER_ADMIN_TELEGRAM_ID into PostgreSQL.
 daily_smoke_count = {}
 
 # --- إعدادات السجائر الجديدة ---
@@ -588,9 +584,14 @@ def get_jordan_time():
     return datetime.now(JORDAN_TZ)
 
 def normalize_phone(phone_number):
-    if not phone_number: return ""
-    digits_only = ''.join(filter(str.isdigit, phone_number))
-    while digits_only.startswith('00'): digits_only = digits_only[2:]
+    if not phone_number:
+        return ""
+    digits_only = ''.join(filter(str.isdigit, str(phone_number)))
+    while digits_only.startswith("00"):
+        digits_only = digits_only[2:]
+    # Normalize common Jordanian local mobile format (07XXXXXXXX) to 9627XXXXXXXX.
+    if len(digits_only) == 10 and digits_only.startswith("07"):
+        digits_only = "962" + digits_only[1:]
     return digits_only
 
 def verify_employee(phone_number):
@@ -609,21 +610,6 @@ def get_employee_name(user_id, default="المستخدم"):
     employee = get_employee_by_telegram_id(user_id)
     if employee and employee.get('full_name'): return employee.get('full_name')
     return default
-
-def add_employee_to_authorized(phone_number):
-    if not phone_number.startswith('+'): phone_number = '+' + phone_number
-    if phone_number not in authorized_phones:
-        authorized_phones.append(phone_number)
-        return True
-    return False
-
-def remove_employee_from_authorized(phone_number):
-    normalized = normalize_phone(phone_number)
-    for auth in authorized_phones[:]:
-        if normalize_phone(auth) == normalized:
-            authorized_phones.remove(auth)
-            return True
-    return False
 
 # --- أوامر البوت (لم يتم تغييرها) ---
 # ... (جميع أوامر البوت: start, help_command)
