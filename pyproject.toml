@@ -1,10 +1,21 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
 [project]
-name = "repl-nix-workspace"
-version = "0.1.0"
-description = "Add your description here"
-requires-python = ">=3.11"
+name = "employee-bot"
+version = "1.0.0"
+description = "Branch-aware Telegram employee operations bot with PostgreSQL persistence"
+requires-python = ">=3.11,<4"
 dependencies = [
-    "flask>=3.1.2",
-    "psycopg2-binary>=2.9.11",
-    "python-telegram-bot[job-queue]>=22.5",
+    "psycopg2-binary>=2.9.11,<3",
+    "python-telegram-bot[webhooks,job-queue]>=22.5,<23",
+    "python-dotenv>=1.1,<2",
+    "tzdata>=2025.2",
 ]
+
+[tool.setuptools]
+py-modules = ["bot", "branch_settings", "request_types", "broadcast"]
+
+[tool.setuptools.packages.find]
+include = ["scripts*"]
