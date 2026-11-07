@@ -303,6 +303,8 @@ async def request_type_text_handler(update: Update, context: ContextTypes.DEFAUL
 
 async def custom_request_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     import bot
+    if context.user_data.get("new_request_type_state"):
+        return
     employee = bot.get_employee_by_telegram_id(update.effective_user.id)
     if not employee or not employee.get("branch_id"):
         return
@@ -336,5 +338,5 @@ async def custom_request_handler(update: Update, context: ContextTypes.DEFAULT_T
 def register_request_type_handlers(application):
     application.add_handler(CommandHandler("request_types", request_types_command))
     application.add_handler(CallbackQueryHandler(request_type_callback, pattern=r"^requesttype:"), group=-1)
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, request_type_text_handler), group=1)
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, request_type_text_handler), group=3)
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, custom_request_handler), group=2)
