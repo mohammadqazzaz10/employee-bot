@@ -1,6 +1,7 @@
 import os
 import hashlib
 import logging
+import re
 import json
 import psycopg2
 from psycopg2.extras import RealDictCursor
@@ -1888,7 +1889,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         type_, raw_request_id, raw_target_id = data[1], data[2], data[3]
 
-    if type_ not in {"smoke", "break", "leave", "vacation"} and not __import__("re").fullmatch(r"custom-[0-9]+", type_):
+    if type_ not in {"smoke", "break", "leave", "vacation"} and not re.fullmatch(r"custom-[0-9]+", type_):
         await query.edit_message_text("⚠️ نوع الطلب غير صالح.")
         return
     try:
@@ -2033,8 +2034,10 @@ def main():
     if not SUPER_ADMIN_TELEGRAM_ID:
         logger.warning("Set SUPER_ADMIN_TELEGRAM_ID in the hosting environment to activate the first administrator.")
 
-    if WEBHOOK_URL and not WEBHOOK_SECRET:
-        logger.critical("WEBHOOK_SECRET is required when webhook mode is enabled.")
+    if WEBHOOK_URL and not re.fullmatch(r"[A-Za-z0-9_-]{1,256}", WEBHOOK_SECRET):
+        logger.critical(
+            "WEBHOOK_SECRET must be set and contain only 1–256 letters, digits, underscores, or hyphens."
+        )
         return
 
     application = Application.builder().token(BOT_TOKEN).post_init(restore_active_timers).build()
