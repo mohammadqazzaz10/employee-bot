@@ -74,7 +74,13 @@ def _resolve_branch(user_id, requested=None):
                 row = cur.fetchone()
             result = row[0] if row else None
         else:
-            cur.execute("SELECT branch_id FROM admin_branch_roles WHERE telegram_id=%s ORDER BY branch_id", (user_id,))
+            cur.execute("""
+                SELECT r.branch_id
+                FROM admin_branch_roles r
+                JOIN branches b ON b.id=r.branch_id
+                WHERE r.telegram_id=%s AND b.is_active=TRUE
+                ORDER BY r.branch_id
+            """, (user_id,))
             ids = [r[0] for r in cur.fetchall()]
             result = requested if requested in ids else (ids[0] if requested is None and len(ids) == 1 else None)
         cur.close()
