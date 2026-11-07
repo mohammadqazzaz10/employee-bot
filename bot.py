@@ -10,6 +10,7 @@ from dotenv import load_dotenv
 load_dotenv()
 from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardRemove
 from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, ConversationHandler, filters, ContextTypes
+from branch_settings import get_branch_settings, register_settings_handlers
 
 # تعريف مراحل المحادثة
 LEAVE_REASON, VACATION_REASON = range(2)
@@ -198,6 +199,31 @@ def initialize_database_tables():
                 completed BOOLEAN NOT NULL DEFAULT FALSE,
                 completed_at TIMESTAMPTZ,
                 created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+        """)
+
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS branch_settings (
+                branch_id BIGINT PRIMARY KEY,
+                smoke_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+                smoke_daily_limit INTEGER NOT NULL DEFAULT 5 CHECK (smoke_daily_limit BETWEEN 0 AND 30),
+                smoke_duration_minutes INTEGER NOT NULL DEFAULT 6 CHECK (smoke_duration_minutes BETWEEN 1 AND 120),
+                smoke_start_time TIME NOT NULL DEFAULT '10:00',
+                smoke_end_time TIME,
+                smoke_gap_minutes INTEGER NOT NULL DEFAULT 90 CHECK (smoke_gap_minutes BETWEEN 0 AND 1440),
+                lunch_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+                lunch_duration_minutes INTEGER NOT NULL DEFAULT 30 CHECK (lunch_duration_minutes BETWEEN 1 AND 240),
+                lunch_start_time TIME,
+                lunch_end_time TIME,
+                updated_by BIGINT,
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+        """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS branch_settings_audit (
+                id BIGSERIAL PRIMARY KEY, branch_id BIGINT NOT NULL,
+                setting_key VARCHAR(60) NOT NULL, old_value TEXT, new_value TEXT,
+                changed_by BIGINT NOT NULL, changed_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
             );
         """)
 
@@ -1302,6 +1328,7 @@ def main():
     
     application.add_handler(MessageHandler(filters.CONTACT, handle_contact))
     application.add_handler(CallbackQueryHandler(button_callback))
+    register_settings_handlers(application)
     
     # -----------------------------------------------
     # 🚨 التعديل لتشغيل Webhook بدلاً من Polling
