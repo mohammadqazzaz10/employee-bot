@@ -12,9 +12,27 @@ from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQu
 LEAVE_REASON, VACATION_REASON = range(2)
 
 # --- إعدادات البيئة لـ Telegram و Webhook ---
-BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
-PORT = int(os.environ.get('PORT', '8080'))  # المنفذ الذي سيستمع إليه الخادم (Render يحدده)
-WEBHOOK_URL = os.environ.get("WEBHOOK_URL") # رابط الويب هوك الخاص بالخدمة
+BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
+DATABASE_URL = os.environ.get("DATABASE_URL", "").strip()
+DATABASE_SSLMODE = os.environ.get("DATABASE_SSLMODE", "prefer").strip() or "prefer"
+PORT = int(os.environ.get("PORT", "8080"))
+WEBHOOK_URL = (os.environ.get("WEBHOOK_URL") or os.environ.get("RENDER_EXTERNAL_URL") or "").strip().rstrip("/")
+
+def _parse_telegram_id(value, variable_name):
+    if not value:
+        return None
+    try:
+        parsed = int(value)
+        if parsed <= 0:
+            raise ValueError
+        return parsed
+    except (TypeError, ValueError):
+        raise RuntimeError(f"{variable_name} must be a positive Telegram numeric user ID")
+
+SUPER_ADMIN_TELEGRAM_ID = _parse_telegram_id(
+    os.environ.get("SUPER_ADMIN_TELEGRAM_ID", "").strip(),
+    "SUPER_ADMIN_TELEGRAM_ID",
+)
 
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -23,11 +41,9 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # --- إعدادات المديرين ---
-ADMIN_IDS = [1465191277]  # ضع معرفات المديرين هنا
-
-authorized_phones = [
-    '+962786644106'
-]
+# Admin identity is provisioned from SUPER_ADMIN_TELEGRAM_ID into PostgreSQL.
+# Employee phone authorization is checked against active database records.
+authorized_phones = []
 
 user_database = {}
 daily_smoke_count = {}
@@ -44,9 +60,15 @@ active_timers = {}
 timer_completed = {}
 
 def get_db_connection():
-    """إنشاء اتصال بقاعدة البيانات"""
-    # استخدام sslmode='require' للاتصال الآمن على المنصات الخارجية
-    return psycopg2.connect(os.environ.get("DATABASE_URL"), sslmode='require')
+    """Connect to PostgreSQL using the URL configured by the hosting provider."""
+    if not DATABASE_URL:
+        raise RuntimeError("DATABASE_URL is not configured")
+    return psycopg2.connect(
+        DATABASE_URL,
+        sslmode=DATABASE_SSLMODE,
+        connect_timeout=10,
+        application_name="employee-bot",
+    )
 
 def initialize_database_tables():
     """إنشاء الجداول المطلوبة"""
@@ -66,10 +88,15 @@ def initialize_database_tables():
                 department VARCHAR(100),
                 hire_date DATE,
                 last_active TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-                created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                is_active BOOLEAN NOT NULL DEFAULT TRUE
             );
         """)
-        
+        cur.execute("""
+            ALTER TABLE employees
+            ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE;
+        """)
+
         # جدول الطلبات
         cur.execute("""
             CREATE TABLE IF NOT EXISTS requests (
@@ -151,10 +178,20 @@ def initialize_database_tables():
             );
         """)
         
+        if SUPER_ADMIN_TELEGRAM_ID:
+            cur.execute("""
+                INSERT INTO admins (telegram_id, added_by, is_super_admin)
+                VALUES (%s, NULL, TRUE)
+                ON CONFLICT (telegram_id)
+                DO UPDATE SET is_super_admin = TRUE
+            """, (SUPER_ADMIN_TELEGRAM_ID,))
+
         conn.commit()
         cur.close()
         conn.close()
         logger.info("Database tables initialized successfully")
+        if not SUPER_ADMIN_TELEGRAM_ID:
+            logger.warning("SUPER_ADMIN_TELEGRAM_ID is not set; no administrator has been bootstrapped")
         return True
     except Exception as e:
         logger.error(f"Error initializing database tables: {e}")
@@ -221,7 +258,7 @@ def get_employee_by_telegram_id(telegram_id):
     try:
         conn = get_db_connection()
         cur = conn.cursor(cursor_factory=RealDictCursor)
-        cur.execute("SELECT * FROM employees WHERE telegram_id = %s", (telegram_id,))
+        cur.execute("SELECT * FROM employees WHERE telegram_id = %s AND is_active = TRUE", (telegram_id,))
         employee = cur.fetchone()
         cur.close()
         conn.close()
@@ -235,7 +272,7 @@ def get_employee_by_phone(phone_number):
         normalized = normalize_phone(phone_number)
         conn = get_db_connection()
         cur = conn.cursor(cursor_factory=RealDictCursor)
-        cur.execute("SELECT * FROM employees WHERE phone_number = %s", (normalized,))
+        cur.execute("SELECT * FROM employees WHERE phone_number = %s AND is_active = TRUE ORDER BY id DESC LIMIT 1", (normalized,))
         employee = cur.fetchone()
         cur.close()
         conn.close()
@@ -248,7 +285,7 @@ def get_all_employees():
     try:
         conn = get_db_connection()
         cur = conn.cursor(cursor_factory=RealDictCursor)
-        cur.execute("SELECT * FROM employees ORDER BY full_name")
+        cur.execute("SELECT * FROM employees WHERE is_active = TRUE ORDER BY full_name")
         employees = cur.fetchall()
         cur.close()
         conn.close()
@@ -262,7 +299,12 @@ def delete_employee_by_phone(phone_number):
         normalized = normalize_phone(phone_number)
         conn = get_db_connection()
         cur = conn.cursor()
-        cur.execute("DELETE FROM employees WHERE phone_number = %s RETURNING id", (normalized,))
+        cur.execute("""
+            UPDATE employees
+            SET is_active = FALSE, last_active = CURRENT_TIMESTAMP
+            WHERE phone_number = %s AND is_active = TRUE
+            RETURNING id
+        """, (normalized,))
         deleted = cur.fetchone()
         conn.commit()
         cur.close()
@@ -449,28 +491,39 @@ def mark_lunch_break_taken(employee_id):
 # --- دوال المديرين (لم يتم تغييرها) ---
 # ... (جميع دوال المديرين)
 def get_all_admins():
+    conn = None
     try:
         conn = get_db_connection()
-        cur = conn.cursor(cursor_factory=RealDictCursor)
-        cur.execute("SELECT * FROM admins ORDER BY added_at")
-        admins = cur.fetchall()
+        cur = conn.cursor()
+        cur.execute("SELECT telegram_id FROM admins ORDER BY added_at")
+        admins = [row[0] for row in cur.fetchall()]
         cur.close()
         conn.close()
-        
-        admin_ids = [admin['telegram_id'] for admin in admins] if admins else []
-        for admin_id in ADMIN_IDS:
-            if admin_id not in admin_ids:
-                add_admin_to_db(admin_id, is_super=True)
-                admin_ids.append(admin_id)
-        return admin_ids
+        return admins
     except Exception as e:
-        logger.error(f"Error getting admins: {e}")
-        return ADMIN_IDS
+        logger.error("Error getting admins: %s", e)
+        if conn:
+            conn.close()
+        return []  # Fail closed if PostgreSQL is unavailable.
 
 def is_admin(user_id):
-    return user_id in get_all_admins()
+    conn = None
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute("SELECT 1 FROM admins WHERE telegram_id = %s", (user_id,))
+        result = cur.fetchone()
+        cur.close()
+        conn.close()
+        return bool(result)
+    except Exception as e:
+        logger.error("Error checking admin access: %s", e)
+        if conn:
+            conn.close()
+        return False
 
 def is_super_admin(user_id):
+    conn = None
     try:
         conn = get_db_connection()
         cur = conn.cursor()
@@ -478,9 +531,12 @@ def is_super_admin(user_id):
         result = cur.fetchone()
         cur.close()
         conn.close()
-        return result[0] if result else (user_id in ADMIN_IDS)
-    except:
-        return user_id in ADMIN_IDS
+        return bool(result and result[0])
+    except Exception as e:
+        logger.error("Error checking super-admin access: %s", e)
+        if conn:
+            conn.close()
+        return False
 
 def add_admin_to_db(telegram_id, added_by=None, is_super=False):
     try:
@@ -489,7 +545,8 @@ def add_admin_to_db(telegram_id, added_by=None, is_super=False):
         cur.execute("""
             INSERT INTO admins (telegram_id, added_by, is_super_admin)
             VALUES (%s, %s, %s)
-            ON CONFLICT (telegram_id) DO UPDATE SET is_super_admin = EXCLUDED.is_super_admin
+            ON CONFLICT (telegram_id) DO UPDATE
+            SET is_super_admin = admins.is_super_admin OR EXCLUDED.is_super_admin
         """, (telegram_id, added_by, is_super))
         conn.commit()
         cur.close()
@@ -501,7 +558,7 @@ def add_admin_to_db(telegram_id, added_by=None, is_super=False):
 
 def remove_admin_from_db(telegram_id):
     try:
-        if telegram_id in ADMIN_IDS: return False
+        if telegram_id == SUPER_ADMIN_TELEGRAM_ID: return False
         conn = get_db_connection()
         cur = conn.cursor()
         cur.execute("DELETE FROM admins WHERE telegram_id = %s AND is_super_admin = FALSE", (telegram_id,))
@@ -535,10 +592,10 @@ def normalize_phone(phone_number):
 
 def verify_employee(phone_number):
     normalized_input = normalize_phone(phone_number)
-    for auth_phone in authorized_phones:
-        if normalize_phone(auth_phone) == normalized_input:
-            return True
-    return False
+    if not normalized_input:
+        return False
+    employee = get_employee_by_phone(normalized_input)
+    return bool(employee and employee.get("is_active", True))
 
 def get_user_phone(user_id):
     employee = get_employee_by_telegram_id(user_id)
@@ -786,7 +843,6 @@ async def add_employee(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not phone.startswith('+'): phone = '+' + phone
     
     if save_employee(None, phone, name):
-        add_employee_to_authorized(phone)
         await update.message.reply_text(f"✅ تم إضافة {name}.")
     else:
         await update.message.reply_text("❌ حدث خطأ.")
@@ -798,8 +854,7 @@ async def remove_employee(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     phone = context.args[0]
     if delete_employee_by_phone(phone):
-        remove_employee_from_authorized(phone)
-        await update.message.reply_text("✅ تم الحذف.")
+        await update.message.reply_text("✅ تم إيقاف الموظف مع الاحتفاظ بسجلاته.")
     else:
         await update.message.reply_text("❌ لم يتم العثور على الموظف.")
 
@@ -1041,12 +1096,15 @@ def main():
         print("Error: No Token.")
         return
         
-    initialize_database_tables()
-    
-    # تحميل الموظفين
-    emps = get_all_employees()
-    for e in emps: add_employee_to_authorized(e['phone_number'])
-    
+    if not DATABASE_URL:
+        logger.critical("DATABASE_URL is required; refusing to start without persistent storage.")
+        return
+    if not initialize_database_tables():
+        logger.critical("Database initialization failed; refusing to start.")
+        return
+    if not SUPER_ADMIN_TELEGRAM_ID:
+        logger.warning("Set SUPER_ADMIN_TELEGRAM_ID in the hosting environment to activate the first administrator.")
+
     application = Application.builder().token(BOT_TOKEN).build()
     
     # Handlers
@@ -1094,7 +1152,7 @@ def main():
             url_path=BOT_TOKEN,  # مسار سري
             webhook_url=f"{WEBHOOK_URL}/{BOT_TOKEN}"
         )
-        logger.info(f"Bot started with Webhook on {WEBHOOK_URL}/{BOT_TOKEN}")
+        logger.info("Bot started in webhook mode; webhook URL is configured.")
     else:
         # وضع Polling (للتشغيل المحلي/الاختبار)
         logger.info("Bot Started with Polling (Local Mode)...")
