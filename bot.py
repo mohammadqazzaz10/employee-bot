@@ -332,7 +332,7 @@ def get_smoke_count_db(employee_id):
     try:
         conn = get_db_connection()
         cur = conn.cursor()
-        today = date.today()
+        today = get_jordan_time().date()
         cur.execute("""
             SELECT count FROM daily_cigarettes 
             WHERE employee_id = %s AND date = %s
@@ -349,7 +349,7 @@ def increment_smoke_count_db(employee_id):
     try:
         conn = get_db_connection()
         cur = conn.cursor()
-        today = date.today()
+        today = get_jordan_time().date()
         cur.execute("""
             INSERT INTO daily_cigarettes (employee_id, date, count, updated_at)
             VALUES (%s, %s, 1, CURRENT_TIMESTAMP)
@@ -412,7 +412,7 @@ def has_taken_lunch_break_today(employee_id):
     try:
         conn = get_db_connection()
         cur = conn.cursor()
-        today = date.today()
+        today = get_jordan_time().date()
         cur.execute("""
             SELECT taken FROM lunch_breaks 
             WHERE employee_id = %s AND date = %s AND taken = TRUE
@@ -429,7 +429,7 @@ def mark_lunch_break_taken(employee_id):
     try:
         conn = get_db_connection()
         cur = conn.cursor()
-        today = date.today()
+        today = get_jordan_time().date()
         jordan_time = get_jordan_time()
         cur.execute("""
             INSERT INTO lunch_breaks (employee_id, date, taken, taken_at)
@@ -681,6 +681,9 @@ async def break_request(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not phone or not verify_employee(phone): return
     
     employee = get_employee_by_telegram_id(user.id)
+    if not employee:
+        await update.message.reply_text("❌ تعذر العثور على بيانات الموظف.")
+        return
     if has_taken_lunch_break_today(employee['id']):
         await update.message.reply_text("❌ لقد أخذت استراحة الغداء بالفعل اليوم.")
         return
