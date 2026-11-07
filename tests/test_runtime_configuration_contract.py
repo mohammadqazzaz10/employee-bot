@@ -74,6 +74,7 @@ class RuntimeConfigurationContractTests(unittest.TestCase):
     def test_webhook_mode_requires_telegram_secret_header(self):
         self.assertIn('WEBHOOK_SECRET = os.environ.get("WEBHOOK_SECRET"', self.source)
         self.assertIn("secret_token=WEBHOOK_SECRET", self.source)
+        self.assertIn('re.fullmatch(r"[A-Za-z0-9_-]{1,256}", WEBHOOK_SECRET)', self.source)
         self.assertIn("WEBHOOK_SECRET", self.deployment)
 
     def test_render_setup_documents_all_required_values(self):
