@@ -116,6 +116,36 @@ class PostgreSQLIntegrationTests(unittest.TestCase):
         finally:
             conn.close()
 
+        # Apply configurable request types after the branch foundation and verify defaults.
+        request_types_sql = (
+            Path(__file__).resolve().parents[1]
+            / "migrations"
+            / "002_configurable_request_types.sql"
+        ).read_text(encoding="utf-8")
+        conn = psycopg2.connect(os.environ["DATABASE_URL"], sslmode="disable")
+        try:
+            with conn.cursor() as cur:
+                cur.execute(request_types_sql)
+                cur.execute("""
+                    SELECT code, label, duration_minutes
+                    FROM branch_request_types
+                    WHERE branch_id = (SELECT id FROM branches WHERE code='main')
+                    ORDER BY code
+                """)
+                defaults = cur.fetchall()
+                self.assertEqual(len(defaults), 2)
+                self.assertEqual({row[0] for row in defaults}, {"bathroom", "prayer"})
+                self.assertTrue(all(row[2] == 10 for row in defaults))
+                cur.execute("""
+                    SELECT character_maximum_length
+                    FROM information_schema.columns
+                    WHERE table_name='active_timers' AND column_name='timer_type'
+                """)
+                self.assertEqual(cur.fetchone()[0], 40)
+            conn.commit()
+        finally:
+            conn.close()
+
         # Legacy INSERT statements must inherit the default branch via the trigger.
         second_employee_id = bot.save_employee(
             None, "+962789876543", "Branch Trigger Employee"
