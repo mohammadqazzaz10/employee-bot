@@ -12,7 +12,7 @@ from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboard
 from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, ConversationHandler, filters, ContextTypes
 from branch_settings import get_branch_settings, register_settings_handlers
 from request_types import get_employee_buttons, get_request_type, get_request_type_by_code, register_request_type_handlers
-from broadcast import register_broadcast_handlers
+from broadcast import register_broadcast_handlers, restore_pending_broadcast_reminders
 
 # تعريف مراحل المحادثة
 LEAVE_REASON, VACATION_REASON = range(2)
