@@ -511,6 +511,7 @@ async def list_branches_command(update: Update, context: ContextTypes.DEFAULT_TY
 
 
 async def cancel_settings_edit(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data.pop("pending_broadcast", None)
     pending = context.user_data.pop("pending_branch_setting", None)
     request_type_state = context.user_data.pop("new_request_type_state", None)
     context.user_data.pop("editing_request_type", None)
