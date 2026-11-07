@@ -77,11 +77,11 @@ class TimerPostgreSQLTests(unittest.TestCase):
 
         # Reusing a user ID starts a fresh timer; explicit return clears it again.
         self.assertTrue(
-            bot._timer_db("save", user_id, message_id, "break", start_at, end_at)
+            bot._timer_db("save", user_id, message_id + 1, "break", start_at, end_at)
         )
-        self.assertFalse(bot._timer_db("clear_matching", user_id, "smoke", message_id))
+        self.assertFalse(bot._timer_db("clear_matching", user_id, "break", message_id))
         self.assertTrue(bot._timer_db("is_active", user_id))
-        self.assertTrue(bot._timer_db("clear_matching", user_id, "break", message_id))
+        self.assertTrue(bot._timer_db("clear_matching", user_id, "break", message_id + 1))
         self.assertFalse(bot._timer_db("is_active", user_id))
 
 
