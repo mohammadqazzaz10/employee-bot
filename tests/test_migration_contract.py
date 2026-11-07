@@ -3,6 +3,8 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 MIGRATION = ROOT / "migrations" / "001_multibranch_foundation.sql"
+INTEGRITY_MIGRATION = ROOT / "migrations" / "005_preproduction_integrity.sql"
+RUNNER = ROOT / "scripts" / "migrate.py"
 
 
 class MigrationContractTests(unittest.TestCase):
@@ -30,6 +32,20 @@ class MigrationContractTests(unittest.TestCase):
         self.assertIn("'branch_manager'", sql)
         self.assertIn("'supervisor'", sql)
         self.assertIn("unique (telegram_id, branch_id)", sql)
+
+    def test_integrity_migration_guards_active_phones_and_branch_settings(self):
+        sql = INTEGRITY_MIGRATION.read_text(encoding="utf-8").lower()
+        self.assertIn("uq_employees_active_phone", sql)
+        self.assertIn("branch_settings_branch_id_fkey", sql)
+        self.assertIn("timer_start_outbox", sql)
+        self.assertIn("duplicate active employee phone numbers", sql)
+
+    def test_migration_runner_checks_checksums_and_serializes_execution(self):
+        source = RUNNER.read_text(encoding="utf-8")
+        self.assertIn("hashlib.sha256", source)
+        self.assertIn("pg_advisory_lock", source)
+        self.assertIn("schema_migrations", source)
+        self.assertIn("--check", source)
 
     def test_legacy_inserts_receive_default_branch_context(self):
         sql = MIGRATION.read_text(encoding="utf-8").lower()
