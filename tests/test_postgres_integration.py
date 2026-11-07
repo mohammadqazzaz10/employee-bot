@@ -244,12 +244,12 @@ class PostgreSQLIntegrationTests(unittest.TestCase):
 
         # Branch managers may onboard employees only into their assigned branch.
         scoped_employee_id = bot.save_employee_in_branch(
-            "+962780003333", "Scoped Branch Employee", main_branch_id, branch_admin_id
+            "+962780003333", "Scoped Branch Employee", "Cashier", main_branch_id, branch_admin_id
         )
         self.assertIsNotNone(scoped_employee_id)
         self.assertIsNone(
             bot.save_employee_in_branch(
-                "+962780004444", "Unauthorized Branch Employee", second_branch_id, branch_admin_id
+                "+962780004444", "Unauthorized Branch Employee", "Supervisor", second_branch_id, branch_admin_id
             )
         )
         visible_employee_ids = {
