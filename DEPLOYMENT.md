@@ -103,3 +103,24 @@ Managers use `/broadcast`:
 - The result reports successful and failed deliveries and records a delivery summary in PostgreSQL.
 
 For a bell/ringing sound, send a short audio clip to the bot as the announcement. Telegram clients control how and whether audio plays automatically; the bot cannot force a recipient's phone to ring or override their notification/silent settings. Employees must have started the bot and have a linked Telegram account to receive broadcasts.
+
+## Broadcast acknowledgement reminders (migration 004)
+
+After migrations 001, 002, and 003 have been applied successfully, apply
+`migrations/004_broadcast_acknowledgements.sql` to the same PostgreSQL database.
+Take a database backup first. This migration creates per-recipient delivery and
+acknowledgement records; it does not delete or rewrite existing employee data.
+
+When a manager sends a Telegram announcement, each successfully reached employee
+gets an individual **👁️ تم الاطلاع** button. Until that employee presses it, the
+bot sends a reminder notification every 60 seconds. Pending reminders are restored
+after a bot restart. The manager's delivery report continues to show sent/failed
+counts; individual acknowledgement timestamps are retained in
+`broadcast_recipients`.
+
+Telegram bots cannot force a phone to play a continuous looping sound or override
+the user's mute, notification, battery, or Do Not Disturb settings. These reminders
+are normal Telegram notifications (`disable_notification=false`), not guaranteed
+continuous audio. Employees should enable notifications for the bot chat and choose
+a noticeable chat notification sound in Telegram settings. The attached voice/audio
+is a message attachment and is not autoplayed by Telegram.
