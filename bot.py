@@ -867,24 +867,45 @@ async def list_admins(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"عدد المديرين: {len(admins)}\nالمعرفات: {admins}")
 
 async def add_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not is_super_admin(update.message.from_user.id): return
+    if not is_super_admin(update.message.from_user.id):
+        await update.message.reply_text("⛔ هذا الأمر مخصص للمدير العام.")
+        return
+    if not context.args:
+        await update.message.reply_text("الاستخدام: /add_admin TELEGRAM_ID")
+        return
     try:
         new_id = int(context.args[0])
-        add_admin_to_db(new_id, update.message.from_user.id)
-        await update.message.reply_text("✅ تم إضافة المدير.")
-    except:
-        await update.message.reply_text("خطأ في المعرف.")
+        if new_id <= 0:
+            raise ValueError
+    except (TypeError, ValueError):
+        await update.message.reply_text("❌ المعرف يجب أن يكون رقماً صحيحاً موجباً.")
+        return
+
+    if add_admin_to_db(new_id, update.message.from_user.id):
+        await update.message.reply_text("✅ تمت إضافة المدير وحفظه في قاعدة البيانات.")
+    else:
+        await update.message.reply_text("❌ تعذرت إضافة المدير إلى قاعدة البيانات.")
+
 
 async def remove_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not is_super_admin(update.message.from_user.id): return
+    if not is_super_admin(update.message.from_user.id):
+        await update.message.reply_text("⛔ هذا الأمر مخصص للمدير العام.")
+        return
+    if not context.args:
+        await update.message.reply_text("الاستخدام: /remove_admin TELEGRAM_ID")
+        return
     try:
         target_id = int(context.args[0])
-        if remove_admin_from_db(target_id):
-            await update.message.reply_text("✅ تم حذف المدير.")
-        else:
-            await update.message.reply_text("لا يمكن حذف هذا المدير.")
-    except:
-        await update.message.reply_text("خطأ.")
+        if target_id <= 0:
+            raise ValueError
+    except (TypeError, ValueError):
+        await update.message.reply_text("❌ المعرف يجب أن يكون رقماً صحيحاً موجباً.")
+        return
+
+    if remove_admin_from_db(target_id):
+        await update.message.reply_text("✅ تم حذف صلاحية المدير.")
+    else:
+        await update.message.reply_text("لا يمكن حذف هذا المدير أو لم يتم العثور عليه.")
 
 # --- المعالجة والأنيميشن ---
 
