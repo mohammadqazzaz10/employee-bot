@@ -512,6 +512,13 @@ def decide_request(request_id, employee_id, request_type, decision, admin_id):
             if not cur.fetchone():
                 conn.rollback()
                 return False
+        cur.execute(
+            "SELECT 1 FROM branches WHERE id=%s AND is_active=TRUE FOR SHARE",
+            (employee_branch[0],),
+        )
+        if not cur.fetchone():
+            conn.rollback()
+            return False
         if decision == "approved" and (
             request_type in {"smoke", "break"} or request_type.startswith("custom-")
         ):
