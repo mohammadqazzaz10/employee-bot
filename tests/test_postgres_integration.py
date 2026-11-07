@@ -129,6 +129,16 @@ class PostgreSQLIntegrationTests(unittest.TestCase):
         )
         self.assertIsNone(bot._timer_db("outbox_for_request", request_id))
         self.assertTrue(bot._timer_db("is_active", 555000111))
+        self.assertTrue(bot._timer_db("complete", 555000111))
+        self.assertTrue(bot._timer_db("has_unreturned", 555000111))
+        blocked_request_id = bot.create_request(employee_id, "smoke")
+        self.assertIsNotNone(blocked_request_id)
+        self.assertFalse(
+            bot.decide_request(
+                blocked_request_id, employee_id, "smoke",
+                "approved", bot.SUPER_ADMIN_TELEGRAM_ID,
+            )
+        )
         self.assertTrue(bot._timer_db("clear_matching", 555000111, "smoke", 777777))
         self.assertFalse(bot._timer_db("has_unreturned", 555000111))
         self.assertFalse(
