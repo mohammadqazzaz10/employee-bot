@@ -23,6 +23,7 @@ DATABASE_URL = os.environ.get("DATABASE_URL", "").strip()
 DATABASE_SSLMODE = os.environ.get("DATABASE_SSLMODE", "prefer").strip() or "prefer"
 PORT = int(os.environ.get("PORT", "8080"))
 WEBHOOK_URL = (os.environ.get("WEBHOOK_URL") or os.environ.get("RENDER_EXTERNAL_URL") or "").strip().rstrip("/")
+WEBHOOK_SECRET = os.environ.get("WEBHOOK_SECRET", "").strip()
 
 def _parse_telegram_id(value, variable_name):
     if not value:
@@ -2002,6 +2003,10 @@ def main():
     if not SUPER_ADMIN_TELEGRAM_ID:
         logger.warning("Set SUPER_ADMIN_TELEGRAM_ID in the hosting environment to activate the first administrator.")
 
+    if WEBHOOK_URL and not WEBHOOK_SECRET:
+        logger.critical("WEBHOOK_SECRET is required when webhook mode is enabled.")
+        return
+
     application = Application.builder().token(BOT_TOKEN).post_init(restore_active_timers).build()
     
     # Handlers
@@ -2054,7 +2059,8 @@ def main():
             listen="0.0.0.0",
             port=PORT,
             url_path=BOT_TOKEN,  # مسار سري
-            webhook_url=f"{WEBHOOK_URL}/{BOT_TOKEN}"
+            webhook_url=f"{WEBHOOK_URL}/{BOT_TOKEN}",
+            secret_token=WEBHOOK_SECRET if WEBHOOK_URL else None,
         )
         logger.info("Bot started in webhook mode; webhook URL is configured.")
     else:
