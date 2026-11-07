@@ -37,6 +37,8 @@ class MigrationContractTests(unittest.TestCase):
     def test_integrity_migration_guards_active_phones_and_branch_settings(self):
         sql = INTEGRITY_MIGRATION.read_text(encoding="utf-8").lower()
         self.assertIn("uq_employees_active_phone", sql)
+        self.assertIn("uq_employees_active_telegram_id", sql)
+        self.assertIn("duplicate active telegram employee ids", sql)
         self.assertIn("branch_settings_branch_id_fkey", sql)
         self.assertIn("timer_start_outbox", sql)
         self.assertIn("duplicate active employee phone numbers", sql)
