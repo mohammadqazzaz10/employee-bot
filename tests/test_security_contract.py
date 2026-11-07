@@ -18,6 +18,12 @@ class SecurityContractTests(unittest.TestCase):
                         handler.index("save_employee(contact.user_id, phone, registered_name)"))
         self.assertIn("if not registered_employee", handler)
 
+    def test_approval_callback_handler_does_not_consume_other_feature_callbacks(self):
+        self.assertIn(
+            'CallbackQueryHandler(button_callback, pattern=r"^(approve|reject|returned)_")',
+            self.source,
+        )
+
     def test_callback_actions_are_validated(self):
         handler = self.source.split("async def button_callback", 1)[1].split(
             "\nasync def my_id_command", 1
