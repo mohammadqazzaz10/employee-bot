@@ -208,10 +208,7 @@ async def _show(message, branch_id):
 
 async def settings_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     import bot
-    context.user_data.pop("pending_broadcast", None)
-    context.user_data.pop("new_request_type_state", None)
-    context.user_data.pop("editing_request_type", None)
-    context.user_data.pop("new_request_type_label", None)
+    bot.clear_interactive_drafts(context)
     user_id = update.effective_user.id
     if not bot.is_admin(user_id):
         await update.effective_message.reply_text("⛔ هذه القائمة للمديرين فقط.")
@@ -511,11 +508,10 @@ async def list_branches_command(update: Update, context: ContextTypes.DEFAULT_TY
 
 
 async def cancel_settings_edit(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data.pop("pending_broadcast", None)
-    pending = context.user_data.pop("pending_branch_setting", None)
-    request_type_state = context.user_data.pop("new_request_type_state", None)
-    context.user_data.pop("editing_request_type", None)
-    context.user_data.pop("new_request_type_label", None)
+    import bot
+    pending = context.user_data.get("pending_branch_setting")
+    request_type_state = context.user_data.get("new_request_type_state")
+    bot.clear_interactive_drafts(context)
     if pending or request_type_state:
         await update.effective_message.reply_text("تم إلغاء تعديل الإعدادات.")
     else:
