@@ -32,7 +32,7 @@ class ConfigurableRequestTypeContractTests(unittest.TestCase):
         self.assertIn('callback_data=f"approve_{request_type}_{request_id}_{update.effective_user.id}"', MODULE)
         self.assertIn("elif custom_request_type:", BOT)
         self.assertIn("await start_timer(context, target_id, timer_minutes, type_)", BOT)
-        self.assertIn("not _can_manage(query.from_user.id, emp.get('branch_id'))", BOT)
+        self.assertIn("_can_manage(query.from_user.id, emp.get(\"branch_id\"))", BOT)
 
     def test_custom_button_uses_employee_branch_and_database_name(self):
         self.assertIn('employee = bot.get_employee_by_telegram_id(update.effective_user.id)', MODULE)
