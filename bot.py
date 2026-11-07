@@ -984,6 +984,10 @@ async def handle_contact(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not registered_employee or not registered_employee.get("is_active", True):
         await update.message.reply_text("⚠️ رقمك غير مسجل في النظام. تواصل مع المدير.")
         return
+    linked_telegram_id = registered_employee.get("telegram_id")
+    if linked_telegram_id and int(linked_telegram_id) != int(contact.user_id):
+        await update.message.reply_text("⚠️ هذا الرقم مرتبط بحساب Telegram آخر. تواصل مع المدير لتصحيح الربط.")
+        return
     registered_name = registered_employee.get("full_name") or contact.first_name or "موظف"
 
     if not save_employee(contact.user_id, phone, registered_name):
