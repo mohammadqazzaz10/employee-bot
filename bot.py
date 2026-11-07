@@ -380,65 +380,85 @@ def save_employee(telegram_id, phone_number, full_name):
             conn.close()
 
 def get_employee_by_telegram_id(telegram_id):
+    conn = None
     try:
         conn = get_db_connection()
-        cur = conn.cursor(cursor_factory=RealDictCursor)
-        cur.execute("SELECT * FROM employees WHERE telegram_id = %s AND is_active = TRUE", (telegram_id,))
-        employee = cur.fetchone()
-        cur.close()
-        conn.close()
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(
+                "SELECT * FROM employees WHERE telegram_id=%s AND is_active=TRUE",
+                (telegram_id,),
+            )
+            employee = cur.fetchone()
         return dict(employee) if employee else None
-    except Exception as e:
-        logger.error(f"Error getting employee: {e}")
+    except Exception:
+        logger.exception("Error getting employee by Telegram ID")
         return None
-
+    finally:
+        if conn:
+            conn.close()
 def get_employee_by_phone(phone_number):
+    conn = None
     try:
         normalized = normalize_phone(phone_number)
+        if not normalized:
+            return None
         conn = get_db_connection()
-        cur = conn.cursor(cursor_factory=RealDictCursor)
-        cur.execute("SELECT * FROM employees WHERE phone_number = %s AND is_active = TRUE ORDER BY id DESC LIMIT 1", (normalized,))
-        employee = cur.fetchone()
-        cur.close()
-        conn.close()
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(
+                """SELECT * FROM employees
+                   WHERE phone_number=%s AND is_active=TRUE
+                   ORDER BY id DESC LIMIT 1""",
+                (normalized,),
+            )
+            employee = cur.fetchone()
         return dict(employee) if employee else None
-    except Exception as e:
-        logger.error(f"Error getting employee by phone: {e}")
+    except Exception:
+        logger.exception("Error getting employee by phone")
         return None
-
+    finally:
+        if conn:
+            conn.close()
 def get_all_employees():
+    conn = None
     try:
         conn = get_db_connection()
-        cur = conn.cursor(cursor_factory=RealDictCursor)
-        cur.execute("SELECT * FROM employees WHERE is_active = TRUE ORDER BY full_name")
-        employees = cur.fetchall()
-        cur.close()
-        conn.close()
-        return [dict(emp) for emp in employees] if employees else []
-    except Exception as e:
-        logger.error(f"Error getting all employees: {e}")
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(
+                "SELECT * FROM employees WHERE is_active=TRUE ORDER BY full_name"
+            )
+            employees = cur.fetchall()
+        return [dict(employee) for employee in employees]
+    except Exception:
+        logger.exception("Error getting all employees")
         return []
-
+    finally:
+        if conn:
+            conn.close()
 def delete_employee_by_phone(phone_number):
+    conn = None
     try:
         normalized = normalize_phone(phone_number)
+        if not normalized:
+            return False
         conn = get_db_connection()
-        cur = conn.cursor()
-        cur.execute("""
-            UPDATE employees
-            SET is_active = FALSE, last_active = CURRENT_TIMESTAMP
-            WHERE phone_number = %s AND is_active = TRUE
-            RETURNING id
-        """, (normalized,))
-        deleted = cur.fetchone()
+        with conn.cursor() as cur:
+            cur.execute("""
+                UPDATE employees
+                SET is_active=FALSE, last_active=CURRENT_TIMESTAMP
+                WHERE phone_number=%s AND is_active=TRUE
+                RETURNING id
+            """, (normalized,))
+            deleted = cur.fetchone()
         conn.commit()
-        cur.close()
-        conn.close()
-        return True if deleted else False
-    except Exception as e:
-        logger.error(f"Error deleting employee: {e}")
+        return bool(deleted)
+    except Exception:
+        if conn:
+            conn.rollback()
+        logger.exception("Error deactivating employee")
         return False
-
+    finally:
+        if conn:
+            conn.close()
 def create_request(employee_id, request_type, notes=None):
     """Persist every employee request before notifying administrators."""
     conn = None
@@ -665,125 +685,126 @@ def decide_request(request_id, employee_id, request_type, decision, admin_id):
 # --- دوال السجائر والاستراحات (لم يتم تغييرها) ---
 # ... (جميع دوال السجائر والاستراحات)
 def get_smoke_count_db(employee_id):
+    conn = None
     try:
         conn = get_db_connection()
-        cur = conn.cursor()
-        today = get_jordan_time().date()
-        cur.execute("""
-            SELECT count FROM daily_cigarettes 
-            WHERE employee_id = %s AND date = %s
-        """, (employee_id, today))
-        result = cur.fetchone()
-        cur.close()
-        conn.close()
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT count FROM daily_cigarettes WHERE employee_id=%s AND date=%s",
+                (employee_id, get_jordan_time().date()),
+            )
+            result = cur.fetchone()
         return result[0] if result else 0
-    except Exception as e:
-        logger.error(f"Error getting smoke count: {e}")
+    except Exception:
+        logger.exception("Error getting smoke count")
         return 0
-
+    finally:
+        if conn:
+            conn.close()
 def increment_smoke_count_db(employee_id):
+    conn = None
     try:
         conn = get_db_connection()
-        cur = conn.cursor()
-        today = get_jordan_time().date()
-        cur.execute("""
-            INSERT INTO daily_cigarettes (employee_id, date, count, updated_at)
-            VALUES (%s, %s, 1, CURRENT_TIMESTAMP)
-            ON CONFLICT (employee_id, date)
-            DO UPDATE SET 
-                count = daily_cigarettes.count + 1,
-                updated_at = CURRENT_TIMESTAMP
-            RETURNING count
-        """, (employee_id, today))
-        new_count = cur.fetchone()[0]
+        with conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO daily_cigarettes (employee_id, date, count, updated_at)
+                VALUES (%s, %s, 1, CURRENT_TIMESTAMP)
+                ON CONFLICT (employee_id, date)
+                DO UPDATE SET count=daily_cigarettes.count+1,
+                              updated_at=CURRENT_TIMESTAMP
+                RETURNING count
+            """, (employee_id, get_jordan_time().date()))
+            new_count = cur.fetchone()[0]
         conn.commit()
-        cur.close()
-        conn.close()
         return new_count
-    except Exception as e:
-        logger.error(f"Error incrementing smoke count: {e}")
+    except Exception:
+        if conn:
+            conn.rollback()
+        logger.exception("Error incrementing smoke count")
         return 0
-
+    finally:
+        if conn:
+            conn.close()
 def get_last_cigarette_time(employee_id):
+    conn = None
     try:
         conn = get_db_connection()
-        cur = conn.cursor()
-        cur.execute("""
-            SELECT taken_at FROM cigarette_times 
-            WHERE employee_id = %s
-            ORDER BY taken_at DESC
-            LIMIT 1
-        """, (employee_id,))
-        result = cur.fetchone()
-        cur.close()
-        conn.close()
-        if result:
-            last_time = result[0]
-            if last_time.tzinfo is None:
-                last_time = last_time.replace(tzinfo=timezone.utc)
-            return last_time.astimezone(JORDAN_TZ)
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT taken_at FROM cigarette_times
+                WHERE employee_id=%s ORDER BY taken_at DESC LIMIT 1
+            """, (employee_id,))
+            result = cur.fetchone()
+        if not result:
+            return None
+        last_time = result[0]
+        if last_time.tzinfo is None:
+            last_time = last_time.replace(tzinfo=timezone.utc)
+        return last_time.astimezone(JORDAN_TZ)
+    except Exception:
+        logger.exception("Error getting last cigarette time")
         return None
-    except Exception as e:
-        logger.error(f"Error getting last cigarette time: {e}")
-        return None
-
+    finally:
+        if conn:
+            conn.close()
 def record_cigarette_time(employee_id):
+    conn = None
     try:
         conn = get_db_connection()
-        cur = conn.cursor()
-        jordan_time = get_jordan_time()
-        cur.execute("""
-            INSERT INTO cigarette_times (employee_id, taken_at)
-            VALUES (%s, %s)
-        """, (employee_id, jordan_time))
+        with conn.cursor() as cur:
+            cur.execute(
+                "INSERT INTO cigarette_times(employee_id, taken_at) VALUES(%s, %s)",
+                (employee_id, get_jordan_time()),
+            )
         conn.commit()
-        cur.close()
-        conn.close()
         return True
-    except Exception as e:
-        logger.error(f"Error recording cigarette time: {e}")
+    except Exception:
+        if conn:
+            conn.rollback()
+        logger.exception("Error recording cigarette time")
         return False
-
+    finally:
+        if conn:
+            conn.close()
 def has_taken_lunch_break_today(employee_id):
+    conn = None
     try:
         conn = get_db_connection()
-        cur = conn.cursor()
-        today = get_jordan_time().date()
-        cur.execute("""
-            SELECT taken FROM lunch_breaks 
-            WHERE employee_id = %s AND date = %s AND taken = TRUE
-        """, (employee_id, today))
-        result = cur.fetchone()
-        cur.close()
-        conn.close()
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT 1 FROM lunch_breaks
+                WHERE employee_id=%s AND date=%s AND taken=TRUE
+            """, (employee_id, get_jordan_time().date()))
+            result = cur.fetchone()
         return bool(result)
-    except Exception as e:
-        logger.error(f"Error checking lunch break: {e}")
+    except Exception:
+        logger.exception("Error checking lunch break")
         return False
-
+    finally:
+        if conn:
+            conn.close()
 def mark_lunch_break_taken(employee_id):
+    conn = None
     try:
+        now = get_jordan_time()
         conn = get_db_connection()
-        cur = conn.cursor()
-        today = get_jordan_time().date()
-        jordan_time = get_jordan_time()
-        cur.execute("""
-            INSERT INTO lunch_breaks (employee_id, date, taken, taken_at)
-            VALUES (%s, %s, TRUE, %s)
-            ON CONFLICT (employee_id, date)
-            DO UPDATE SET 
-                taken = TRUE,
-                taken_at = %s
-        """, (employee_id, today, jordan_time, jordan_time))
+        with conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO lunch_breaks (employee_id, date, taken, taken_at)
+                VALUES (%s, %s, TRUE, %s)
+                ON CONFLICT (employee_id, date)
+                DO UPDATE SET taken=TRUE, taken_at=EXCLUDED.taken_at
+            """, (employee_id, now.date(), now))
         conn.commit()
-        cur.close()
-        conn.close()
         return True
-    except Exception as e:
-        logger.error(f"Error marking lunch break: {e}")
+    except Exception:
+        if conn:
+            conn.rollback()
+        logger.exception("Error marking lunch break")
         return False
-# --- دوال المديرين (لم يتم تغييرها) ---
-# ... (جميع دوال المديرين)
+    finally:
+        if conn:
+            conn.close()
 def get_all_admins():
     conn = None
     try:
