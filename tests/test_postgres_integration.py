@@ -5,6 +5,7 @@ from pathlib import Path
 import psycopg2
 
 import bot
+from branch_settings import create_branch
 from request_types import _save_new, _update_type, get_request_type
 
 
@@ -256,13 +257,23 @@ class PostgreSQLIntegrationTests(unittest.TestCase):
         self.assertIsNotNone(main_employee_id)
         self.assertIsNotNone(second_employee_id)
 
+        second_branch_id = create_branch(
+            "second", "Second Branch", bot.SUPER_ADMIN_TELEGRAM_ID
+        )
+        self.assertIsNotNone(second_branch_id)
         conn = psycopg2.connect(os.environ["DATABASE_URL"], sslmode="disable")
         try:
             with conn.cursor() as cur:
                 cur.execute(
-                    "INSERT INTO branches(code, name) VALUES('second', 'Second Branch') RETURNING id"
+                    "SELECT COUNT(*) FROM branch_request_types WHERE branch_id=%s",
+                    (second_branch_id,),
                 )
-                second_branch_id = cur.fetchone()[0]
+                self.assertEqual(cur.fetchone()[0], 2)
+                cur.execute(
+                    "SELECT COUNT(*) FROM branch_settings WHERE branch_id=%s",
+                    (second_branch_id,),
+                )
+                self.assertEqual(cur.fetchone()[0], 1)
                 cur.execute(
                     "UPDATE employees SET branch_id=%s WHERE id=%s",
                     (second_branch_id, second_employee_id),
