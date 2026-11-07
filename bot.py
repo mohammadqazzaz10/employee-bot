@@ -333,7 +333,8 @@ def get_all_employees():
         cur.execute("SELECT * FROM employees WHERE is_active = TRUE ORDER BY full_name")
         employees = cur.fetchall()
         cur.close()
-        conn.close()        return [dict(emp) for emp in employees] if employees else []
+        conn.close()
+        return [dict(emp) for emp in employees] if employees else []
     except Exception as e:
         logger.error(f"Error getting all employees: {e}")
         return []
