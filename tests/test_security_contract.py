@@ -24,6 +24,15 @@ class SecurityContractTests(unittest.TestCase):
             self.source,
         )
 
+    def test_telegram_linking_never_creates_or_moves_an_employee(self):
+        function = self.source.split("def save_employee(", 1)[1].split(
+            "\\ndef get_employee_by_telegram_id", 1
+        )[0]
+        self.assertIn("if not normalized_phone or not telegram_id", function)
+        self.assertIn("WHERE phone_number=%s AND is_active=TRUE", function)
+        self.assertIn("AND (telegram_id IS NULL OR telegram_id=%s)", function)
+        self.assertNotIn("INSERT INTO employees", function)
+
     def test_callback_actions_are_validated(self):
         handler = self.source.split("async def button_callback", 1)[1].split(
             "\nasync def my_id_command", 1
