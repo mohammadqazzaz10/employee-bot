@@ -44,7 +44,7 @@ notification behavior.
 ## Database migration and CI
 
 - The application initializes base tables on startup.
-- Numbered migrations 001–005 add branches/roles, configurable request types,
+- Numbered migrations 001–006 add branches/roles, configurable request types,
   broadcast logs/acknowledgements, branch settings integrity, active-phone uniqueness,
   and the timer-start outbox.
 - `scripts/migrate.py` applies migrations in order under a PostgreSQL advisory lock
@@ -57,7 +57,7 @@ intended Render database or that Telegram delivery succeeds.
 
 ## Remaining production gates
 
-1. **No live environment validation yet:** migrations 001–005 have not been applied
+1. **No live environment validation yet:** migrations 001–006 have not been applied
    to the intended Render database, and no Render service or environment settings
    have been changed.
 2. **Backup/restore rehearsal:** take a backup of the intended database, restore it to
