@@ -795,6 +795,18 @@ async def break_request(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not employee:
         await update.message.reply_text("❌ تعذر العثور على بيانات الموظف.")
         return
+    settings = get_branch_settings(employee.get('branch_id')) if employee.get('branch_id') else None
+    if not settings:
+        await update.message.reply_text("⚠️ إعدادات الفرع غير جاهزة. أبلغ المدير.")
+        return
+    if not settings['lunch_enabled']:
+        await update.message.reply_text("🚫 استراحة الغداء متوقفة حالياً بقرار الإدارة.")
+        return
+    now_time = get_jordan_time().time().replace(tzinfo=None)
+    lunch_start, lunch_end = settings['lunch_start_time'], settings['lunch_end_time']
+    if (lunch_start and now_time < lunch_start) or (lunch_end and now_time >= lunch_end):
+        await update.message.reply_text("⛔️ طلب الغداء خارج الوقت المحدد من الإدارة.")
+        return
     if has_taken_lunch_break_today(employee['id']):
         await update.message.reply_text("❌ لقد أخذت استراحة الغداء بالفعل اليوم.")
         return
@@ -1254,17 +1266,20 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if action == "approve":
         msg_text = ""
         timer_minutes = 0
+        settings = get_branch_settings(emp.get('branch_id')) if emp.get('branch_id') else None
+        if not settings:
+            await query.edit_message_text("❌ إعدادات فرع الموظف غير متاحة؛ تعذر تشغيل المؤقت.")
+            return
         if type_ == 'smoke':
             new_count = increment_smoke_count_db(emp['id'])
             record_cigarette_time(emp['id'])
-            timer_minutes = SMOKE_DURATION_MINUTES
-            msg_text = f"✅ تمت الموافقة! (رصيدك: {new_count}/{MAX_DAILY_SMOKES})\nمدة السيجارة: {timer_minutes} دقائق."
+            timer_minutes = settings['smoke_duration_minutes']
+            msg_text = f"✅ تمت الموافقة! (رصيدك: {new_count}/{settings['smoke_daily_limit']})\nمدة السيجارة: {timer_minutes} دقائق."
             await start_timer(context, target_id, timer_minutes, 'smoke')
-        
         elif type_ == 'break':
             mark_lunch_break_taken(emp['id'])
-            timer_minutes = 30
-            msg_text = "✅ تمت الموافقة على الغداء (30 دقيقة)."
+            timer_minutes = settings['lunch_duration_minutes']
+            msg_text = f"✅ تمت الموافقة على الغداء ({timer_minutes} دقيقة)."
             await start_timer(context, target_id, timer_minutes, 'break')
             
         else:
