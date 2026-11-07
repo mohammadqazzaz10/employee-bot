@@ -2091,8 +2091,8 @@ def main():
         application.run_webhook(
             listen="0.0.0.0",
             port=PORT,
-            url_path=BOT_TOKEN,  # مسار سري
-            webhook_url=f"{WEBHOOK_URL}/{BOT_TOKEN}",
+            url_path=WEBHOOK_SECRET,
+            webhook_url=f"{WEBHOOK_URL}/{WEBHOOK_SECRET}",
             secret_token=WEBHOOK_SECRET if WEBHOOK_URL else None,
         )
         logger.info("Bot started in webhook mode; webhook URL is configured.")
