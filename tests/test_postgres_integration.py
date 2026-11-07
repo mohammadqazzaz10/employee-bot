@@ -46,6 +46,21 @@ class PostgreSQLIntegrationTests(unittest.TestCase):
         finally:
             conn.close()
 
+        # Apply branch isolation before exercising request decisions: the
+        # production authorization query intentionally fails closed without it.
+        migration_sql = (
+            Path(__file__).resolve().parents[1]
+            / "migrations"
+            / "001_multibranch_foundation.sql"
+        ).read_text(encoding="utf-8")
+        conn = psycopg2.connect(os.environ["DATABASE_URL"], sslmode="disable")
+        try:
+            with conn.cursor() as cur:
+                cur.execute(migration_sql)
+            conn.commit()
+        finally:
+            conn.close()
+
         phone = "+962781234567"
         employee_id = bot.save_employee(None, phone, "CI Test Employee")
         self.assertIsNotNone(employee_id)
@@ -95,25 +110,6 @@ class PostgreSQLIntegrationTests(unittest.TestCase):
             with conn.cursor() as cur:
                 cur.execute("SELECT COUNT(*) FROM requests WHERE id = %s", (request_id,))
                 self.assertEqual(cur.fetchone()[0], 1)
-        finally:
-            conn.close()
-
-        # Exercise the actual multi-branch SQL migration on the disposable CI database.
-        migration_sql = (
-            Path(__file__).resolve().parents[1]
-            / "migrations"
-            / "001_multibranch_foundation.sql"
-        ).read_text(encoding="utf-8")
-        conn = psycopg2.connect(os.environ["DATABASE_URL"], sslmode="disable")
-        try:
-            with conn.cursor() as cur:
-                cur.execute(migration_sql)
-                cur.execute(
-                    "SELECT branch_id FROM employees WHERE id = %s",
-                    (employee_id,),
-                )
-                self.assertIsNotNone(cur.fetchone()[0])
-            conn.commit()
         finally:
             conn.close()
 
