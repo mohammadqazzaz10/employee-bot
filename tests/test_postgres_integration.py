@@ -70,6 +70,17 @@ class PostgreSQLIntegrationTests(unittest.TestCase):
 
         employee_settings = bot.get_branch_settings(employee["branch_id"])
         self.assertIsNotNone(employee_settings)
+        conn = psycopg2.connect(os.environ["DATABASE_URL"], sslmode="disable")
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "UPDATE branch_settings SET smoke_start_time='00:00', smoke_gap_minutes=0 "
+                    "WHERE branch_id=%s",
+                    (employee["branch_id"],),
+                )
+            conn.commit()
+        finally:
+            conn.close()
         request_id = bot.create_request(employee_id, "smoke", "integration test")
         self.assertIsNotNone(request_id)
         self.assertTrue(
