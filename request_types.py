@@ -75,7 +75,13 @@ def get_employee_buttons(branch_id):
 
 
 def _lock_branch_permission(cur, user_id, branch_id):
-    """Revalidate and lock the actor's branch grant inside a write transaction."""
+    """Revalidate and lock an active branch and the actor's grant in one transaction."""
+    cur.execute(
+        "SELECT 1 FROM branches WHERE id=%s AND is_active=TRUE FOR SHARE",
+        (branch_id,),
+    )
+    if not cur.fetchone():
+        return False
     cur.execute(
         "SELECT is_super_admin FROM admins WHERE telegram_id=%s FOR SHARE",
         (user_id,),
