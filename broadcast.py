@@ -195,12 +195,8 @@ async def send_acknowledgement_reminder(context: ContextTypes.DEFAULT_TYPE):
         await context.bot.send_message(
             chat_id=telegram_id,
             text=(
-                "🔔 تذكير من الإدارة: ما زال هذا التنبيه بانتظار تأكيد اطلاعك.
-
-"
-                f"موضوع التنبيه: {preview or 'تنبيه إداري'}
-
-"
+                "🔔 تذكير من الإدارة: ما زال هذا التنبيه بانتظار تأكيد اطلاعك.\\n\\n"
+                f"موضوع التنبيه: {preview or 'تنبيه إداري'}\\n\\n"
                 "اضغط «تم الاطلاع» لإيقاف التذكيرات."
             ),
             reply_markup=keyboard,
