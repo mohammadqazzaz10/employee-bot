@@ -81,6 +81,42 @@ def get_db_connection():
         application_name="employee-bot",
     )
 
+REQUIRED_MIGRATIONS = (
+    "001_multibranch_foundation.sql",
+    "002_configurable_request_types.sql",
+    "003_broadcast_logs.sql",
+    "004_broadcast_acknowledgements.sql",
+    "005_preproduction_integrity.sql",
+    "006_timer_return_acknowledgements.sql",
+)
+
+
+def verify_required_migrations():
+    """Fail closed unless every required migration is recorded as applied."""
+    conn = None
+    try:
+        conn = get_db_connection()
+        with conn.cursor() as cur:
+            cur.execute("SELECT version FROM schema_migrations")
+            applied = {row[0] for row in cur.fetchall()}
+        missing = [version for version in REQUIRED_MIGRATIONS if version not in applied]
+        if missing:
+            logger.critical(
+                "Required database migrations are missing: %s. Run python -m scripts.migrate.",
+                ", ".join(missing),
+            )
+            return False
+        return True
+    except Exception:
+        logger.exception(
+            "Could not verify database migrations. Run python -m scripts.migrate --check."
+        )
+        return False
+    finally:
+        if conn:
+            conn.close()
+
+
 def initialize_database_tables():
     """إنشاء الجداول المطلوبة"""
     conn = None
@@ -1948,15 +1984,20 @@ async def my_id_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"🆔: `{update.message.from_user.id}`", parse_mode='Markdown')
 
 def main():
-    if not BOT_TOKEN:
-        print("Error: No Token.")
-        return
-        
     if not DATABASE_URL:
         logger.critical("DATABASE_URL is required; refusing to start without persistent storage.")
         return
     if not initialize_database_tables():
         logger.critical("Database initialization failed; refusing to start.")
+        return
+    if not BOT_TOKEN:
+        logger.info(
+            "Base PostgreSQL tables are initialized. Set TELEGRAM_BOT_TOKEN only after "
+            "applying migrations 001–006 with python -m scripts.migrate."
+        )
+        return
+    if not verify_required_migrations():
+        logger.critical("Database schema is not production-ready; refusing to start.")
         return
     if not SUPER_ADMIN_TELEGRAM_ID:
         logger.warning("Set SUPER_ADMIN_TELEGRAM_ID in the hosting environment to activate the first administrator.")
