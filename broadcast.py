@@ -345,11 +345,8 @@ async def broadcast_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not bot.is_admin(user_id):
         await update.effective_message.reply_text("⛔ هذا الأمر للمديرين فقط.")
         return
-    context.user_data.pop(STATE, None)
-    context.user_data.pop("pending_branch_setting", None)
-    context.user_data.pop("new_request_type_state", None)
-    context.user_data.pop("editing_request_type", None)
-    context.user_data.pop("new_request_type_label", None)
+    import bot
+    bot.clear_interactive_drafts(context)
     rows = []
     if bot.is_super_admin(user_id):
         rows.append([InlineKeyboardButton("📢 جميع الموظفين في كل الفروع", callback_data="broadcast:all")])
