@@ -247,6 +247,16 @@ class PostgreSQLIntegrationTests(unittest.TestCase):
             "+962780003333", "Scoped Branch Employee", "Cashier", main_branch_id, branch_admin_id
         )
         self.assertIsNotNone(scoped_employee_id)
+        conn = psycopg2.connect(os.environ["DATABASE_URL"], sslmode="disable")
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT full_name, job_title, branch_id FROM employees WHERE id=%s",
+                    (scoped_employee_id,),
+                )
+                self.assertEqual(cur.fetchone(), ("Scoped Branch Employee", "Cashier", main_branch_id))
+        finally:
+            conn.close()
         self.assertIsNone(
             bot.save_employee_in_branch(
                 "+962780004444", "Unauthorized Branch Employee", "Supervisor", second_branch_id, branch_admin_id
