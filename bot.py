@@ -473,7 +473,7 @@ def decide_request(request_id, employee_id, request_type, decision, admin_id):
             conn.rollback()
             return False
         cur.execute(
-            "SELECT branch_id, telegram_id FROM employees WHERE id=%s AND is_active=TRUE FOR SHARE",
+            "SELECT branch_id, telegram_id FROM employees WHERE id=%s AND is_active=TRUE FOR UPDATE",
             (employee_id,),
         )
         employee_branch = cur.fetchone()
@@ -490,6 +490,29 @@ def decide_request(request_id, employee_id, request_type, decision, admin_id):
             if not cur.fetchone():
                 conn.rollback()
                 return False
+        if decision == "approved" and (
+            request_type in {"smoke", "break"} or request_type.startswith("custom-")
+        ):
+            if not employee_branch[1]:
+                conn.rollback()
+                return False
+            cur.execute(
+                """SELECT 1 FROM active_timers
+                   WHERE user_id=%s AND completed=FALSE FOR UPDATE""",
+                (employee_branch[1],),
+            )
+            if cur.fetchone():
+                conn.rollback()
+                return False
+            cur.execute(
+                """SELECT 1 FROM timer_start_outbox
+                   WHERE employee_telegram_id=%s FOR UPDATE""",
+                (employee_branch[1],),
+            )
+            if cur.fetchone():
+                conn.rollback()
+                return False
+
         cur.execute("""
             UPDATE requests
             SET status = %s,
@@ -520,15 +543,7 @@ def decide_request(request_id, employee_id, request_type, decision, admin_id):
         """, (decision, admin_id, request_id, employee_id, request_type, admin_id, admin_id))
         changed = cur.fetchone()
         if changed and decision == "approved" and request_type in {"smoke", "break"}:
-            cur.execute(
-                "SELECT branch_id FROM employees WHERE id=%s AND is_active=TRUE FOR UPDATE",
-                (employee_id,),
-            )
-            employee_row = cur.fetchone()
-            if not employee_row:
-                conn.rollback()
-                return False
-            branch_id = employee_row[0]
+            branch_id = employee_branch[0]
             cur.execute("""
                 SELECT smoke_enabled, smoke_daily_limit, smoke_duration_minutes,
                        smoke_start_time, smoke_end_time, smoke_gap_minutes,
