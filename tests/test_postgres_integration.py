@@ -406,6 +406,11 @@ class PostgreSQLIntegrationTests(unittest.TestCase):
                 """)
                 self.assertIsNotNone(cur.fetchone())
                 cur.execute("""
+                    SELECT 1 FROM pg_indexes
+                    WHERE indexname='uq_employees_active_telegram_id'
+                """)
+                self.assertIsNotNone(cur.fetchone())
+                cur.execute("""
                     SELECT 1 FROM pg_constraint
                     WHERE conname='branch_settings_branch_id_fkey'
                 """)
