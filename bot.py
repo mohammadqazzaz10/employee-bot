@@ -1689,26 +1689,37 @@ async def retry_pending_timer_starts(context: ContextTypes.DEFAULT_TYPE):
 
 
 async def restore_active_timers(application: Application):
-    """Restore every unfinished countdown after a Render restart or deployment."""
+    """Restore countdowns and retry durable notifications after a process restart."""
     rows = _timer_db("list")
     if rows is False:
         logger.error("Could not restore active timers because PostgreSQL is unavailable")
-        return
-    for user_id, message_id, timer_type, start_time, end_time in rows:
-        if start_time.tzinfo is None:
-            start_time = start_time.replace(tzinfo=timezone.utc)
-        if end_time.tzinfo is None:
-            end_time = end_time.replace(tzinfo=timezone.utc)
-        await _schedule_timer(
-            application,
-            user_id,
-            message_id,
-            start_time.astimezone(JORDAN_TZ),
-            end_time.astimezone(JORDAN_TZ),
-            timer_type,
-        )
-    logger.info("Restored %s active employee timer(s)", len(rows))
+    else:
+        for user_id, message_id, timer_type, start_time, end_time in rows:
+            if start_time.tzinfo is None:
+                start_time = start_time.replace(tzinfo=timezone.utc)
+            if end_time.tzinfo is None:
+                end_time = end_time.replace(tzinfo=timezone.utc)
+            await _schedule_timer(
+                application,
+                user_id,
+                message_id,
+                start_time.astimezone(JORDAN_TZ),
+                end_time.astimezone(JORDAN_TZ),
+                timer_type,
+            )
+        logger.info("Restored %s active employee timer(s)", len(rows))
+
     await restore_pending_broadcast_reminders(application)
+    await process_pending_timer_starts(application)
+    if application.job_queue:
+        existing = application.job_queue.get_jobs_by_name("pending-timer-starts")
+        if not existing:
+            application.job_queue.run_repeating(
+                retry_pending_timer_starts,
+                interval=30,
+                first=30,
+                name="pending-timer-starts",
+            )
 
 
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
