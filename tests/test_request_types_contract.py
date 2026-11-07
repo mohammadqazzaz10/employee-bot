@@ -40,6 +40,14 @@ class ConfigurableRequestTypeContractTests(unittest.TestCase):
         self.assertIn('employee.get("full_name") or "موظف"', MODULE)
         self.assertIn("get_employee_buttons(employee[\"branch_id\"])", BOT)
 
+    def test_telegram_contact_linking_preserves_database_full_name(self):
+        self.assertIn("registered_employee = get_employee_by_phone(phone)", BOT)
+        self.assertIn('registered_name = registered_employee.get("full_name")', BOT)
+        self.assertIn("save_employee(contact.user_id, phone, registered_name)", BOT)
+        self.assertNotIn("save_employee(contact.user_id, phone, name)", BOT)
+        self.assertIn("def get_employee_name(user_id", BOT)
+        self.assertIn("employee.get('full_name')", BOT)
+
     def test_timer_displays_custom_request_name(self):
         self.assertIn("get_request_type_by_code(employee.get(\"branch_id\"), type_)", BOT)
         self.assertIn("custom[2] if custom else \"الاستئذان\"", BOT)
