@@ -26,6 +26,21 @@ class TimerContractTests(unittest.TestCase):
         self.assertIn("Keep the timer active so the next tick retries", SOURCE)
         self.assertIn('_timer_db("clear", user_id)', SOURCE)
 
+    def test_employee_menu_buttons_are_wired_to_real_handlers(self):
+        for label in (
+            "🚬 طلب استراحة التدخين",
+            "☕ طلب استراحة الغداء",
+            "🚪 طلب مغادرة",
+            "🌴 طلب إجازة",
+            "ℹ️ المساعدة",
+        ):
+            with self.subTest(label=label):
+                self.assertIn(label, SOURCE)
+        self.assertIn('filters.Regex(r"^🚬 طلب استراحة التدخين$")', SOURCE)
+        self.assertIn('filters.Regex(r"^☕ طلب استراحة الغداء$")', SOURCE)
+        self.assertIn('filters.Regex(r"^🚪 طلب مغادرة$")', SOURCE)
+        self.assertIn('filters.Regex(r"^🌴 طلب إجازة$")', SOURCE)
+
     def test_progress_bar_is_bounded_and_countdown_aware(self):
         self.assertEqual(len(bot.create_progress_bar(60, 60)), 12)
         self.assertEqual(len(bot.create_progress_bar(0, 60)), 12)
