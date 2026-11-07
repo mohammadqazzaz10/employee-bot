@@ -2,7 +2,7 @@
 BEGIN;
 
 -- Do not silently choose between duplicate active employee phone records.
-DO $$
+DO $$$
 DECLARE duplicate_phones TEXT;
 BEGIN
     SELECT string_agg(phone_number, ', ' ORDER BY phone_number)
@@ -23,7 +23,7 @@ BEGIN
     END IF;
 END $$;
 
-DO $
+DO $$
 DECLARE duplicate_telegram_ids TEXT;
 BEGIN
     SELECT string_agg(telegram_id::TEXT, ', ' ORDER BY telegram_id)
@@ -42,7 +42,7 @@ BEGIN
             'Migration 005 blocked: duplicate active Telegram employee IDs: %. Resolve duplicates before retrying.',
             duplicate_telegram_ids;
     END IF;
-END $;
+END $$;
 
 CREATE UNIQUE INDEX IF NOT EXISTS uq_employees_active_telegram_id
     ON employees (telegram_id)
@@ -57,7 +57,7 @@ INSERT INTO branch_settings (branch_id)
 SELECT id FROM branches
 ON CONFLICT (branch_id) DO NOTHING;
 
-DO $$
+DO $$$
 BEGIN
     IF EXISTS (
         SELECT 1
