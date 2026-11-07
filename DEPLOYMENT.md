@@ -68,6 +68,18 @@ The separate `migrations/001_multibranch_foundation.sql` adds branches, branch r
 
 Important: the current application still needs branch-scoped authorization and queries before multiple branches can safely be used. Creating the schema alone does not provide branch isolation. Keep production on one branch until those controls and PostgreSQL integration tests are complete.
 
+## Configurable request buttons (migration 002)
+
+After migration 001, take/verify a backup and apply `migrations/002_configurable_request_types.sql`. It creates the branch-scoped request-type and audit tables and seeds each active branch with bathroom and prayer buttons, both at 10 minutes. The bot does not apply either migration automatically.
+
+After the migrations:
+- Employees send `/start` to refresh the menu and see the two new buttons.
+- Managers use `/request_types` to create more timed request buttons, change durations (1–240 minutes), or disable/enable a button.
+- A timer starts only after a branch-authorized manager approves the request.
+- Custom request notifications are routed to that branch's managers and super admins.
+
+Do not deploy until migration 001 and 002 have been applied and the latest GitHub Actions workflow has passed.
+
 ## Local development
 
 ```bash
