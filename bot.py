@@ -1821,29 +1821,45 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if action == "approve":
-        msg_text = ""
-        timer_minutes = 0
-        if type_ == 'smoke':
-            new_count = get_smoke_count_db(emp['id'])
-            timer_minutes = settings['smoke_duration_minutes']
-            msg_text = f"✅ تمت الموافقة! (رصيدك: {new_count}/{settings['smoke_daily_limit']})\nمدة السيجارة: {timer_minutes} دقائق."
-            await start_timer(context, target_id, timer_minutes, 'smoke')
-        elif type_ == 'break':
-            timer_minutes = settings['lunch_duration_minutes']
-            msg_text = f"✅ تمت الموافقة على الغداء ({timer_minutes} دقيقة)."
-            await start_timer(context, target_id, timer_minutes, 'break')
-        elif custom_request_type:
-            timer_minutes = custom_request_type[3]
-            msg_text = f"✅ تمت الموافقة على {custom_request_type[2]} ({timer_minutes} دقائق)."
-            await start_timer(context, target_id, timer_minutes, type_)
+        timer_pending = False
+        if type_ in {"smoke", "break"} or custom_request_type:
+            timer_info = _timer_db("outbox_for_request", request_id)
+            if (
+                not timer_info
+                or int(timer_info[0]) != target_id
+                or timer_info[1] != type_
+            ):
+                timer_pending = True
+                logger.error("Approved request %s has no matching durable timer outbox row", request_id)
+            else:
+                timer_minutes = int(timer_info[2])
+                timer_pending = not await start_timer(
+                    context, target_id, timer_minutes, type_, request_id=request_id
+                )
+                if type_ == "smoke":
+                    new_count = get_smoke_count_db(emp["id"])
+                    msg_text = (
+                        f"تمت الموافقة على استراحة التدخين. "
+                        f"رصيدك: {new_count}/{settings['smoke_daily_limit']}."
+                    )
+                elif type_ == "break":
+                    msg_text = f"تمت الموافقة على استراحة الغداء ({timer_minutes} دقيقة)."
+                else:
+                    msg_text = f"تمت الموافقة على {custom_request_type[2]} ({timer_minutes} دقيقة)."
         else:
             msg_text = f"✅ تمت الموافقة على طلبك ({type_})."
             try:
                 await context.bot.send_message(target_id, msg_text)
-            except: pass
+            except Exception:
+                logger.exception("Could not notify employee %s about approval", target_id)
 
-        await query.edit_message_text(text=f"{query.message.text}\n\n✅ تم القبول بواسطة المدير.")
-        
+        status_text = (
+            "\n\n✅ تمت الموافقة. إعداد المؤقت قيد إعادة المحاولة وسيبدأ تلقائياً."
+            if timer_pending
+            else "\n\n✅ تم القبول بواسطة المدير."
+        )
+        await query.edit_message_text(text=f"{query.message.text}{status_text}")
+
     elif action == "reject":
         rejected_label = custom_request_type[2] if custom_request_type else type_
         try:
