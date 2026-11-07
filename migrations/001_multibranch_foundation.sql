@@ -25,6 +25,26 @@ WHERE branch_id IS NULL;
 ALTER TABLE employees
     ALTER COLUMN branch_id SET NOT NULL;
 
+-- Keep legacy employee INSERT statements working after this migration.
+-- New employees default to the initial branch until branch-aware admin flows ship.
+CREATE OR REPLACE FUNCTION assign_default_employee_branch()
+RETURNS TRIGGER AS $
+BEGIN
+    IF NEW.branch_id IS NULL THEN
+        SELECT id INTO NEW.branch_id FROM branches WHERE code = 'main';
+    END IF;
+    IF NEW.branch_id IS NULL THEN
+        RAISE EXCEPTION 'Default branch is not configured';
+    END IF;
+    RETURN NEW;
+END;
+$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trg_employees_default_branch ON employees;
+CREATE TRIGGER trg_employees_default_branch
+BEFORE INSERT ON employees
+FOR EACH ROW EXECUTE FUNCTION assign_default_employee_branch();
+
 DO $$
 BEGIN
     IF NOT EXISTS (
@@ -56,6 +76,23 @@ ALTER TABLE requests
     ADD COLUMN IF NOT EXISTS decided_by BIGINT,
     ADD COLUMN IF NOT EXISTS decided_at TIMESTAMPTZ,
     ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP;
+
+-- Attach new requests to their employee's branch when callers use the legacy INSERT shape.
+CREATE OR REPLACE FUNCTION assign_request_employee_branch()
+RETURNS TRIGGER AS $
+BEGIN
+    IF NEW.branch_id IS NULL AND NEW.employee_id IS NOT NULL THEN
+        SELECT branch_id INTO NEW.branch_id
+        FROM employees WHERE id = NEW.employee_id;
+    END IF;
+    RETURN NEW;
+END;
+$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trg_requests_employee_branch ON requests;
+CREATE TRIGGER trg_requests_employee_branch
+BEFORE INSERT ON requests
+FOR EACH ROW EXECUTE FUNCTION assign_request_employee_branch();
 
 DO $$
 BEGIN
