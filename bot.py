@@ -1417,6 +1417,57 @@ def _timer_db(operation, *values):
                 rows = cur.fetchall()
                 conn.commit()
                 return rows
+            elif operation == "outbox_for_request":
+                cur.execute(
+                    """SELECT employee_telegram_id, timer_type, duration_minutes
+                       FROM timer_start_outbox WHERE request_id=%s""",
+                    values,
+                )
+                row = cur.fetchone()
+                conn.commit()
+                return row
+            elif operation == "outbox_list":
+                cur.execute(
+                    """SELECT request_id, employee_telegram_id, timer_type, duration_minutes
+                       FROM timer_start_outbox ORDER BY created_at"""
+                )
+                rows = cur.fetchall()
+                conn.commit()
+                return rows
+            elif operation == "save_outbox":
+                user_id, message_id, timer_type, start_at, end_at, request_id = values
+                cur.execute(
+                    """INSERT INTO active_timers
+                       (user_id, message_id, timer_type, start_at, end_at, completed, completed_at)
+                       VALUES (%s,%s,%s,%s,%s,FALSE,NULL)
+                       ON CONFLICT (user_id) DO UPDATE SET
+                           message_id=EXCLUDED.message_id,
+                           timer_type=EXCLUDED.timer_type,
+                           start_at=EXCLUDED.start_at,
+                           end_at=EXCLUDED.end_at,
+                           completed=FALSE,
+                           completed_at=NULL,
+                           created_at=CURRENT_TIMESTAMP""",
+                    (user_id, message_id, timer_type, start_at, end_at),
+                )
+                cur.execute(
+                    """DELETE FROM timer_start_outbox
+                       WHERE request_id=%s AND employee_telegram_id=%s
+                       RETURNING id""",
+                    (request_id, user_id),
+                )
+                removed = cur.fetchone()
+                if not removed:
+                    conn.rollback()
+                    return False
+            elif operation == "outbox_error":
+                cur.execute(
+                    """UPDATE timer_start_outbox
+                       SET attempts=attempts+1, last_error=%s,
+                           updated_at=CURRENT_TIMESTAMP
+                       WHERE request_id=%s""",
+                    values,
+                )
             elif operation == "complete":
                 cur.execute("""
                     UPDATE active_timers
