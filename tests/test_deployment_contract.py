@@ -22,7 +22,7 @@ class RenderDeploymentContractTests(unittest.TestCase):
     def test_render_and_ci_use_the_same_supported_python_version(self):
         version = (ROOT / ".python-version").read_text(encoding="utf-8").strip()
         workflow = (ROOT / ".github" / "workflows" / "python-checks.yml").read_text(encoding="utf-8")
-        self.assertEqual(version, "3.11.11")
+        self.assertEqual(version, "3.11")
         self.assertIn('python-version: "3.11"', workflow)
 
     def test_predeploy_bootstrap_initializes_then_applies_and_checks_migrations(self):
