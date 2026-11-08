@@ -27,6 +27,7 @@ class RenderDeploymentContractTests(unittest.TestCase):
         workflow = (ROOT / ".github" / "workflows" / "python-checks.yml").read_text(encoding="utf-8")
         self.assertEqual(version, "3.11")
         self.assertIn('python-version: "3.11"', workflow)
+        self.assertIn("python -m scripts.bootstrap", workflow)
 
     def test_predeploy_bootstrap_initializes_then_applies_and_checks_migrations(self):
         bootstrap = (ROOT / "scripts" / "bootstrap.py").read_text(encoding="utf-8")
