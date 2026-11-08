@@ -1,66 +1,54 @@
 # Deployment and first-run setup
 
-This project needs a Telegram bot token and a PostgreSQL database. Secrets belong in the Render service's Environment settings (or a local, untracked `.env` file), never in Git.
+The repository now includes a Render Blueprint at `render.yaml`. It provisions a Telegram **Background Worker** and a managed PostgreSQL database in Frankfurt. The worker uses Telegram long polling; it does not need a public web URL or webhook secret.
+
+## Recommended: deploy with the Render Blueprint
+
+1. Confirm the GitHub repository is up to date on the `main` branch.
+2. In Render, choose **New → Blueprint** and connect `mohammadqazzaz10/employee-bot`.
+3. Select the repository's `main` branch and let Render read the root `render.yaml`.
+4. Review the two resources before confirming: `employee-bot` (Background Worker) and `employee-bot-db` (PostgreSQL). The Blueprint uses paid plans because Render's pre-deploy migration command is not available on free workers.
+5. When prompted for environment values, enter:
+   - `TELEGRAM_BOT_TOKEN`: the token from Telegram BotFather.
+   - `SUPER_ADMIN_TELEGRAM_ID`: your numeric Telegram account ID. You can obtain it from a trusted Telegram ID utility, or leave it unset for the first start and then send `/my_id` to the bot and add the returned number in Render.
+6. Keep the generated `DATABASE_URL` reference unchanged and keep `DATABASE_SSLMODE=prefer`. Do not add `WEBHOOK_URL`, `WEBHOOK_SECRET`, or a manual `PORT`; the Blueprint intentionally uses polling.
+7. Confirm the Blueprint. Render builds with the pinned Python version, installs the project, runs `python -m scripts.bootstrap` before starting, and then runs `python bot.py`.
+8. The pre-deploy bootstrap initializes the base tables, applies migrations 001–006 in order, and checks that every migration is recorded with the matching SHA-256 checksum. If any step fails, Render must not proceed to the new worker release.
+9. After the worker starts, open its Logs and verify the startup messages show successful database initialization, migration verification, and Telegram polling. Then message the bot with `/start` and verify the admin account with `/list_admins`.
+
+**Important database safety:** this Blueprint creates a new managed database for a new deployment. Do not point it at an existing database containing employee records until you have made a backup, verified a restore, reviewed duplicate active phone numbers/orphaned branch settings, and deliberately approved the migration run. The migration runner stops on checksum mismatches and integrity violations; it does not silently choose records to delete.
+
+## Render resources and runtime configuration
+
+- Service type: Background Worker (one instance; do not scale to multiple instances because each instance would run its own Telegram polling loop).
+- Region: Frankfurt for both worker and PostgreSQL.
+- Build command: `python -m pip install .`
+- Pre-deploy command: `python -m scripts.bootstrap`
+- Start command: `python bot.py`
+- Python: pinned to `3.11.11` by `.python-version`, matching the CI runtime.
+- Database: private internal connection string supplied by Render through the Blueprint; TLS mode `prefer`.
+- Telegram: long polling. No public service URL or webhook secret is required.
 
 ## Required environment variables
 
 | Variable | Purpose | Where to obtain it |
 |---|---|---|
-| `DATABASE_URL` | PostgreSQL connection URL | Render PostgreSQL dashboard → Connect → Internal Database URL |
-| `TELEGRAM_BOT_TOKEN` | Authenticates the Telegram bot | Create/manage the bot with Telegram's BotFather; add it only after database migrations pass |
-| `SUPER_ADMIN_TELEGRAM_ID` | Numeric Telegram user ID of the first permanent super admin | Message `/my_id` to the bot after its first token-enabled startup |
-| `DATABASE_SSLMODE` | PostgreSQL TLS mode | Use `prefer` for Render's internal URL; use `require` for an external TLS connection |
+| `DATABASE_URL` | PostgreSQL connection URL | Created and linked automatically by the Render Blueprint |
+| `TELEGRAM_BOT_TOKEN` | Authenticates the Telegram bot | Telegram BotFather; enter it in Render, never in Git or chat |
+| `SUPER_ADMIN_TELEGRAM_ID` | Numeric Telegram ID of the first permanent super admin | Your Telegram numeric user ID; set it in Render |
+| `DATABASE_SSLMODE` | PostgreSQL TLS mode | Blueprint sets `prefer` for Render's internal URL |
 
-Optional:
-- `WEBHOOK_SECRET`: required when webhook mode is enabled (Render Web Service); use a random 1–256 character value containing only letters, digits, underscores, or hyphens.
-- `WEBHOOK_URL`: public base URL only when explicitly configuring a webhook. Render web services automatically use `RENDER_EXTERNAL_URL`; no manually invented URL is needed.
-- `PORT`: Render supplies this automatically for a web service. Do not hardcode it in Render.
+Do not create a Web Service for this bot unless you intentionally switch to webhook mode. Do not configure a second worker or a second copy of this bot token to poll concurrently.
 
-## Create the PostgreSQL database on Render
+## Manual setup (only if not using the Blueprint)
 
-1. Open the Render Dashboard and choose **New → PostgreSQL**.
-2. Create a database, for example `employee-bot-db`. Prefer the same region as the bot service.
-3. Wait until the database is available.
-4. Open its **Connect** tab and copy the **Internal Database URL**. Keep it private.
-5. Keep the Internal Database URL private. It will be added to the migration/bootstrap environment when the database is ready.
-6. Set `DATABASE_SSLMODE=prefer` when using the internal URL. If you deliberately use the external URL, set `DATABASE_SSLMODE=require`.
+If you create Render resources manually, create a PostgreSQL database and a paid Background Worker in the same region. Set `DATABASE_URL` to the database's **Internal Database URL**, set `DATABASE_SSLMODE=prefer`, add `TELEGRAM_BOT_TOKEN` and `SUPER_ADMIN_TELEGRAM_ID` as Render environment variables, and use these commands:
 
-## Bootstrap the database before adding bot credentials
+- Build: `python -m pip install .`
+- Pre-deploy: `python -m scripts.bootstrap`
+- Start: `python bot.py`
 
-1. In a trusted environment that can reach the Render PostgreSQL instance, set
-   `DATABASE_URL` and `DATABASE_SSLMODE`. Do not set the Telegram token yet.
-2. Run `python bot.py` once. It creates the base tables and exits cleanly when no
-   `TELEGRAM_BOT_TOKEN` is configured; it does not start Telegram polling/webhook.
-3. Take a backup and verify restore into a separate database.
-4. Run `python -m scripts.migrate` to apply migrations 001–006 in order.
-5. Run `python -m scripts.migrate --check`. It must report that every migration is
-   applied and all checksums match.
-6. Only after these steps, add `TELEGRAM_BOT_TOKEN` to the Render service environment.
-
-## Configure the Telegram bot and service
-
-1. In BotFather, create the bot (or open the existing bot) and copy its API token.
-2. In Render → bot service → **Environment**, add `TELEGRAM_BOT_TOKEN`. Do not put the
-   token in this repository or in chat.
-3. Use build command `pip install .` and start command `python bot.py`.
-4. Prefer a **Background Worker** for the first deployment: leave `WEBHOOK_URL` and
-   `WEBHOOK_SECRET` unset; the application uses Telegram long polling.
-5. If using a **Web Service**, Render supplies `RENDER_EXTERNAL_URL` automatically.
-   Set a separate random `WEBHOOK_SECRET`; the app validates Telegram's webhook
-   secret-token header. Do not include the bot token in a manually entered URL.
-6. The application refuses to run the bot if any required migration 001–006 is missing.
-   Save the environment settings and deploy/restart only after the migration check passes.
-
-## Create the first super administrator
-
-1. After migrations 001–006 pass, start the bot with its token and database URL. The application verifies the migration ledger before starting Telegram handlers.
-2. Open Telegram and send `/my_id` to the bot from the account that should own administration.
-3. Copy the numeric ID returned by the bot.
-4. In Render → bot service → **Environment**, add `SUPER_ADMIN_TELEGRAM_ID` with that number.
-5. Save and restart/redeploy. On startup, the bot inserts that account into the `admins` table as the permanent super administrator.
-6. Verify with `/list_admins`. The super admin can then add other administrators with `/add_admin TELEGRAM_ID`.
-
-If `SUPER_ADMIN_TELEGRAM_ID` is absent, the bot starts without an administrator and logs a warning; it does not grant admin rights to a hard-coded account. The `/my_id` command remains available so the correct ID can be obtained.
+The bootstrap command requires only `DATABASE_URL` to initialize the base schema and apply migrations. The bot token is used only by the worker process after the pre-deploy command succeeds.
 
 ## Database tables created by the application
 
