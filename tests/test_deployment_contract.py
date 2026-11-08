@@ -18,6 +18,7 @@ class RenderDeploymentContractTests(unittest.TestCase):
         self.assertIn("startCommand: python bot.py", blueprint)
         self.assertIn("fromDatabase:", blueprint)
         self.assertIn("property: connectionString", blueprint)
+        self.assertIn("postgresMajorVersion: '16'", blueprint)
         self.assertIn("sync: false", blueprint)
         self.assertNotIn("TELEGRAM_BOT_TOKEN: ", blueprint)
         self.assertNotIn("DATABASE_URL: ", blueprint)
