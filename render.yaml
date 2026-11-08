@@ -6,6 +6,8 @@ services:
   - type: worker
     name: employee-bot
     runtime: python
+    branch: main
+    numInstances: 1
     region: frankfurt
     plan: 0.5c-512mb
     buildCommand: python -m pip install .
