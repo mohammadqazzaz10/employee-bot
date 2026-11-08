@@ -8,6 +8,7 @@ services:
     runtime: python
     branch: main
     numInstances: 1
+    autoDeployTrigger: checksPass
     region: frankfurt
     plan: 0.5c-512mb
     buildCommand: python -m pip install .
