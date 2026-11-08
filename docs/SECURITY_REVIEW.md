@@ -41,7 +41,7 @@ Telegram bot, webhook, or live notification behavior.
 11. **Secrets:** tokens and database URLs are read from environment variables and
     excluded from repository files. No actual credentials are included in the repo.
 
-## Database migration and CI
+## Database migration, Render deployment, and CI
 
 - The application initializes base tables on startup.
 - Numbered migrations 001–006 add branches/roles, configurable request types,
@@ -51,15 +51,22 @@ Telegram bot, webhook, or live notification behavior.
   and records SHA-256 checksums in `schema_migrations`.
 - GitHub Actions compiles the Python project and runs contract plus PostgreSQL
   integration tests against a temporary PostgreSQL 16 service.
+- `render.yaml` defines one paid Frankfurt Background Worker and a private managed
+  PostgreSQL database. The worker uses Telegram long polling, not webhook mode.
+- `.python-version` pins Render and CI to Python 3.11.11.
+- `scripts/bootstrap.py` initializes the base schema, applies numbered migrations,
+  and performs a checksum verification as the Render pre-deploy command.
+- A deployment contract test checks the Blueprint, secret references, Python pin,
+  and bootstrap command.
 
 CI integration tests do not establish that the migrations have been applied to the
 intended Render database or that Telegram delivery succeeds.
 
 ## Remaining production gates
 
-1. **No live environment validation yet:** migrations 001–006 have not been applied
-   to the intended Render database, and no Render service or environment settings
-   have been changed.
+1. **Render configuration is prepared but not deployed:** the repository contains a
+   Blueprint and pre-deploy bootstrap, but no Render service/database has been created
+   or linked and no deployment has been run. No live Telegram polling has been tested.
 2. **Backup/restore rehearsal:** take a backup of the intended database, restore it to
    a separate database, and verify application reads before applying migrations.
 3. **Telegram staging tests:** verify self-contact linking, wrong/duplicate phone
@@ -71,15 +78,15 @@ intended Render database or that Telegram delivery succeeds.
 5. **Operational observability:** review Render logs and alerts for database
    connection failures, failed Telegram sends, retrying outbox records, and failed
    broadcast deliveries.
-6. **Release control:** PR #1 was merged into `main` on 2026-11-07. No Render
-production deployment or live Telegram verification has been confirmed.
+6. **Release control:** PR #1 and the subsequent deployment-preparation changes are
+   committed to `main`. GitHub CI validates source and a temporary PostgreSQL database;
+   it does not confirm the user's Render account, secret values, live database, or bot.
 
 ## Render and credentials
 
 The runtime requires `TELEGRAM_BOT_TOKEN` and `DATABASE_URL`; the first super admin
 is configured with `SUPER_ADMIN_TELEGRAM_ID`. Use Render's Environment settings and
-keep all secret values out of GitHub and chat. See `DEPLOYMENT.md` for the staged
-setup and migration procedure.
+keep all secret values out of GitHub and chat. See `DEPLOYMENT.md` for the Render Blueprint setup, required secret entry, and migration procedure.
 
 The GitHub merge and CI run do not change Render settings, production database
 migrations, Telegram credentials, webhook configuration, or live deployment.
