@@ -9,8 +9,8 @@ Telegram employee operations bot for break requests, leave/vacation requests, br
 - [SQL migrations](migrations/)
 
 ## Requirements
-- Python 3.11+
-- PostgreSQL 16 (PostgreSQL 14+ should work; CI runs PostgreSQL 16)
+- Python 3.11.11 (pinned for CI and Render in `.python-version`)
+- PostgreSQL (CI runs PostgreSQL 16; Render Blueprint provisions managed PostgreSQL)
 - Telegram bot token from BotFather
 
 ## Local setup
@@ -55,19 +55,20 @@ After migrations 001 and 002, each branch receives bathroom and prayer buttons, 
 Managers use `/broadcast` to choose a permitted branch or audience, select employees individually, and send text, voice, or audio. Every recipient has an individual acknowledgement button. Reminders repeat every 60 seconds until acknowledged and are restored after restart. Telegram clients control notification sound and mute settings; the bot cannot force continuous ringing or autoplay an audio attachment.
 
 ## Database and deployment
-- Base tables are initialized by the application.
-- Migrations 001–006 add branch isolation schema, configurable request types, broadcast logs and acknowledgements, active-phone uniqueness, branch settings integrity, timer outbox, and explicit return acknowledgements.
-- `scripts/migrate.py` applies numbered SQL migrations in order, uses a PostgreSQL advisory lock, and records SHA-256 checksums in `schema_migrations`.
-- Render Background Worker mode uses Telegram long polling. Web Service webhook mode is also supported; dependencies include the webhook and job-queue extras.
-- See [DEPLOYMENT.md](DEPLOYMENT.md) for backup, restore, migration, Render, and first-super-admin instructions.
+- The root `render.yaml` defines a Render Background Worker and a managed PostgreSQL database in Frankfurt.
+- The worker uses Telegram long polling, one instance, and a private database connection; no webhook URL or public web service is needed.
+- Render runs `python -m scripts.bootstrap` before starting the bot. The bootstrap initializes base tables, applies migrations 001–006, and verifies migration checksums.
+- Build command: `python -m pip install .`; start command: `python bot.py`.
+- Secrets are entered only in Render environment settings. The Blueprint prompts for `TELEGRAM_BOT_TOKEN` and `SUPER_ADMIN_TELEGRAM_ID`; it never stores secret values in Git.
+- See [DEPLOYMENT.md](DEPLOYMENT.md) for the exact Blueprint steps and safe handling of existing databases.
 
 ## Verification status
 GitHub Actions compiles Python sources and runs unit/contract plus PostgreSQL integration tests against PostgreSQL 16. CI does not replace staging or live Telegram verification.
 
 Before production, complete:
-- Successful latest CI for the current PR head.
-- Verified backup/restore rehearsal and migrations 001–006 on the intended database.
-- Staging/live Telegram tests for onboarding, request approvals, timers, broadcast delivery/acknowledgements, permissions, and failure recovery.
-- Render environment configuration and a controlled deployment.
+- Successful latest CI for the current `main` commit.
+- For an existing database, a verified backup/restore rehearsal before applying migrations.
+- Staging/Telegram end-to-end tests for onboarding, request approvals, timers, broadcasts, permissions, and recovery.
+- Render Blueprint configuration, secret entry, and a controlled first deployment.
 
 The multi-branch implementation has been merged into `main` (PR #1). GitHub Actions passed for the merge commit. This confirms automated code and PostgreSQL test success, not a live Render deployment or Telegram end-to-end verification.
