@@ -1,0 +1,33 @@
+# Render Blueprint for the Telegram employee bot.
+# Use a paid Background Worker so preDeployCommand runs before each deployment.
+# Secrets are prompted for in the Render Dashboard and are never stored in Git.
+
+services:
+  - type: worker
+    name: employee-bot
+    runtime: python
+    region: frankfurt
+    plan: 0.5c-512mb
+    buildCommand: python -m pip install .
+    preDeployCommand: python -m scripts.bootstrap
+    startCommand: python bot.py
+    maxShutdownDelaySeconds: 120
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: employee-bot-db
+          property: connectionString
+      - key: DATABASE_SSLMODE
+        value: prefer
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: SUPER_ADMIN_TELEGRAM_ID
+        sync: false
+
+databases:
+  - name: employee-bot-db
+    region: frankfurt
+    plan: 0.1c-256mb
+    databaseName: employee_bot
+    user: employee_bot
+    ipAllowList: []
