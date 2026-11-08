@@ -65,7 +65,7 @@ Employee removal is a soft deactivation; historical request and attendance recor
 
 ## Multi-branch schema
 
-The separate `migrations/001_multibranch_foundation.sql` adds branches, branch references, branch-admin roles, indexes and compatibility triggers. It is not executed automatically. Before applying it to an existing database:
+The separate `migrations/001_multibranch_foundation.sql` adds branches, branch references, branch-admin roles, indexes and compatibility triggers. On a new Render Blueprint database, `scripts/bootstrap.py` applies all numbered migrations automatically before the worker starts. Before applying them to an existing database:
 1. Take a PostgreSQL backup and verify that it can be restored.
 2. Confirm the base tables above exist.
 3. Review the migration and check existing rows, especially requests without an employee link.
@@ -86,7 +86,7 @@ Application-level branch controls are implemented on `main` and covered by contr
 - Smoke and lunch approvals now commit the request decision and their corresponding daily counter/time records in one PostgreSQL transaction. The current branch policy (enabled state, allowed time window, daily smoking limit, minimum gap, and one-lunch-per-day rule) is revalidated at approval time.
 - Broadcast targeting and branch settings/request-type management also validate branch roles.
 
-This is not a production deployment approval. Apply migrations 001–006 in order after a verified backup, verify branch-role assignments, and complete a staging/Telegram end-to-end test before using multiple branches in production. If the branch migrations are absent, branch authorization fails closed; existing admins will need explicit branch roles or super-admin status.
+This is not proof of a live production deployment. For an existing database, apply migrations 001–006 only after a verified backup/restore rehearsal. Verify branch-role assignments and complete staging/Telegram end-to-end tests before using multiple branches in production. If the branch migrations are absent, branch authorization fails closed; existing admins will need explicit branch roles or super-admin status.
 
 ## Configurable request buttons (migration 002)
 
@@ -98,7 +98,7 @@ After the migrations:
 - A timer starts only after a branch-authorized manager approves the request.
 - Custom request notifications are routed to that branch's managers and super admins.
 
-Do not deploy until migration 001 and 002 have been applied and the latest GitHub Actions workflow has passed.
+Before using the bot, verify all migrations 001–006 have been applied and the latest GitHub Actions workflow has passed.
 
 ## Pre-production integrity migration (migration 005)
 
