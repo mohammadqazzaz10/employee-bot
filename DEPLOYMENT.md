@@ -25,7 +25,7 @@ The repository now includes a Render Blueprint at `render.yaml`. It provisions a
 - Build command: `python -m pip install .`
 - Pre-deploy command: `python -m scripts.bootstrap`
 - Start command: `python bot.py`
-- Python: pinned to `3.11.11` by `.python-version`, matching the CI runtime.
+- Python: pinned to the latest Python `3.11.x` patch by `.python-version`, matching the CI minor version.
 - Database: private internal connection string supplied by Render through the Blueprint; TLS mode `prefer`.
 - Telegram: long polling. No public service URL or webhook secret is required.
 
