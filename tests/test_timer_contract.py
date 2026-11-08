@@ -12,6 +12,11 @@ SOURCE = (ROOT / "bot.py").read_text(encoding="utf-8")
 
 
 class TimerContractTests(unittest.TestCase):
+    def test_timer_start_message_uses_real_line_breaks(self):
+        start_block = SOURCE.split("async def _start_timer_for_bot", 1)[1].split("async def start_timer", 1)[0]
+        self.assertIn('f"{emoji} بدأت {label}\\n"', start_block)
+        self.assertNotIn("\\\\n", start_block)
+
     def test_countdown_uses_one_repeating_job_not_one_job_per_second(self):
         self.assertIn("run_repeating(", SOURCE)
         self.assertIn("interval=5", SOURCE)
