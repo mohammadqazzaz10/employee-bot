@@ -49,7 +49,6 @@ config.local.py
 settings.local.py
 
 # Python version
-.python-version
 
 # Cache
 .mypy_cache/
