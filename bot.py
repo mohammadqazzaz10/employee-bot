@@ -1779,9 +1779,9 @@ async def _start_timer_for_bot(bot_client, application, user_id, minutes, type_,
         message = await bot_client.send_message(
             chat_id=user_id,
             text=(
-                f"{emoji} بدأت {label}\\n"
-                "━━━━━━━━━━━━━━━━━━\\n"
-                f"⏳ الوقت المحدد: {int(minutes)} دقيقة\\n"
+                f"{emoji} بدأت {label}\n"
+                "━━━━━━━━━━━━━━━━━━\n"
+                f"⏳ الوقت المحدد: {int(minutes)} دقيقة\n"
                 "سيظهر العد التنازلي هنا، وسيصلك تنبيه عند الانتهاء."
             ),
         )
