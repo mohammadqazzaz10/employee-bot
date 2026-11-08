@@ -53,7 +53,7 @@ Telegram bot, webhook, or live notification behavior.
   integration tests against a temporary PostgreSQL 16 service.
 - `render.yaml` defines one paid Frankfurt Background Worker and a private managed
   PostgreSQL database. The worker uses Telegram long polling, not webhook mode.
-- `.python-version` pins Render and CI to Python 3.11.11.
+- `.python-version` pins Render to the latest Python 3.11.x patch and CI to Python 3.11.
 - `scripts/bootstrap.py` initializes the base schema, applies numbered migrations,
   and performs a checksum verification as the Render pre-deploy command.
 - A deployment contract test checks the Blueprint, secret references, Python pin,
