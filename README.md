@@ -70,4 +70,4 @@ Before production, complete:
 - Staging/live Telegram tests for onboarding, request approvals, timers, broadcast delivery/acknowledgements, permissions, and failure recovery.
 - Render environment configuration and a controlled deployment.
 
-The development PR is intentionally kept separate from `main`; do not merge or deploy until the production gates are explicitly approved.
+The multi-branch implementation has been merged into `main` (PR #1). GitHub Actions passed for the merge commit. This confirms automated code and PostgreSQL test success, not a live Render deployment or Telegram end-to-end verification.
