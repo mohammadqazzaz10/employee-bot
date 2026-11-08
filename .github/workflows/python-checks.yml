@@ -38,6 +38,8 @@ jobs:
           python-version: "3.11"
       - name: Install project dependencies
         run: python -m pip install .
+      - name: Validate Render database bootstrap
+        run: python -m scripts.bootstrap
       - name: Compile Python sources
         run: python -m compileall -q .
       - name: Run unit and PostgreSQL integration tests
