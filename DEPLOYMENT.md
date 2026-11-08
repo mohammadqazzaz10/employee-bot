@@ -86,7 +86,7 @@ The separate `migrations/001_multibranch_foundation.sql` adds branches, branch r
 5. Verify the migration ledger and checksums with `python -m scripts.migrate --check`.
 6. Verify the branch and row counts. The runner takes a PostgreSQL advisory lock, applies numbered migrations in order, and records SHA-256 checksums in `schema_migrations`. It never logs the database URL.
 
-Application-level branch controls are now implemented in the development branch and covered by contract/integration tests:
+Application-level branch controls are implemented on `main` and covered by contract/integration tests:
 - A user is an administrator only if they are a super admin or have an explicit active branch role. An ordinary admin record without a branch role does not grant branch access.
 - Standard and custom request approvals are checked against the employee's branch; the final decision SQL repeats the authorization condition atomically.
 - Smoke, lunch, leave, vacation, custom-request, and return notifications are routed to the employee's branch managers/supervisors plus super admins, not to unrelated branch managers.
