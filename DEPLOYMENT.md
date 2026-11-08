@@ -38,7 +38,7 @@ The repository now includes a Render Blueprint at `render.yaml`. It provisions a
 | `SUPER_ADMIN_TELEGRAM_ID` | Numeric Telegram ID of the first permanent super admin | Your Telegram numeric user ID; set it in Render |
 | `DATABASE_SSLMODE` | PostgreSQL TLS mode | Blueprint sets `prefer` for Render's internal URL |
 
-Do not create a Web Service for this bot unless you intentionally switch to webhook mode. Do not configure a second worker or a second copy of this bot token to poll concurrently.
+Do not create a Web Service for this bot unless you intentionally switch to webhook mode. In that alternative only, Render supplies `RENDER_EXTERNAL_URL`; configure a random `WEBHOOK_SECRET` and test the webhook before switching. The recommended Background Worker does not use `RENDER_EXTERNAL_URL`, `WEBHOOK_URL`, `WEBHOOK_SECRET`, or `PORT`. Do not configure a second worker or a second copy of this bot token to poll concurrently.
 
 ## Manual setup (only if not using the Blueprint)
 
