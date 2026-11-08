@@ -10,11 +10,11 @@ The repository now includes a Render Blueprint at `render.yaml`. It provisions a
 4. Review the two resources before confirming: `employee-bot` (Background Worker) and `employee-bot-db` (PostgreSQL). The Blueprint uses paid plans because Render's pre-deploy migration command is not available on free workers.
 5. When prompted for environment values, enter:
    - `TELEGRAM_BOT_TOKEN`: the token from Telegram BotFather.
-   - `SUPER_ADMIN_TELEGRAM_ID`: your numeric Telegram account ID. You can obtain it from a trusted Telegram ID utility, or leave it unset for the first start and then send `/my_id` to the bot and add the returned number in Render.
+   - `SUPER_ADMIN_TELEGRAM_ID`: your numeric Telegram account ID. Obtain it from a trusted Telegram ID utility before confirming the Blueprint; this ensures the first boot creates your permanent super-admin account.
 6. Keep the generated `DATABASE_URL` reference unchanged and keep `DATABASE_SSLMODE=prefer`. Do not add `WEBHOOK_URL`, `WEBHOOK_SECRET`, or a manual `PORT`; the Blueprint intentionally uses polling.
 7. Confirm the Blueprint. Render builds with the pinned Python version, installs the project, runs `python -m scripts.bootstrap` before starting, and then runs `python bot.py`.
 8. The pre-deploy bootstrap initializes the base tables, applies migrations 001–006 in order, and checks that every migration is recorded with the matching SHA-256 checksum. If any step fails, Render must not proceed to the new worker release.
-9. After the worker starts, open its Logs and verify the startup messages show successful database initialization, migration verification, and Telegram polling. Then message the bot with `/start` and verify the admin account with `/list_admins`.
+9. After the worker starts, open its Logs and verify the startup messages show successful database initialization, migration verification, and Telegram polling. Then message the bot with `/start` and verify the admin account with `/list_admins`. If you could not provide the numeric ID during Blueprint setup, send `/my_id`, add `SUPER_ADMIN_TELEGRAM_ID` in Render Environment, and restart; until then, no account has administrator privileges.
 
 **Important database safety:** this Blueprint creates a new managed database for a new deployment. Do not point it at an existing database containing employee records until you have made a backup, verified a restore, reviewed duplicate active phone numbers/orphaned branch settings, and deliberately approved the migration run. The migration runner stops on checksum mismatches and integrity violations; it does not silently choose records to delete.
 
