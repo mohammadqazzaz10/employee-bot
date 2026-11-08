@@ -31,6 +31,7 @@ databases:
   - name: employee-bot-db
     region: frankfurt
     plan: 0.1c-256mb
+    postgresMajorVersion: '16'
     databaseName: employee_bot
     user: employee_bot
     ipAllowList: []
