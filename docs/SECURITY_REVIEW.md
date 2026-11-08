@@ -3,11 +3,11 @@
 ## Scope and limitations
 
 This review covers the source code and automated PostgreSQL integration tests on
-`improvements/multibranch-foundation`. It is not a penetration test. It does not
-verify a real Render service, production database, Telegram bot, webhook, or phone
-notification behavior.
+`main` after merge commit `dba49ca74f0c0dad1005dadf28d25334135f8dd6`. It is not a
+penetration test. It does not verify a real Render service, production database,
+Telegram bot, webhook, or live notification behavior.
 
-## Controls implemented on this development branch
+## Controls implemented on main
 
 1. **Employee onboarding:** a contact must be the sender's own Telegram contact and
    match an active pre-registered phone. Telegram linking is atomic, registration-only,
@@ -71,8 +71,8 @@ intended Render database or that Telegram delivery succeeds.
 5. **Operational observability:** review Render logs and alerts for database
    connection failures, failed Telegram sends, retrying outbox records, and failed
    broadcast deliveries.
-6. **Release control:** the pull request remains Draft. No merge or production
-   deployment has been performed.
+6. **Release control:** PR #1 was merged into `main` on 2026-11-07. No Render
+production deployment or live Telegram verification has been confirmed.
 
 ## Render and credentials
 
@@ -81,5 +81,5 @@ is configured with `SUPER_ADMIN_TELEGRAM_ID`. Use Render's Environment settings 
 keep all secret values out of GitHub and chat. See `DEPLOYMENT.md` for the staged
 setup and migration procedure.
 
-No Render service, environment variable, production database, webhook, or deployment
-has been changed by this work.
+The GitHub merge and CI run do not change Render settings, production database
+migrations, Telegram credentials, webhook configuration, or live deployment.
