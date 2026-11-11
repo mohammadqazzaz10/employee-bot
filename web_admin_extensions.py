@@ -319,3 +319,21 @@ def process_meeting_reminders():
             return jsonify({"ok": True, "processed": len(due)})
     finally:
         conn.close()
+
+
+@app.get("/api/site-info")
+def public_site_info():
+    """Expose only non-sensitive branding/help text for portal views."""
+    defaults = {"site_name": "رفيق العمل", "site_tagline": "منظومة إدارة الموظفين", "support_message": "تواصل مع مدير فرعك عند الحاجة.", "maintenance_notice": ""}
+    try:
+        conn = _db()
+        try:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute("SELECT setting_key,setting_value FROM web_app_settings")
+                for row in cur.fetchall():
+                    defaults[row["setting_key"]] = row["setting_value"]
+        finally:
+            conn.close()
+    except Exception:
+        app.logger.exception("Could not load public site branding")
+    return jsonify({"ok": True, "settings": defaults})
