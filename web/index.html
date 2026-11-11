@@ -83,6 +83,7 @@
             <button class="nav-item" data-page="notifications"><span>♧</span> الإشعارات <i id="notificationBadge" hidden>0</i></button>
             <button class="nav-item admin-only" data-page="employees" hidden><span>♙</span> الموظفون</button>
             <button class="nav-item admin-only" data-page="manageRequests" hidden><span>☷</span> إدارة الطلبات</button>
+            <button class="nav-item admin-only" data-page="settings" hidden><span>⚙</span> إعدادات الفرع</button>
             <button class="nav-item admin-only super-only" data-page="admins" hidden><span>♧</span> حسابات المشرفين</button>
           </nav>
           <div class="sidebar-bottom"><div class="help-mini"><span>✧</span><strong>تحتاج إلى مساعدة؟</strong><small>تواصل مع مدير فرعك.</small></div><button class="logout-button" id="logoutButton"><span>↪</span> تسجيل الخروج</button></div>
@@ -117,6 +118,30 @@
 
           <section class="page-section" id="page-manageRequests"><div class="page-heading"><div><div class="eyebrow">صندوق الوارد</div><h1>إدارة الطلبات</h1><p>راجع الطلبات واتخذ القرار المناسب.</p></div><select id="requestFilter" class="filter-select"><option value="pending">قيد الانتظار</option><option value="all">كل الطلبات</option><option value="approved">مقبولة</option><option value="rejected">مرفوضة</option></select></div><div class="manager-request-list" id="managerRequests"></div></section>
 
+          <section class="page-section" id="page-settings">
+            <div class="page-heading"><div><div class="eyebrow">ضبط سياسات العمل</div><h1>إعدادات الفرع</h1><p>تحكم في أوقات الاستراحات ومددها وأنواع الطلبات.</p></div><select id="settingsBranchSelector" class="filter-select super-only" hidden aria-label="اختر الفرع"></select></div>
+            <form class="content-card settings-form" id="branchSettingsForm">
+              <div class="card-title-row"><div><span class="eyebrow">سياسة الاستراحات</span><h2>التدخين والغداء</h2></div><span class="muted-label">تُطبّق على موظفي الفرع</span></div>
+              <div class="settings-grid">
+                <label class="setting-toggle"><input type="checkbox" name="smoke_enabled"><span><strong>تفعيل استراحة التدخين</strong><small>السماح بتقديم طلبات التدخين</small></span></label>
+                <label>الحد اليومي<input type="number" name="smoke_daily_limit" min="0" max="30" required></label>
+                <label>مدة الاستراحة (دقيقة)<input type="number" name="smoke_duration_minutes" min="1" max="120" required></label>
+                <label>بداية الوقت<input type="time" name="smoke_start_time" required></label>
+                <label>نهاية الوقت<input type="time" name="smoke_end_time"></label>
+                <label>الفاصل بين الاستراحات (دقيقة)<input type="number" name="smoke_gap_minutes" min="0" max="1440" required></label>
+                <label class="setting-toggle"><input type="checkbox" name="lunch_enabled"><span><strong>تفعيل استراحة الغداء</strong><small>السماح بطلب استراحة الغداء</small></span></label>
+                <label>مدة الغداء (دقيقة)<input type="number" name="lunch_duration_minutes" min="1" max="240" required></label>
+                <label>بداية وقت الغداء<input type="time" name="lunch_start_time"></label>
+                <label>نهاية وقت الغداء<input type="time" name="lunch_end_time"></label>
+              </div>
+              <div class="settings-actions"><button class="primary-button compact" type="submit">حفظ إعدادات الفرع <b>←</b></button><span class="form-message" id="settingsMessage"></span></div>
+            </form>
+            <section class="content-card"><div class="card-title-row"><div><span class="eyebrow">أزرار الموظفين</span><h2>أنواع الطلبات ومددها</h2></div></div>
+              <div class="table-wrap"><table><thead><tr><th>اسم الطلب</th><th>المدة بالدقائق</th><th>الحالة</th><th>إجراء</th></tr></thead><tbody id="requestTypesAdmin"></tbody></table></div>
+              <form class="inline-create-form" id="requestTypeForm"><label>اسم نوع الطلب<input name="label" maxlength="32" required placeholder="مثال: استراحة قصيرة"></label><label>المدة بالدقائق<input name="duration_minutes" type="number" min="1" max="240" required value="10"></label><button class="primary-button compact" type="submit">إضافة نوع طلب</button></form>
+              <p class="form-message" id="requestTypeMessage"></p>
+            </section>
+          </section>
           <section class="page-section" id="page-admins"><div class="page-heading"><div><div class="eyebrow">إدارة الصلاحيات</div><h1>حسابات المشرفين</h1><p>إضافة مشرف أو مدير وربطه بفرعه.</p></div><button class="primary-button compact" id="addAdminButton">＋ إضافة حساب</button></div><section class="content-card"><div class="table-wrap"><table><thead><tr><th>الاسم</th><th>اسم المستخدم</th><th>الدور</th><th>الفرع</th><th>الحالة</th></tr></thead><tbody id="adminsTable"></tbody></table></div></section></section>
         </div>
       </section>
