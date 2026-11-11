@@ -31,6 +31,7 @@ class EmployeeWebRuntimeTests(unittest.TestCase):
             "/api/employee/request-types", "/api/employee/requests",
             "/api/employee/call-supervisor", "/api/admin/overview",
             "/api/admin/employees", "/api/admin/requests",
+            "/api/admin/settings", "/api/admin/request-types",
         ):
             with self.subTest(route=route):
                 self.assertIn(route, routes)
