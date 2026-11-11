@@ -88,6 +88,40 @@ function showPortal(user) {
   else loadEmployeeDashboard();
   loadNotifications();
 }
+let liveSyncTimer = null;
+let liveSyncBusy = false;
+let lastLiveRole = null;
+
+function startLiveSync() {
+  if (liveSyncTimer) window.clearInterval(liveSyncTimer);
+  liveSyncTimer = window.setInterval(async () => {
+    if (!currentUser || document.hidden || liveSyncBusy) return;
+    const portal = $("portalView");
+    if (!portal || portal.hidden) return;
+    liveSyncBusy = true;
+    try {
+      if (currentUser.role === "employee") {
+        await loadEmployeeDashboard();
+      } else {
+        await loadAdminDashboard();
+        const activePage = document.querySelector(".page-section.active")?.id;
+        if (activePage === "page-manageRequests") {
+          await loadManagerRequests($("requestFilter")?.value || "pending");
+        }
+      }
+    } finally {
+      liveSyncBusy = false;
+    }
+  }, 3000);
+}
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden && currentUser) {
+    if (currentUser.role === "employee") loadEmployeeDashboard();
+    else loadAdminDashboard();
+    loadNotifications();
+  }
+});
+
 async function loadSession() {
   try {
     const data = await api("/auth/me");
