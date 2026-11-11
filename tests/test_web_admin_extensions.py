@@ -55,6 +55,13 @@ class WebAdminExtensionContractTests(unittest.TestCase):
         register = source.index("import web_admin_extensions")
         server_start = source.index('if __name__ == "__main__":')
         self.assertLess(register, server_start)
+        self.assertIn('sys.modules.setdefault("web_app", sys.modules[__name__])', source)
+
+    def test_notification_poll_works_with_httponly_session_cookie(self):
+        source = (ROOT / "web" / "admin.js").read_text(encoding="utf-8")
+        self.assertNotIn('document.cookie.includes("employee_session=")', source)
+        self.assertIn('fetch("/api/notifications",{credentials:"same-origin",cache:"no-store"})', source)
+        self.assertIn('localStorage.setItem("employee-sound-enabled",String(soundEnabled))', source)
 
 if __name__ == "__main__":
     unittest.main()
