@@ -221,7 +221,7 @@ def list_work_tasks():
                 branch_filter = "AND t.branch_id=%s"
                 values = (user["employee_id"], emp["branch_id"])
                 employee_filter = "AND a.employee_id=%s"
-                values = (user["employee_id"], emp["branch_id"], user["employee_id"])
+                values = (emp["branch_id"], user["employee_id"])
             else:
                 if user["role"] == "super_admin":
                     if requested_branch:
