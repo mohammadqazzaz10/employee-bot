@@ -12,7 +12,7 @@ This review covers the current feature branch and its automated source/contract/
 4. **Login protection:** per-account lockout after repeated failures and per-IP throttling with hashed IP identifiers.
 5. **Sessions:** opaque random session tokens stored as hashes, 12-hour expiry, revocation on logout, HttpOnly session cookie, Secure cookie in production, and SameSite=Lax.
 6. **CSRF:** mutating authenticated requests require a double-submit CSRF token that is also bound to the hashed session record.
-7. **Temporary passwords:** manager-created accounts must change their temporary password before using protected portal APIs.
+7. **Temporary passwords:** manager-created accounts must change their temporary password before using protected portal APIs. Manager password resets revoke all active employee sessions and issue a one-time temporary password that must be changed on next login.
 8. **Identity and branch scope:** the server resolves employee identity, role, and branch from the authenticated session. Browser-supplied employee IDs do not grant access. Managers and supervisors are limited to their assigned branch.
 9. **Request decisions:** pending requests are row-locked and can be decided once. Web decisions use decided_by_web_user_id, leaving legacy Telegram actor IDs untouched.
 10. **Timers:** a timer is created in the same transaction as approval. One unreturned timer per employee is enforced by a partial unique index; expiry is not treated as return until the employee confirms.
