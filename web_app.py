@@ -947,6 +947,48 @@ def create_activation(employee_id):
         conn.close()
 
 
+@app.post("/api/admin/employees/<int:employee_id>/reset-password")
+@roles_required("super_admin", "branch_manager")
+def reset_employee_password(employee_id):
+    temporary_password = secrets.token_urlsafe(14)
+    conn = _db()
+    try:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(
+                """SELECT e.id,e.branch_id,e.is_active FROM employees e
+                   JOIN branches b ON b.id=e.branch_id AND b.is_active=TRUE
+                   WHERE e.id=%s FOR UPDATE OF e""",
+                (employee_id,))
+            employee = cur.fetchone()
+            if not employee or not employee["is_active"]:
+                conn.rollback()
+                return _json_error("الموظف غير موجود أو غير نشط.", 404)
+            if not _branch_allowed(cur, g.current_user, employee["branch_id"]):
+                conn.rollback()
+                return _json_error("لا تملك صلاحية هذا الفرع.", 403)
+            cur.execute("SELECT id FROM web_users WHERE employee_id=%s AND is_active=TRUE FOR UPDATE",
+                        (employee_id,))
+            account = cur.fetchone()
+            if not account:
+                conn.rollback()
+                return _json_error("الموظف لم يفعّل حساب الويب بعد.", 409)
+            cur.execute(
+                """UPDATE web_users SET password_hash=%s,must_change_password=TRUE,
+                   failed_login_attempts=0,locked_until=NULL,updated_at=CURRENT_TIMESTAMP
+                   WHERE id=%s""",
+                (generate_password_hash(temporary_password, method="scrypt"), account["id"]))
+            cur.execute(
+                "UPDATE web_sessions SET revoked_at=CURRENT_TIMESTAMP WHERE user_id=%s AND revoked_at IS NULL",
+                (account["id"],))
+            _audit(cur, g.current_user["id"], employee["branch_id"], "employee_password_reset",
+                   "employee", employee_id)
+        conn.commit()
+        return jsonify({"ok": True, "temporary_password": temporary_password,
+                        "message": "تم تعيين كلمة مرور مؤقتة. سلّمها للموظف بشكل خاص."})
+    finally:
+        conn.close()
+
+
 @app.get("/api/admin/requests")
 @roles_required("super_admin", "branch_manager", "supervisor")
 def admin_requests():
