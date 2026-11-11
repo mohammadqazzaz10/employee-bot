@@ -2,6 +2,7 @@
 (() => {
   "use strict";
   const SOUND_KEY = "employee-sound-enabled";
+  if (localStorage.getItem(SOUND_KEY) === null) localStorage.setItem(SOUND_KEY, "true");
   const seen = new Set();
   let initialized = false;
   let polling = false;
