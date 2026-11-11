@@ -63,5 +63,18 @@ class WebAdminExtensionContractTests(unittest.TestCase):
         self.assertIn('fetch("/api/notifications",{credentials:"same-origin",cache:"no-store"})', source)
         self.assertIn('localStorage.setItem("employee-sound-enabled",String(soundEnabled))', source)
 
+    def test_realtime_notifications_poll_sound_toast_and_service_worker_actions(self):
+        js = (ROOT / "web" / "notifications.js").read_text(encoding="utf-8")
+        html = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
+        sw = (ROOT / "web" / "sw.js").read_text(encoding="utf-8")
+        self.assertIn("window.setInterval(pollNotifications, 7000)", js)
+        self.assertIn("showToast(item)", js)
+        self.assertIn("playAlertTone()", js)
+        self.assertIn("registration.showNotification", js)
+        self.assertIn("aria-live", js)
+        self.assertIn('/notifications.js', html)
+        self.assertIn('self.addEventListener("notificationclick"', sw)
+        self.assertIn("OPEN_NOTIFICATIONS", sw)
+
 if __name__ == "__main__":
     unittest.main()

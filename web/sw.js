@@ -1,5 +1,5 @@
-const CACHE = "employee-portal-shell-v3";
-const SHELL = ["/", "/styles.css", "/app.js", "/admin.js", "/manifest.webmanifest", "/icons/icon.svg"];
+const CACHE = "employee-portal-shell-v4";
+const SHELL = ["/", "/styles.css", "/app.js", "/admin.js", "/notifications.js", "/manifest.webmanifest", "/icons/icon.svg"];
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(SHELL)));
   self.skipWaiting();
@@ -16,4 +16,20 @@ self.addEventListener("fetch", (event) => {
     caches.open(CACHE).then((cache) => cache.put(event.request, copy));
     return response;
   }).catch(() => caches.match(event.request).then((cached) => cached || caches.match("/"))));
+});
+
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  event.waitUntil((async () => {
+    const windows = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+    for (const client of windows) {
+      if ("focus" in client) {
+        await client.focus();
+        client.postMessage({ type: "OPEN_NOTIFICATIONS" });
+        return;
+      }
+    }
+    if (self.clients.openWindow) await self.clients.openWindow("/");
+  })());
 });
