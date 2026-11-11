@@ -300,7 +300,7 @@ $("activationForm").addEventListener("submit", async (event) => {
   const button = $("activateSubmit"); button.disabled = true;
   try {
     const activationCode = $("activationCode").value
-      .replace(/[\\s\\u200B-\\u200F\\u202A-\\u202E\\u2060\\uFEFF]/g, "");
+      .replace(/[\s\u200B-\u200F\u202A-\u202E\u2060\uFEFF]/g, "");
     const password = $("newPassword").value;
     if (activationCode.length < 24) {
       $("activationMessage").style.color = "#b24e48";
