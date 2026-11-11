@@ -6,6 +6,7 @@ MIGRATION = ROOT / "migrations" / "001_multibranch_foundation.sql"
 INTEGRITY_MIGRATION = ROOT / "migrations" / "005_preproduction_integrity.sql"
 TIMER_ACK_MIGRATION = ROOT / "migrations" / "006_timer_return_acknowledgements.sql"
 WEB_MIGRATION = ROOT / "migrations" / "007_employee_web_portal.sql"
+EVENTS_MIGRATION = ROOT / "migrations" / "010_web_notification_events.sql"
 RUNNER = ROOT / "scripts" / "migrate.py"
 
 
@@ -69,6 +70,13 @@ class MigrationContractTests(unittest.TestCase):
                 self.assertIn(fragment, sql)
         self.assertNotIn("drop table", sql)
         self.assertNotIn("delete from employees", sql)
+
+    def test_notification_events_are_published_only_to_the_recipient_channel(self):
+        sql = EVENTS_MIGRATION.read_text(encoding="utf-8").lower()
+        self.assertIn("pg_notify", sql)
+        self.assertIn("'employee_web_user_' || new.recipient_user_id::text", sql)
+        self.assertIn("after insert on web_notifications", sql)
+        self.assertIn("drop trigger if exists", sql)
 
     def test_migration_runner_checks_checksums_and_serializes_execution(self):
         source = RUNNER.read_text(encoding="utf-8")
