@@ -81,19 +81,21 @@ def _load_session():
                 SELECT s.id AS session_id, s.csrf_hash, s.expires_at,
                        u.id, u.username, u.full_name, u.role, u.branch_id,
                        u.employee_id, u.must_change_password, u.is_active,
-                       b.name AS branch_name, e.employee_code, e.job_title,
-                       e.is_active AS employee_active
+                       b.name AS branch_name, b.is_active AS branch_active, e.employee_code, e.job_title,
+                       e.is_active AS employee_active, eb.is_active AS employee_branch_active
                 FROM web_sessions s
                 JOIN web_users u ON u.id=s.user_id
                 LEFT JOIN branches b ON b.id=u.branch_id
                 LEFT JOIN employees e ON e.id=u.employee_id
+                LEFT JOIN branches eb ON eb.id=e.branch_id
                 WHERE s.token_hash=%s AND s.revoked_at IS NULL
                   AND s.expires_at > CURRENT_TIMESTAMP AND u.is_active=TRUE
                 """,
                 (_hash(token),),
             )
             row = cur.fetchone()
-            if not row or (row["employee_id"] and not row["employee_active"]):
+            if (not row or (row["employee_id"] and (not row["employee_active"] or not row["employee_branch_active"]))
+                    or (row["role"] in {"branch_manager", "supervisor"} and not row["branch_active"])):
                 return None
             csrf = request.cookies.get(CSRF_COOKIE, "")
             if not csrf or not hmac.compare_digest(_hash(csrf), row["csrf_hash"]):
