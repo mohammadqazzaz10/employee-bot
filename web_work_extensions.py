@@ -389,7 +389,7 @@ def update_work_task(assignment_id):
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute(
                 """SELECT a.id,a.employee_id,a.status,t.id AS task_id,t.branch_id,t.title,
-                          e.full_name AS employee_name
+                          e.full_name AS employee_name,e.branch_id AS employee_branch_id
                    FROM work_task_assignments a JOIN work_tasks t ON t.id=a.task_id
                    JOIN employees e ON e.id=a.employee_id
                    WHERE a.id=%s AND t.archived_at IS NULL FOR UPDATE OF a""",
@@ -401,7 +401,8 @@ def update_work_task(assignment_id):
                 return _json_error("المهمة غير موجودة.", 404)
             is_employee = g.current_user["role"] == "employee"
             if is_employee:
-                if int(g.current_user["employee_id"]) != int(row["employee_id"]):
+                if (int(g.current_user["employee_id"]) != int(row["employee_id"])
+                        or int(row["employee_branch_id"]) != int(row["branch_id"])):
                     conn.rollback()
                     return _json_error("هذه المهمة ليست مسندة إليك.", 403)
                 if status not in {"in_progress", "completed", "blocked"}:
@@ -453,14 +454,15 @@ def work_task_events(assignment_id):
     try:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute(
-                """SELECT a.employee_id,t.branch_id FROM work_task_assignments a
-                   JOIN work_tasks t ON t.id=a.task_id WHERE a.id=%s""", (assignment_id,)
+                """SELECT a.employee_id,t.branch_id,e.branch_id AS employee_branch_id FROM work_task_assignments a
+                   JOIN work_tasks t ON t.id=a.task_id JOIN employees e ON e.id=a.employee_id WHERE a.id=%s""", (assignment_id,)
             )
             scope = cur.fetchone()
             if not scope:
                 return _json_error("المهمة غير موجودة.", 404)
             if g.current_user["role"] == "employee":
-                allowed = int(g.current_user["employee_id"]) == int(scope["employee_id"])
+                allowed = (int(g.current_user["employee_id"]) == int(scope["employee_id"])
+                           and int(scope["employee_branch_id"]) == int(scope["branch_id"]))
             else:
                 allowed = _branch_allowed(cur, g.current_user, scope["branch_id"])
             if not allowed:
