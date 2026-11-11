@@ -54,20 +54,33 @@
       audioContext ||= new Audio();
       if (audioContext.state === "suspended") await audioContext.resume();
       if (audioContext.state !== "running") return;
+
+      // A brighter, louder four-note chime. The gain is about 3x the old tone,
+      // with a compressor to keep peaks controlled on different devices.
       const now = audioContext.currentTime;
-      [880, 660, 880].forEach((frequency, index) => {
+      const compressor = audioContext.createDynamicsCompressor();
+      compressor.threshold.setValueAtTime(-10, now);
+      compressor.knee.setValueAtTime(12, now);
+      compressor.ratio.setValueAtTime(8, now);
+      compressor.attack.setValueAtTime(0.003, now);
+      compressor.release.setValueAtTime(0.16, now);
+      compressor.connect(audioContext.destination);
+
+      [784, 988, 1175, 988].forEach((frequency, index) => {
+        const start = now + index * 0.17;
+        const duration = 0.23;
         const oscillator = audioContext.createOscillator();
         const gain = audioContext.createGain();
-        const start = now + index * 0.19;
-        oscillator.type = "sine";
+        oscillator.type = "triangle";
         oscillator.frequency.setValueAtTime(frequency, start);
         gain.gain.setValueAtTime(0.0001, start);
-        gain.gain.exponentialRampToValueAtTime(0.075, start + 0.025);
-        gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.16);
+        gain.gain.exponentialRampToValueAtTime(0.22, start + 0.018);
+        gain.gain.setValueAtTime(0.22, start + 0.09);
+        gain.gain.exponentialRampToValueAtTime(0.0001, start + duration);
         oscillator.connect(gain);
-        gain.connect(audioContext.destination);
+        gain.connect(compressor);
         oscillator.start(start);
-        oscillator.stop(start + 0.17);
+        oscillator.stop(start + duration + 0.01);
       });
     } catch (_) {}
   }
