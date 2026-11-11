@@ -949,6 +949,221 @@ def create_admin_user():
         conn.close()
 
 
+
+def _resolve_admin_branch(cur, user, requested=None):
+    if user["role"] == "super_admin":
+        if requested is None:
+            cur.execute("SELECT id FROM branches WHERE is_active=TRUE ORDER BY id LIMIT 1")
+        else:
+            cur.execute("SELECT id FROM branches WHERE id=%s AND is_active=TRUE", (requested,))
+    else:
+        if requested is not None and int(requested) != int(user["branch_id"]):
+            return None
+        cur.execute("SELECT id FROM branches WHERE id=%s AND is_active=TRUE", (user["branch_id"],))
+    row = cur.fetchone()
+    return row["id"] if row else None
+
+
+@app.get("/api/admin/settings")
+@roles_required("super_admin", "branch_manager", "supervisor")
+def admin_settings():
+    requested = request.args.get("branch_id")
+    conn = _db()
+    try:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            branch_id = _resolve_admin_branch(cur, g.current_user, requested)
+            if not branch_id:
+                conn.rollback()
+                return _json_error("الفرع غير موجود أو لا تملك صلاحية الوصول إليه.", 403)
+            cur.execute("INSERT INTO branch_settings(branch_id) VALUES(%s) ON CONFLICT DO NOTHING", (branch_id,))
+            cur.execute(
+                """SELECT branch_id,smoke_enabled,smoke_daily_limit,smoke_duration_minutes,
+                          TO_CHAR(smoke_start_time,'HH24:MI') AS smoke_start_time,
+                          TO_CHAR(smoke_end_time,'HH24:MI') AS smoke_end_time,
+                          smoke_gap_minutes,lunch_enabled,lunch_duration_minutes,
+                          TO_CHAR(lunch_start_time,'HH24:MI') AS lunch_start_time,
+                          TO_CHAR(lunch_end_time,'HH24:MI') AS lunch_end_time
+                   FROM branch_settings WHERE branch_id=%s""", (branch_id,))
+            settings = cur.fetchone()
+            cur.execute("SELECT id,name FROM branches WHERE id=%s", (branch_id,))
+            branch = cur.fetchone()
+        conn.commit()
+        return jsonify({"ok": True, "branch": dict(branch), "settings": dict(settings)})
+    finally:
+        conn.close()
+
+
+@app.patch("/api/admin/settings")
+@roles_required("super_admin", "branch_manager", "supervisor")
+def update_admin_settings():
+    payload = request.get_json(silent=True) or {}
+    requested = payload.pop("branch_id", None)
+    bool_fields = {"smoke_enabled", "lunch_enabled"}
+    int_fields = {
+        "smoke_daily_limit": (0, 30),
+        "smoke_duration_minutes": (1, 120),
+        "smoke_gap_minutes": (0, 1440),
+        "lunch_duration_minutes": (1, 240),
+    }
+    time_fields = {"smoke_start_time", "smoke_end_time", "lunch_start_time", "lunch_end_time"}
+    allowed = bool_fields | set(int_fields) | time_fields
+    if not payload or not set(payload).issubset(allowed):
+        return _json_error("لا توجد إعدادات صالحة للحفظ.", 400)
+    for key, value in payload.items():
+        if key in bool_fields and not isinstance(value, bool):
+            return _json_error("قيمة التفعيل يجب أن تكون صحيحة أو خاطئة.", 400)
+        if key in int_fields and (isinstance(value, bool) or not isinstance(value, int) or not int_fields[key][0] <= value <= int_fields[key][1]):
+            return _json_error("إحدى القيم الرقمية خارج النطاق المسموح.", 400)
+        if key in time_fields and value is not None and not re.fullmatch(r"(?:[01]\\d|2[0-3]):[0-5]\\d", str(value)):
+            return _json_error("استخدم صيغة الوقت HH:MM.", 400)
+        if key == "smoke_start_time" and value is None:
+            return _json_error("يجب تحديد بداية وقت الاستراحة.", 400)
+    conn = _db()
+    try:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            branch_id = _resolve_admin_branch(cur, g.current_user, requested)
+            if not branch_id:
+                conn.rollback()
+                return _json_error("الفرع غير موجود أو لا تملك صلاحية الوصول إليه.", 403)
+            cur.execute("INSERT INTO branch_settings(branch_id) VALUES(%s) ON CONFLICT DO NOTHING", (branch_id,))
+            cur.execute("SELECT * FROM branch_settings WHERE branch_id=%s FOR UPDATE", (branch_id,))
+            old = cur.fetchone()
+            assignments = [f"{key}=%s" for key in payload]
+            values = list(payload.values())
+            assignments.extend(["updated_by_web_user_id=%s", "updated_at=CURRENT_TIMESTAMP"])
+            values.extend([g.current_user["id"], branch_id])
+            cur.execute(
+                "UPDATE branch_settings SET " + ", ".join(assignments) + " WHERE branch_id=%s",
+                tuple(values),
+            )
+            for key, value in payload.items():
+                old_value = old.get(key)
+                cur.execute(
+                    """INSERT INTO branch_settings_audit
+                       (branch_id,setting_key,old_value,new_value,changed_by,changed_by_web_user_id)
+                       VALUES(%s,%s,%s,%s,NULL,%s)""",
+                    (branch_id, key, str(old_value) if old_value is not None else None,
+                     str(value) if value is not None else None, g.current_user["id"]),
+                )
+            _audit(cur, g.current_user["id"], branch_id, "branch_settings_updated",
+                   "branch", branch_id, {"fields": list(payload)})
+        conn.commit()
+        return jsonify({"ok": True, "message": "تم حفظ إعدادات الفرع."})
+    finally:
+        conn.close()
+
+
+@app.get("/api/admin/request-types")
+@roles_required("super_admin", "branch_manager", "supervisor")
+def admin_request_types():
+    requested = request.args.get("branch_id")
+    conn = _db()
+    try:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            branch_id = _resolve_admin_branch(cur, g.current_user, requested)
+            if not branch_id:
+                conn.rollback()
+                return _json_error("الفرع غير موجود أو لا تملك صلاحية الوصول إليه.", 403)
+            cur.execute(
+                """SELECT id,code,label,duration_minutes,is_active
+                   FROM branch_request_types WHERE branch_id=%s ORDER BY id""",
+                (branch_id,))
+            rows = cur.fetchall()
+        return jsonify({"ok": True, "request_types": [dict(row) for row in rows]})
+    finally:
+        conn.close()
+
+
+@app.post("/api/admin/request-types")
+@roles_required("super_admin", "branch_manager", "supervisor")
+def create_admin_request_type():
+    payload = request.get_json(silent=True) or {}
+    label = str(payload.get("label") or "").strip()
+    duration = payload.get("duration_minutes")
+    requested = payload.get("branch_id")
+    if not label or len(label) > 32 or isinstance(duration, bool) or not isinstance(duration, int) or not 1 <= duration <= 240:
+        return _json_error("أدخل اسمًا لا يتجاوز 32 حرفًا ومدة بين دقيقة و240 دقيقة.", 400)
+    conn = _db()
+    try:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            branch_id = _resolve_admin_branch(cur, g.current_user, requested)
+            if not branch_id:
+                conn.rollback()
+                return _json_error("الفرع غير موجود أو لا تملك صلاحية الوصول إليه.", 403)
+            code = "web-" + secrets.token_hex(6)
+            cur.execute(
+                """INSERT INTO branch_request_types
+                   (branch_id,code,label,duration_minutes,is_active,created_by_web_user_id,updated_by_web_user_id)
+                   VALUES(%s,%s,%s,%s,TRUE,%s,%s) RETURNING id,code,label,duration_minutes,is_active""",
+                (branch_id, code, label, duration, g.current_user["id"], g.current_user["id"]))
+            row = cur.fetchone()
+            cur.execute(
+                """INSERT INTO branch_request_types_audit
+                   (branch_id,request_type_id,action,changed_by,new_value,changed_by_web_user_id)
+                   VALUES(%s,%s,'created',NULL,%s,%s)""",
+                (branch_id, row["id"], f"{label} | {duration} minutes", g.current_user["id"]))
+            _audit(cur, g.current_user["id"], branch_id, "request_type_created", "request_type", row["id"])
+        conn.commit()
+        return jsonify({"ok": True, "request_type": dict(row), "message": "تمت إضافة نوع الطلب."}), 201
+    except psycopg2.IntegrityError:
+        conn.rollback()
+        return _json_error("يوجد نوع طلب بالاسم نفسه في هذا الفرع.", 409)
+    finally:
+        conn.close()
+
+
+@app.patch("/api/admin/request-types/<int:type_id>")
+@roles_required("super_admin", "branch_manager", "supervisor")
+def update_admin_request_type(type_id):
+    payload = request.get_json(silent=True) or {}
+    requested = payload.pop("branch_id", None)
+    duration = payload.get("duration_minutes")
+    active = payload.get("is_active")
+    if not payload or not set(payload).issubset({"duration_minutes", "is_active"}):
+        return _json_error("لا توجد تغييرات صالحة.", 400)
+    if "duration_minutes" in payload and (isinstance(duration, bool) or not isinstance(duration, int) or not 1 <= duration <= 240):
+        return _json_error("المدة يجب أن تكون بين دقيقة و240 دقيقة.", 400)
+    if "is_active" in payload and not isinstance(active, bool):
+        return _json_error("حالة التفعيل غير صالحة.", 400)
+    conn = _db()
+    try:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            branch_id = _resolve_admin_branch(cur, g.current_user, requested)
+            if not branch_id:
+                conn.rollback()
+                return _json_error("الفرع غير موجود أو لا تملك صلاحية الوصول إليه.", 403)
+            cur.execute(
+                """SELECT id,label,duration_minutes,is_active FROM branch_request_types
+                   WHERE id=%s AND branch_id=%s FOR UPDATE""", (type_id, branch_id))
+            old = cur.fetchone()
+            if not old:
+                conn.rollback()
+                return _json_error("نوع الطلب غير موجود في هذا الفرع.", 404)
+            sets, values = [], []
+            if "duration_minutes" in payload:
+                sets.append("duration_minutes=%s")
+                values.append(duration)
+            if "is_active" in payload:
+                sets.append("is_active=%s")
+                values.append(active)
+            sets.extend(["updated_by_web_user_id=%s", "updated_at=CURRENT_TIMESTAMP"])
+            values.extend([g.current_user["id"], type_id, branch_id])
+            cur.execute(
+                "UPDATE branch_request_types SET " + ", ".join(sets) + " WHERE id=%s AND branch_id=%s",
+                tuple(values))
+            for key, value in payload.items():
+                cur.execute(
+                    """INSERT INTO branch_request_types_audit
+                       (branch_id,request_type_id,action,changed_by,new_value,changed_by_web_user_id)
+                       VALUES(%s,%s,'updated',NULL,%s,%s)""",
+                    (branch_id, type_id, f"{key}={value}", g.current_user["id"]))
+            _audit(cur, g.current_user["id"], branch_id, "request_type_updated", "request_type", type_id, payload)
+        conn.commit()
+        return jsonify({"ok": True, "message": "تم تحديث نوع الطلب."})
+    finally:
+        conn.close()
+
+
 @app.errorhandler(404)
 def not_found(_error):
     if request.path.startswith("/api/"):
