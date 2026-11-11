@@ -124,6 +124,9 @@ function startLiveSync() {
   if (liveSyncTimer) window.clearInterval(liveSyncTimer);
   liveSyncTimer = window.setInterval(syncPortalData, 3000);
 }
+window.addEventListener("employee-portal:refresh", () => {
+  syncPortalData();
+});
 document.addEventListener("visibilitychange", () => {
   if (!document.hidden && currentUser) {
     syncPortalData();
