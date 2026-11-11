@@ -11,7 +11,7 @@ services:
     autoDeployTrigger: checksPass
     buildCommand: python -m pip install .
     preDeployCommand: python -m scripts.bootstrap
-    startCommand: gunicorn --workers 2 --threads 4 --timeout 60 --access-logfile - --error-logfile - web_app:app
+    startCommand: gunicorn --workers 2 --threads 12 --timeout 60 --access-logfile - --error-logfile - web_app:app
     healthCheckPath: /healthz
     envVars:
       - key: DATABASE_URL
