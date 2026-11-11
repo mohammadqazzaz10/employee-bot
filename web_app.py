@@ -589,13 +589,31 @@ def employee_request_types():
     try:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute(
+                """SELECT e.branch_id FROM employees e JOIN branches b ON b.id=e.branch_id
+                   WHERE e.id=%s AND e.is_active=TRUE AND b.is_active=TRUE""",
+                (_employee_id(g.current_user),))
+            employee = cur.fetchone()
+            if not employee:
+                return _json_error("حساب الموظف غير نشط.", 403)
+            branch_id = employee["branch_id"]
+            cur.execute("INSERT INTO branch_settings(branch_id) VALUES(%s) ON CONFLICT DO NOTHING", (branch_id,))
+            cur.execute(
                 """SELECT r.id,r.code,r.label,r.duration_minutes
-                   FROM branch_request_types r JOIN employees e ON e.branch_id=r.branch_id
-                   JOIN branches b ON b.id=e.branch_id AND b.is_active=TRUE
-                   WHERE e.id=%s AND e.is_active=TRUE AND r.is_active=TRUE
-                   ORDER BY r.id""", (_employee_id(g.current_user),))
-            rows = cur.fetchall()
-        return jsonify({"ok": True, "request_types": [dict(x) for x in rows]})
+                   FROM branch_request_types r
+                   WHERE r.branch_id=%s AND r.is_active=TRUE ORDER BY r.id""", (branch_id,))
+            rows = [dict(x) for x in cur.fetchall()]
+            cur.execute(
+                """SELECT smoke_enabled,smoke_duration_minutes,lunch_enabled,lunch_duration_minutes
+                   FROM branch_settings WHERE branch_id=%s""", (branch_id,))
+            settings = cur.fetchone()
+            if settings and settings["smoke_enabled"]:
+                rows.insert(0, {"id": None, "code": "smoke", "label": "استراحة تدخين",
+                                "duration_minutes": settings["smoke_duration_minutes"]})
+            if settings and settings["lunch_enabled"]:
+                rows.insert(1 if settings["smoke_enabled"] else 0,
+                            {"id": None, "code": "break", "label": "استراحة الغداء",
+                             "duration_minutes": settings["lunch_duration_minutes"]})
+        return jsonify({"ok": True, "request_types": rows})
     finally:
         conn.close()
 
