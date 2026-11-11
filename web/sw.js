@@ -1,5 +1,5 @@
-const CACHE = "employee-portal-shell-v2";
-const SHELL = ["/", "/styles.css", "/app.js", "/manifest.webmanifest", "/icons/icon.svg"];
+const CACHE = "employee-portal-shell-v3";
+const SHELL = ["/", "/styles.css", "/app.js", "/admin.js", "/manifest.webmanifest", "/icons/icon.svg"];
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(SHELL)));
   self.skipWaiting();
