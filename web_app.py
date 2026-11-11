@@ -658,14 +658,22 @@ def create_employee_request():
             if not employee:
                 conn.rollback()
                 return _json_error("حساب الموظف غير نشط.", 403)
-            cur.execute(
-                """SELECT id,label FROM branch_request_types
-                   WHERE branch_id=%s AND code=%s AND is_active=TRUE""",
-                (employee["branch_id"], request_code))
-            kind = cur.fetchone()
-            if not kind:
-                conn.rollback()
-                return _json_error("نوع الطلب غير متاح في فرعك.", 400)
+            if request_code in {"smoke", "break", "lunch"}:
+                allowed, policy_error, policy_label, policy_duration = _special_request_policy(
+                    cur, employee["id"], employee["branch_id"], request_code, lock=True)
+                if not allowed:
+                    conn.rollback()
+                    return _json_error(policy_error or "الطلب غير متاح وفق سياسة الفرع.", 409)
+                kind = {"id": None, "label": policy_label, "duration_minutes": policy_duration}
+            else:
+                cur.execute(
+                    """SELECT id,label,duration_minutes FROM branch_request_types
+                       WHERE branch_id=%s AND code=%s AND is_active=TRUE""",
+                    (employee["branch_id"], request_code))
+                kind = cur.fetchone()
+                if not kind:
+                    conn.rollback()
+                    return _json_error("نوع الطلب غير متاح في فرعك.", 400)
             cur.execute(
                 """SELECT 1 FROM requests WHERE employee_id=%s AND status='pending'
                    AND request_type=%s FOR UPDATE""",
