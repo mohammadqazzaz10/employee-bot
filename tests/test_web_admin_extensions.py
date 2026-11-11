@@ -50,5 +50,11 @@ class WebAdminExtensionContractTests(unittest.TestCase):
         self.assertIn('/admin.js', html)
 
 
+    def test_admin_extension_is_registered_before_direct_server_start(self):
+        source = (ROOT / "web_app.py").read_text(encoding="utf-8")
+        register = source.index("import web_admin_extensions")
+        server_start = source.index('if __name__ == "__main__":')
+        self.assertLess(register, server_start)
+
 if __name__ == "__main__":
     unittest.main()
