@@ -253,7 +253,10 @@ def _record_special_request_approval(cur, employee_id, request_type, duration):
     if request_type in {"break", "lunch"}:
         cur.execute(
             """INSERT INTO lunch_breaks(employee_id,date,taken,taken_at)
-               VALUES(%s,%s,TRUE,%s) ON CONFLICT(employee_id,date) DO NOTHING
+               VALUES(%s,%s,TRUE,%s)
+               ON CONFLICT(employee_id,date) DO UPDATE
+                 SET taken=TRUE,taken_at=EXCLUDED.taken_at
+                 WHERE lunch_breaks.taken=FALSE
                RETURNING id""",
             (employee_id, today, now),
         )
@@ -568,7 +571,9 @@ def employee_summary():
             pending = cur.fetchone()["count"]
             cur.execute(
                 """SELECT r.id,r.request_type,r.status,r.requested_at,r.responded_at,r.notes,
-                          COALESCE(t.label,r.request_type) AS request_label
+                          CASE WHEN r.request_type='smoke' THEN 'استراحة تدخين'
+                               WHEN r.request_type IN ('break','lunch') THEN 'استراحة الغداء'
+                               ELSE COALESCE(t.label,r.request_type) END AS request_label
                    FROM requests r LEFT JOIN branch_request_types t
                      ON t.branch_id=(SELECT branch_id FROM employees WHERE id=r.employee_id)
                     AND t.code=r.request_type
@@ -950,7 +955,9 @@ def admin_requests():
     conn = _db()
     try:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            sql = """SELECT r.id,r.request_type,COALESCE(rt.label,r.request_type) AS request_label,
+            sql = """SELECT r.id,r.request_type,CASE WHEN r.request_type='smoke' THEN 'استراحة تدخين'
+                               WHEN r.request_type IN ('break','lunch') THEN 'استراحة الغداء'
+                               ELSE COALESCE(rt.label,r.request_type) END AS request_label,
                             r.status,r.requested_at,r.notes,
                             e.id AS employee_id,e.employee_code,e.full_name,e.job_title,
                             b.name AS branch_name
@@ -1052,6 +1059,9 @@ def decide_employee_request(request_id):
                    "request", request_id)
         conn.commit()
         return jsonify({"ok": True, "message": "تم تحديث حالة الطلب."})
+    except ValueError as exc:
+        conn.rollback()
+        return _json_error(str(exc), 409)
     except psycopg2.IntegrityError:
         conn.rollback()
         return _json_error("تعذر بدء المؤقت؛ تحقق من وجود مؤقت آخر للموظف.", 409)
