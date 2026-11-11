@@ -280,6 +280,13 @@
     });
   }
 
+  window.addEventListener("employee-portal:opened", pollNotifications);
+  window.addEventListener("employee-portal:closed", () => {
+    initialized = false;
+    seen.clear();
+    stopEventStream();
+  });
+
   window.setInterval(pollNotifications, 15000);
   window.setTimeout(pollNotifications, 1200);
 })();
