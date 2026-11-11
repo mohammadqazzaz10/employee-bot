@@ -1004,29 +1004,45 @@ def decide_employee_request(request_id):
                    WHERE branch_id=%s AND code=%s AND is_active=TRUE""",
                 (row["branch_id"], row["request_type"]))
             request_kind = cur.fetchone()
-            if decision == "approved" and request_kind:
-                cur.execute(
-                    """SELECT 1 FROM web_timers WHERE employee_id=%s
-                       AND returned_at IS NULL FOR UPDATE""",
-                    (row["employee_id"],))
-                if cur.fetchone():
-                    conn.rollback()
-                    return _json_error("لدى الموظف مؤقت نشط بالفعل.", 409)
+            is_special = row["request_type"] in {"smoke", "break", "lunch"}
+            timer_duration = None
+            request_label = request_kind["label"] if request_kind else row["request_type"]
+            if decision == "approved":
+                if is_special:
+                    allowed, policy_error, policy_label, policy_duration = _special_request_policy(
+                        cur, row["employee_id"], row["branch_id"], row["request_type"], lock=True)
+                    if not allowed:
+                        conn.rollback()
+                        return _json_error(policy_error or "تعذر اعتماد الطلب وفق سياسة الفرع.", 409)
+                    timer_duration = policy_duration
+                    request_label = policy_label
+                elif request_kind:
+                    timer_duration = int(request_kind["duration_minutes"])
+                if timer_duration is not None:
+                    cur.execute(
+                        """SELECT 1 FROM web_timers WHERE employee_id=%s
+                           AND returned_at IS NULL FOR UPDATE""",
+                        (row["employee_id"],))
+                    if cur.fetchone():
+                        conn.rollback()
+                        return _json_error("لدى الموظف مؤقت لم تُسجّل عودته بعد.", 409)
             cur.execute(
                 """UPDATE requests SET status=%s,responded_at=CURRENT_TIMESTAMP,
                    decided_by_web_user_id=%s,decided_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP
                    WHERE id=%s AND status='pending'""",
                 (decision, g.current_user["id"], request_id))
-            if decision == "approved" and request_kind:
+            if decision == "approved" and is_special:
+                _record_special_request_approval(cur, row["employee_id"], row["request_type"], timer_duration)
+            if decision == "approved" and timer_duration is not None:
                 cur.execute(
                     """INSERT INTO web_timers(employee_id,request_id,request_type,started_at,ends_at,created_by)
                        VALUES(%s,%s,%s,CURRENT_TIMESTAMP,
                          CURRENT_TIMESTAMP + (%s * INTERVAL '1 minute'),%s)""",
                     (row["employee_id"], request_id, row["request_type"],
-                     request_kind["duration_minutes"], g.current_user["id"]))
+                     timer_duration, g.current_user["id"]))
             if row["employee_user_id"]:
                 title = "تمت الموافقة على طلبك" if decision == "approved" else "تم رفض طلبك"
-                body = f"طلب {request_kind['label'] if request_kind else row['request_type']}"
+                body = f"طلب {request_label}"
                 cur.execute(
                     """INSERT INTO web_notifications(recipient_user_id,employee_id,request_id,
                        notification_type,title,body) VALUES(%s,%s,%s,%s,%s,%s)""",
