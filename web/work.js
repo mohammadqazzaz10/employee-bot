@@ -104,7 +104,7 @@
   }
 
   async function loadTasks() {
-    if (!ready || busy) return;
+    if (!ready || busy || !currentUser) return;
     busy = true;
     try {
       const branch = $("workTaskBranch")?.value;
