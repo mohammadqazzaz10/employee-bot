@@ -232,11 +232,6 @@
     if(e.target.closest('[data-page="employees"]'))setTimeout(enhanceEmployees,250);
   });
   document.getElementById("employeesTable")&&new MutationObserver(()=>enhanceEmployees()).observe(document.getElementById("employeesTable"),{childList:true,subtree:true});
-  document.getElementById("employeesTable")?.addEventListener("click",async e=>{
-    const b=e.target.closest("[data-employee-status]");if(!b)return;
-    try{const active=b.dataset.active!=="true";const r=await call("/admin/employees/"+b.dataset.employeeStatus+"/status","PATCH",{is_active:active});b.dataset.active=String(active);b.textContent=active?"حظر الموظف":"إعادة التفعيل";b.classList.toggle("danger-button",active);window.alert(r.message);}
-    catch(err){window.alert(err.message);}
-  });
   setInterval(()=>{if(!document.hidden)call("/system/process-meeting-reminders").catch(()=>{});},20000);
   const ready=setInterval(()=>{if(document.getElementById("page-adminTools")){installGlobalSettings();clearInterval(ready);}},300);
 })();
