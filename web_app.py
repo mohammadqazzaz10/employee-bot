@@ -319,7 +319,8 @@ def healthz():
 @app.post("/api/setup/bootstrap")
 def bootstrap_super_admin():
     expected = app.config["WEB_BOOTSTRAP_TOKEN"]
-    payload = request.get_json(silent=True) or {}
+    payload = request.get_json(silent=True)
+    payload = payload if isinstance(payload, dict) else {}
     supplied = str(payload.get("bootstrap_token", ""))
     username = str(payload.get("username", "")).strip()
     full_name = str(payload.get("full_name", "")).strip()
@@ -354,7 +355,8 @@ def bootstrap_super_admin():
 
 @app.post("/api/auth/login")
 def login():
-    payload = request.get_json(silent=True) or {}
+    payload = request.get_json(silent=True)
+    payload = payload if isinstance(payload, dict) else {}
     username = str(payload.get("employee_code") or payload.get("username") or "").strip()
     password = str(payload.get("password") or "")
     if not username or not password or len(username) > 64 or len(password) > 256:
@@ -452,7 +454,8 @@ def login():
 
 @app.post("/api/auth/activate")
 def activate_employee():
-    payload = request.get_json(silent=True) or {}
+    payload = request.get_json(silent=True)
+    payload = payload if isinstance(payload, dict) else {}
     code = str(payload.get("activation_code") or "")
     password = str(payload.get("password") or "")
     if len(code) < 24 or len(password) < 10 or len(password) > 256:
@@ -518,7 +521,8 @@ def logout():
 @app.post("/api/auth/change-password")
 @auth_required
 def change_password():
-    payload = request.get_json(silent=True) or {}
+    payload = request.get_json(silent=True)
+    payload = payload if isinstance(payload, dict) else {}
     old = str(payload.get("current_password") or "")
     new = str(payload.get("new_password") or "")
     if len(new) < 10 or len(new) > 256:
@@ -647,7 +651,8 @@ def employee_requests():
 @app.post("/api/employee/requests")
 @roles_required("employee")
 def create_employee_request():
-    payload = request.get_json(silent=True) or {}
+    payload = request.get_json(silent=True)
+    payload = payload if isinstance(payload, dict) else {}
     request_code = str(payload.get("request_type") or "").strip()
     notes = str(payload.get("notes") or "").strip()[:500]
     if not re.fullmatch(r"[a-zA-Z0-9_-]{1,40}", request_code):
@@ -744,7 +749,8 @@ def return_employee_timer():
 @app.post("/api/employee/call-supervisor")
 @roles_required("employee")
 def call_supervisor():
-    payload = request.get_json(silent=True) or {}
+    payload = request.get_json(silent=True)
+    payload = payload if isinstance(payload, dict) else {}
     note = str(payload.get("message") or "يرجى التواصل مع الموظف.").strip()[:300]
     conn = _db()
     try:
@@ -858,7 +864,8 @@ def admin_branches():
 @app.post("/api/admin/branches")
 @roles_required("super_admin")
 def create_branch():
-    payload = request.get_json(silent=True) or {}
+    payload = request.get_json(silent=True)
+    payload = payload if isinstance(payload, dict) else {}
     code = str(payload.get("code") or "").strip().lower()
     name = str(payload.get("name") or "").strip()
     if not re.fullmatch(r"[a-z0-9_-]{2,24}", code) or not 2 <= len(name) <= 80:
@@ -911,7 +918,8 @@ def admin_employees():
 @app.post("/api/admin/employees")
 @roles_required("super_admin", "branch_manager")
 def create_employee():
-    payload = request.get_json(silent=True) or {}
+    payload = request.get_json(silent=True)
+    payload = payload if isinstance(payload, dict) else {}
     full_name = str(payload.get("full_name") or "").strip()
     job_title = str(payload.get("job_title") or "").strip()
     phone = re.sub(r"[^0-9]", "", str(payload.get("phone_number") or ""))
@@ -1061,7 +1069,8 @@ def admin_requests():
 @app.post("/api/admin/requests/<int:request_id>/decision")
 @roles_required("super_admin", "branch_manager", "supervisor")
 def decide_employee_request(request_id):
-    payload = request.get_json(silent=True) or {}
+    payload = request.get_json(silent=True)
+    payload = payload if isinstance(payload, dict) else {}
     decision = payload.get("decision")
     if decision not in {"approved", "rejected"}:
         return _json_error("قرار الطلب غير صالح.", 400)
@@ -1163,7 +1172,8 @@ def admin_users():
 @app.post("/api/admin/users")
 @roles_required("super_admin")
 def create_admin_user():
-    payload = request.get_json(silent=True) or {}
+    payload = request.get_json(silent=True)
+    payload = payload if isinstance(payload, dict) else {}
     username = str(payload.get("username") or "").strip()
     full_name = str(payload.get("full_name") or "").strip()
     role = payload.get("role")
@@ -1250,7 +1260,8 @@ def admin_settings():
 @app.patch("/api/admin/settings")
 @roles_required("super_admin", "branch_manager", "supervisor")
 def update_admin_settings():
-    payload = request.get_json(silent=True) or {}
+    payload = request.get_json(silent=True)
+    payload = payload if isinstance(payload, dict) else {}
     requested = payload.pop("branch_id", None)
     bool_fields = {"smoke_enabled", "lunch_enabled"}
     int_fields = {
@@ -1331,7 +1342,8 @@ def admin_request_types():
 @app.post("/api/admin/request-types")
 @roles_required("super_admin", "branch_manager", "supervisor")
 def create_admin_request_type():
-    payload = request.get_json(silent=True) or {}
+    payload = request.get_json(silent=True)
+    payload = payload if isinstance(payload, dict) else {}
     label = str(payload.get("label") or "").strip()
     duration = payload.get("duration_minutes")
     requested = payload.get("branch_id")
@@ -1369,7 +1381,8 @@ def create_admin_request_type():
 @app.patch("/api/admin/request-types/<int:type_id>")
 @roles_required("super_admin", "branch_manager", "supervisor")
 def update_admin_request_type(type_id):
-    payload = request.get_json(silent=True) or {}
+    payload = request.get_json(silent=True)
+    payload = payload if isinstance(payload, dict) else {}
     requested = payload.pop("branch_id", None)
     duration = payload.get("duration_minutes")
     active = payload.get("is_active")
