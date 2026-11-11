@@ -618,6 +618,7 @@ def employee_request_types():
                 rows.insert(1 if settings["smoke_enabled"] else 0,
                             {"id": None, "code": "break", "label": "استراحة الغداء",
                              "duration_minutes": settings["lunch_duration_minutes"]})
+            conn.commit()
         return jsonify({"ok": True, "request_types": rows})
     finally:
         conn.close()
