@@ -62,6 +62,8 @@ class MigrationContractTests(unittest.TestCase):
             "updated_by_web_user_id",
             "changed_by_web_user_id",
             "create table if not exists web_login_throttles",
+            "assign_employee_web_code",
+            "trg_employees_assign_web_code",
         ):
             with self.subTest(fragment=fragment):
                 self.assertIn(fragment, sql)
