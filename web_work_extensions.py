@@ -125,7 +125,7 @@ def _push_worker_loop():
             finally:
                 conn.close()
         except Exception:
-            logger.exception("Web Push worker cycle failed; retrying without exposing secrets")
+            logger.error("Web Push worker cycle failed; retrying without exposing secrets")
             time.sleep(5)
 
 
