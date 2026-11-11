@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#102a25">
+  <meta name="description" content="بوابة الموظفين لإدارة الاستراحات والطلبات والتواصل مع الإدارة">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" href="/icons/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/styles.css">
+  <title>رفيق العمل | بوابة الموظفين</title>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <a class="brand" href="/" aria-label="رفيق العمل - الرئيسية">
+        <span class="brand-mark">ر</span>
+        <span><strong>رفيق العمل</strong><small>بوابة الموظفين</small></span>
+      </a>
+      <div class="topbar-actions">
+        <span class="connection"><i></i> اتصال آمن</span>
+        <button class="icon-button" id="installButton" hidden aria-label="تثبيت التطبيق">＋</button>
+        <button class="avatar" id="profileButton" hidden aria-label="الملف الشخصي">م</button>
+      </div>
+    </header>
+
+    <main>
+      <section class="auth-view" id="loginView">
+        <div class="welcome">
+          <div class="eyebrow">أهلًا بك في فريقنا</div>
+          <h1>كل أمور عملك،<br><em>في مكان واحد.</em></h1>
+          <p>قدّم طلباتك، تابع استراحاتك، وتواصل مع مشرفك بسهولة وأمان.</p>
+          <div class="trust-row"><span>⌁</span> دخول خاص بكل موظف <b>•</b> بيانات محمية</div>
+        </div>
+        <form class="login-card" id="loginForm">
+          <div class="card-heading"><span class="card-icon">↗</span><div><h2>تسجيل الدخول</h2><p>استخدم بيانات حسابك الوظيفي</p></div></div>
+          <label for="employeeCode">الرقم الوظيفي</label>
+          <input id="employeeCode" name="employeeCode" autocomplete="username" placeholder="مثال: 1025" required>
+          <label for="password">كلمة المرور</label>
+          <div class="password-wrap"><input id="password" name="password" type="password" autocomplete="current-password" placeholder="أدخل كلمة المرور" required><button type="button" id="togglePassword" aria-label="إظهار كلمة المرور">◉</button></div>
+          <button class="primary-button" type="submit" id="loginSubmit">دخول إلى حسابي <span>←</span></button>
+          <p class="form-message" id="loginMessage" role="alert"></p>
+          <div class="login-help">نسيت كلمة المرور؟ تواصل مع مدير فرعك لإعادة تعيينها.</div>
+        </form>
+      </section>
+
+      <section class="portal-view" id="portalView" hidden>
+        <div class="greeting">
+          <div><span class="eyebrow" id="todayLabel">مساحة العمل</span><h1>مرحبًا، <span id="employeeName">...</span></h1><p id="employeeMeta">...</p></div>
+          <button class="text-button" id="logoutButton">تسجيل الخروج</button>
+        </div>
+        <div class="status-card">
+          <div class="status-top"><span class="status-dot"></span><span id="statusLabel">حالتك الآن</span><span class="status-chip" id="statusChip">على رأس العمل</span></div>
+          <div class="timer-area"><div><small id="timerCaption">حالة الدوام</small><strong id="timerValue">—</strong></div><div class="timer-ring">◷</div></div>
+          <div class="status-foot" id="statusFoot">سيظهر هنا وضع طلبك أو استراحتك الحالية.</div>
+        </div>
+        <div class="section-heading"><div><span class="eyebrow">الخدمات</span><h2>ماذا تريد أن تفعل؟</h2></div></div>
+        <div class="action-grid" id="actionGrid">
+          <button class="action-card" data-action="break"><span class="action-icon mint">◷</span><strong>طلب استراحة</strong><small>قدّم طلبًا للمشرف</small></button>
+          <button class="action-card" data-action="history"><span class="action-icon blue">▤</span><strong>سجل طلباتي</strong><small>تابع الطلبات السابقة</small></button>
+          <button class="action-card" data-action="call"><span class="action-icon amber">♧</span><strong>استدعاء المشرف</strong><small>أرسل طلب تواصل</small></button>
+          <button class="action-card" data-action="profile"><span class="action-icon violet">◎</span><strong>ملفي الوظيفي</strong><small>بياناتك وفرعك</small></button>
+        </div>
+        <section class="panel"><div class="panel-heading"><h2>آخر الطلبات</h2><span>تحديث مباشر عند الربط</span></div><div id="recentRequests" class="empty-state">لا توجد بيانات للعرض حاليًا.</div></section>
+        <p class="portal-notice" id="portalMessage" role="status"></p>
+      </section>
+    </main>
+    <footer><span>رفيق العمل</span><span>نظام داخلي لإدارة شؤون الموظفين</span></footer>
+  </div>
+  <script src="/app.js" defer></script>
+</body>
+</html>
