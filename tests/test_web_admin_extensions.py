@@ -67,7 +67,7 @@ class WebAdminExtensionContractTests(unittest.TestCase):
         js = (ROOT / "web" / "notifications.js").read_text(encoding="utf-8")
         html = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
         sw = (ROOT / "web" / "sw.js").read_text(encoding="utf-8")
-        self.assertIn("window.setInterval(pollNotifications, 7000)", js)
+        self.assertIn("window.setInterval(pollNotifications, 3000)", js)
         self.assertIn("showToast(item)", js)
         self.assertIn("playAlertTone()", js)
         self.assertIn("registration.showNotification", js)
