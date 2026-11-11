@@ -343,6 +343,7 @@ def activate_employee():
                 """SELECT t.id AS token_id,t.employee_id,e.employee_code,e.full_name,
                           e.job_title,e.is_active,e.branch_id
                    FROM web_activation_tokens t JOIN employees e ON e.id=t.employee_id
+                   JOIN branches b ON b.id=e.branch_id AND b.is_active=TRUE
                    WHERE t.token_hash=%s AND t.used_at IS NULL
                      AND t.expires_at>CURRENT_TIMESTAMP AND e.is_active=TRUE
                    FOR UPDATE OF t,e""",
@@ -472,6 +473,7 @@ def employee_request_types():
             cur.execute(
                 """SELECT r.id,r.code,r.label,r.duration_minutes
                    FROM branch_request_types r JOIN employees e ON e.branch_id=r.branch_id
+                   JOIN branches b ON b.id=e.branch_id AND b.is_active=TRUE
                    WHERE e.id=%s AND e.is_active=TRUE AND r.is_active=TRUE
                    ORDER BY r.id""", (_employee_id(g.current_user),))
             rows = cur.fetchall()
@@ -767,7 +769,9 @@ def create_activation(employee_id):
     conn = _db()
     try:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cur.execute("SELECT id,branch_id,is_active FROM employees WHERE id=%s FOR UPDATE", (employee_id,))
+            cur.execute("""SELECT e.id,e.branch_id,e.is_active FROM employees e
+                           JOIN branches b ON b.id=e.branch_id AND b.is_active=TRUE
+                           WHERE e.id=%s FOR UPDATE OF e""", (employee_id,))
             employee = cur.fetchone()
             if not employee or not employee["is_active"]:
                 conn.rollback()
