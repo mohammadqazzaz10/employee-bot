@@ -17,6 +17,7 @@ This review covers the current feature branch and its automated source/contract/
 9. **Request decisions:** pending requests are row-locked and can be decided once. Web decisions use decided_by_web_user_id, leaving legacy Telegram actor IDs untouched.
 10. **Timers:** a timer is created in the same transaction as approval. One unreturned timer per employee is enforced by a partial unique index; expiry is not treated as return until the employee confirms.
 11. **Audit and notifications:** web actions are audited; notifications are scoped to the relevant employee/branch.
+12. **Branch policy controls:** smoking/lunch settings and custom request-type updates are restricted to the selected/assigned active branch; web actor IDs use separate audit columns from Telegram IDs.
 12. **Service worker:** API paths are excluded from caching, so authenticated responses and personal data are not cached offline.
 
 ## Database and deployment
