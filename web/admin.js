@@ -236,3 +236,48 @@
   setInterval(()=>{if(!document.hidden)call("/system/process-meeting-reminders").catch(()=>{});},20000);
   const ready=setInterval(()=>{if(document.getElementById("page-adminTools")){installGlobalSettings();clearInterval(ready);}},300);
 })();
+
+/* Employee-wide notification preferences: foreground tone + optional system notification. */
+(() => {
+  let enabled=localStorage.getItem("employee-sound-enabled")==="true";
+  let audio=null, seen=new Set(), initialized=false;
+  const tone=()=>{
+    if(!enabled)return;
+    const C=window.AudioContext||window.webkitAudioContext;if(!C)return;
+    audio ||= new C();audio.resume();
+    [880,660].forEach((frequency,index)=>{
+      const osc=audio.createOscillator(),gain=audio.createGain();
+      osc.type="sine";osc.frequency.value=frequency;gain.gain.value=0.045;
+      osc.connect(gain);gain.connect(audio.destination);const start=audio.currentTime+index*.17;
+      osc.start(start);gain.gain.setValueAtTime(0.045,start);
+      gain.gain.exponentialRampToValueAtTime(0.001,start+.14);osc.stop(start+.15);
+    });
+  };
+  function addControl(){
+    const actions=document.querySelector(".topbar-actions");if(!actions||document.getElementById("employeeSoundButton"))return;
+    const b=document.createElement("button");b.id="employeeSoundButton";b.type="button";b.className="icon-button";
+    b.title="تشغيل أو إيقاف صوت التنبيهات";b.setAttribute("aria-label",b.title);b.textContent=enabled?"♫":"♩";
+    b.addEventListener("click",()=>{enabled=!enabled;localStorage.setItem("employee-sound-enabled",String(enabled));b.textContent=enabled?"♫":"♩";if(enabled)tone();});
+    actions.insertBefore(b,actions.firstChild);
+    const n=document.createElement("button");n.id="employeeBrowserNotify";n.type="button";n.className="icon-button";
+    n.title="السماح بإشعارات الجهاز";n.setAttribute("aria-label",n.title);n.textContent="♧";
+    n.addEventListener("click",async()=>{if("Notification" in window){const p=await Notification.requestPermission();n.title=p==="granted"?"إشعارات الجهاز مفعّلة":"لم يتم السماح بالإشعارات";}else n.title="المتصفح لا يدعم إشعارات الجهاز";});
+    actions.insertBefore(n,b.nextSibling);
+  }
+  async function poll(){
+    if(!document.cookie.includes("employee_session="))return;
+    try{
+      const r=await fetch("/api/notifications",{credentials:"same-origin",cache:"no-store"});
+      if(!r.ok)return;const d=await r.json();
+      for(const item of d.notifications||[]){
+        if(!seen.has(item.id)){
+          if(initialized&&!item.read_at){tone();if(document.hidden&&"Notification" in window&&Notification.permission==="granted"){new Notification(item.title,{body:item.body,icon:"/icons/icon.svg",tag:"employee-"+item.id,renotify:false});}}
+          seen.add(item.id);
+        }
+      }
+      initialized=true;
+    }catch(_){}
+  }
+  const ready=setInterval(()=>{addControl();if(document.getElementById("employeeSoundButton"))clearInterval(ready);},300);
+  setInterval(poll,15000);
+})();
