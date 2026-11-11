@@ -1014,7 +1014,7 @@ def update_admin_settings():
             return _json_error("قيمة التفعيل يجب أن تكون صحيحة أو خاطئة.", 400)
         if key in int_fields and (isinstance(value, bool) or not isinstance(value, int) or not int_fields[key][0] <= value <= int_fields[key][1]):
             return _json_error("إحدى القيم الرقمية خارج النطاق المسموح.", 400)
-        if key in time_fields and value is not None and not re.fullmatch(r"(?:[01]\\d|2[0-3]):[0-5]\\d", str(value)):
+        if key in time_fields and value is not None and not re.fullmatch(r"(?:[01]\d|2[0-3]):[0-5]\d", str(value)):
             return _json_error("استخدم صيغة الوقت HH:MM.", 400)
         if key == "smoke_start_time" and value is None:
             return _json_error("يجب تحديد بداية وقت الاستراحة.", 400)
