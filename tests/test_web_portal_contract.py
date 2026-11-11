@@ -76,8 +76,19 @@ class EmployeePortalContractTests(unittest.TestCase):
 
     def test_notifications_are_checked_frequently_without_page_reload(self):
         js = (WEB / "notifications.js").read_text(encoding="utf-8")
-        self.assertIn("window.setInterval(pollNotifications, 3000)", js)
+        self.assertIn("window.setInterval(pollNotifications, 15000)", js)
         self.assertNotIn("window.location.reload", js)
+
+    def test_authenticated_sse_refreshes_dashboard_and_notifications(self):
+        backend = (ROOT / "web_app.py").read_text(encoding="utf-8")
+        client = (WEB / "notifications.js").read_text(encoding="utf-8")
+        app = (WEB / "app.js").read_text(encoding="utf-8")
+        self.assertIn('@app.get("/api/events/notifications")', backend)
+        self.assertIn('@auth_required', backend[backend.index('@app.get("/api/events/notifications")'):])
+        self.assertIn('LISTEN {}', backend)
+        self.assertIn('new EventSource("/api/events/notifications"', client)
+        self.assertIn('window.dispatchEvent(new Event("employee-portal:refresh"))', client)
+        self.assertIn('window.addEventListener("employee-portal:refresh"', app)
 
     def test_frontend_and_backend_are_connected_by_same_origin_api(self):
         source = (ROOT / "web_app.py").read_text(encoding="utf-8")
