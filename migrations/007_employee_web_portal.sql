@@ -13,14 +13,14 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_employees_employee_code
 -- Keep legacy employee creation paths compatible: the existing Telegram/admin
 -- code and integrations may omit employee_code when inserting a new employee.
 CREATE OR REPLACE FUNCTION assign_employee_web_code()
-RETURNS TRIGGER AS $
+RETURNS TRIGGER AS $employee_code$
 BEGIN
     IF NEW.employee_code IS NULL OR BTRIM(NEW.employee_code) = '' THEN
         NEW.employee_code := 'EMP' || LPAD(NEW.id::TEXT, 5, '0');
     END IF;
     RETURN NEW;
 END;
-$ LANGUAGE plpgsql;
+$employee_code$ LANGUAGE plpgsql;
 
 DROP TRIGGER IF EXISTS trg_employees_assign_web_code ON employees;
 CREATE TRIGGER trg_employees_assign_web_code
