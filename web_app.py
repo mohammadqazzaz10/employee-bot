@@ -6,14 +6,17 @@ import logging
 import os
 import re
 import secrets
+import select
+import time
 import unicodedata
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 from functools import wraps
 
 import psycopg2
+from psycopg2 import sql
 from psycopg2.extras import RealDictCursor
-from flask import Flask, g, jsonify, request, send_from_directory
+from flask import Flask, Response, g, jsonify, request, send_from_directory, stream_with_context
 from werkzeug.security import check_password_hash, generate_password_hash
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
@@ -803,6 +806,54 @@ def call_supervisor():
         return jsonify({"ok": True, "notified_count": count, "message": "تم إرسال استدعاء المشرف."}), 201
     finally:
         conn.close()
+
+
+@app.get("/api/events/notifications")
+@auth_required
+def notification_events():
+    """Stream recipient-scoped PostgreSQL notification events to the signed-in browser."""
+    recipient_id = int(g.current_user["id"])
+    channel = f"employee_web_user_{recipient_id}"
+
+    @stream_with_context
+    def generate():
+        conn = None
+        try:
+            conn = _db()
+            conn.set_isolation_level(psycopg2.extensions.ISOLATION_LEVEL_AUTOCOMMIT)
+            with conn.cursor() as cur:
+                cur.execute(sql.SQL("LISTEN {}").format(sql.Identifier(channel)))
+            deadline = time.monotonic() + 25
+            last_heartbeat = time.monotonic()
+            yield "retry: 3000\\n: connected\\n\\n"
+            while time.monotonic() < deadline:
+                remaining = max(0, deadline - time.monotonic())
+                readable, _, _ = select.select([conn], [], [], min(10, remaining))
+                if readable:
+                    conn.poll()
+                    while conn.notifies:
+                        conn.notifies.pop(0)
+                        yield "event: refresh\\ndata: {}\\n\\n"
+                if time.monotonic() - last_heartbeat >= 10:
+                    yield ": keep-alive\\n\\n"
+                    last_heartbeat = time.monotonic()
+        except GeneratorExit:
+            raise
+        except Exception:
+            logger.exception("Notification event stream failed for user %s", recipient_id)
+        finally:
+            if conn is not None:
+                conn.close()
+
+    return Response(
+        generate(),
+        mimetype="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache, no-transform",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
+        },
+    )
 
 
 @app.get("/api/notifications")
