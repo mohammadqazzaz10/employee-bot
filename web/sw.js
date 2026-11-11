@@ -1,4 +1,4 @@
-const CACHE = "employee-portal-shell-v4";
+const CACHE = "employee-portal-shell-v5";
 const SHELL = ["/", "/styles.css", "/app.js", "/admin.js", "/notifications.js", "/manifest.webmanifest", "/icons/icon.svg"];
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(SHELL)));
@@ -30,6 +30,23 @@ self.addEventListener("notificationclick", (event) => {
         return;
       }
     }
-    if (self.clients.openWindow) await self.clients.openWindow("/");
+    if (self.clients.openWindow) await self.clients.openWindow(target.href);
   })());
+});
+
+
+self.addEventListener("push", (event) => {
+  let payload = {};
+  try { payload = event.data ? event.data.json() : {}; } catch (_) {}
+  const title = String(payload.title || "تنبيه جديد").slice(0, 160);
+  const body = String(payload.body || "لديك إشعار جديد.").slice(0, 1000);
+  const url = typeof payload.url === "string" && payload.url.startsWith("/") ? payload.url : "/";
+  event.waitUntil(self.registration.showNotification(title, {
+    body,
+    icon: "/icons/icon.svg",
+    badge: "/icons/icon.svg",
+    tag: String(payload.tag || "employee-portal-push").slice(0, 120),
+    renotify: false,
+    data: { url }
+  }));
 });
