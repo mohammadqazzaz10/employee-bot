@@ -1466,3 +1466,7 @@ def server_error(error):
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", "8080")), debug=False)
+
+
+# Register additive admin APIs after the core app and its security decorators exist.
+import web_admin_extensions  # noqa: E402,F401
