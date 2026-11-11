@@ -7,6 +7,7 @@ Branch-aware employee management platform with an Arabic RTL web portal (PWA), P
 - Employee web accounts activated by one-time codes; no Telegram registration or Premium subscription is required.
 - Employee self-service for branch-configured requests, request history, countdown timers, return confirmation, and supervisor call requests.
 - Manager and supervisor portal with branch-scoped request review, approval/rejection, employee management, and notifications.
+- Branch policy settings for smoking/lunch windows, durations, daily limits, minimum gaps, and configurable request buttons.
 - Super-admin account setup and branch-scoped manager provisioning.
 - Responsive installable PWA with Arabic RTL interface.
 - Existing Telegram bot source is retained as an optional future channel; the web portal can run without a Telegram bot token.
