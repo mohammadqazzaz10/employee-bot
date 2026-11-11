@@ -960,10 +960,8 @@ def _resolve_admin_branch(cur, user, requested=None):
             return None
     if user["role"] == "super_admin":
         if requested is None:
-            cur.execute("SELECT id FROM branches WHERE code='main' AND is_active=TRUE")
-            row = cur.fetchone()
-            if not row:
-                cur.execute("SELECT id FROM branches WHERE is_active=TRUE ORDER BY id LIMIT 1")
+            cur.execute("""SELECT id FROM branches WHERE is_active=TRUE
+                           ORDER BY CASE WHEN code='main' THEN 0 ELSE 1 END, id LIMIT 1""")
         else:
             cur.execute("SELECT id FROM branches WHERE id=%s AND is_active=TRUE", (requested,))
     else:
