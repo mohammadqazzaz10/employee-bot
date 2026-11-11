@@ -307,11 +307,14 @@ class EmployeePortalPostgresIntegrationTests(unittest.TestCase):
 
 
     def test_manager_employee_block_broadcast_meetings_and_global_settings(self):
-        changed = self.manager_client.post("/api/auth/change-password", headers=self.manager_headers, json={
-            "current_password": "Temporary-Manager-2026!",
-            "new_password": "Permanent-Manager-2026!",
+        self.manager_client = app.test_client()
+        manager_login = self.manager_client.post("/api/auth/login", json={
+            "username": "webmgr_" + self.suffix,
+            "password": "Permanent-Manager-2026!",
         })
-        self.assertEqual(changed.status_code, 200)
+        self.assertEqual(manager_login.status_code, 200)
+        self.manager_csrf = manager_login.get_json()["csrf_token"]
+        self.manager_headers = {"X-CSRF-Token": self.manager_csrf}
 
         blocked = self.manager_client.patch(
             f"/api/admin/employees/{self.employee_one['id']}/status",
