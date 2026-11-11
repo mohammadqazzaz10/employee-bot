@@ -18,6 +18,7 @@ class WebAdminExtensionContractTests(unittest.TestCase):
             ("/api/admin/meetings/<int:meeting_id>", "PATCH"),
             ("/api/admin/site-settings", "GET"),
             ("/api/admin/site-settings", "PATCH"),
+            ("/api/site-info", "GET"),
             ("/api/system/process-meeting-reminders", "GET"),
         ]
         for route in expected:
