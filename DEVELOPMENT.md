@@ -28,7 +28,7 @@ Migration 007 is additive. It adds employee codes, web users, hashed sessions, l
 - Employee login, password hashing, account lockout, IP throttling, CSRF-protected sessions, logout, and mandatory temporary-password changes.
 - Employee dashboard, branch-configured request types, request history, timer countdown, return confirmation, and supervisor call.
 - Manager dashboard, branch-scoped request inbox, atomic decisions, employee creation, and activation-code issue.
-- Super-admin provisioning of branch managers and supervisors.
+- Super-admin provisioning of branches, branch managers, and supervisors.
 - Branch-scoped smoking/lunch policy controls and audited configurable request types with per-branch durations.
 - Notifications, audit log, branch isolation, and API responses excluded from service-worker caches.
 
