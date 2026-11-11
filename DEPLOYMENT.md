@@ -66,3 +66,8 @@ A green CI run confirms automated checks only; it does not prove a live Render d
 Managers can add employees, issue activation codes, reset employee passwords, block/reactivate employees, configure branch break policies and request buttons, send branch announcements, and create/cancel meetings. Super-admins can also rename/disable branches and edit global portal branding and support text. Every administrative change is audited.
 
 Meeting creation sends an in-app notification immediately. A 15-minute reminder is processed by authenticated portal clients polling every 20 seconds. It is not a guaranteed server-side scheduler when all clients are offline. The portal polls for new notifications every 7 seconds while an authenticated portal session is open. New items show an actionable on-screen alert and a foreground browser tone by default after the user first interacts with the page to unlock audio (browser autoplay policy). The sound toggle remains available in the top bar. When the tab is in the background, system notifications use the service worker after browser permission is granted. Clicking a system notification returns to the portal notification list. Guaranteed push/ringing while the browser or PWA is fully closed still requires a separately configured Web Push subscription service and VAPID keys.
+
+
+## Live portal refresh behavior
+
+The web client refreshes authenticated employee/manager dashboard data and notification state every 3 seconds while the page is visible. This avoids manual page reloads and recovers on tab focus. It is near-real-time polling; it does not guarantee delivery while the PWA is closed. Validate request submission, manager decisions, timer state, and branch isolation with two real devices before production rollout.
