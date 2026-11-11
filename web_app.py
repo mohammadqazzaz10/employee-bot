@@ -183,7 +183,12 @@ def _special_request_policy(cur, employee_id, branch_id, request_type, lock=Fals
     current_time = now.time().replace(tzinfo=None)
     today = now.date()
     if request_type == "smoke":
-        enabled, limit, duration, start, end, gap = row[:6]
+        enabled = row["smoke_enabled"]
+        limit = row["smoke_daily_limit"]
+        duration = row["smoke_duration_minutes"]
+        start = row["smoke_start_time"]
+        end = row["smoke_end_time"]
+        gap = row["smoke_gap_minutes"]
         if not enabled:
             return False, "استراحة التدخين غير مفعّلة في هذا الفرع.", "استراحة تدخين", duration
         if not _within_time_window(current_time, start, end):
@@ -193,7 +198,7 @@ def _special_request_policy(cur, employee_id, branch_id, request_type, lock=Fals
             (employee_id, today),
         )
         count_row = cur.fetchone()
-        count = int(count_row["count"] if isinstance(count_row, dict) else count_row[0]) if count_row else 0
+        count = int(count_row["count"]) if count_row else 0
         if count >= int(limit):
             return False, "وصلت إلى الحد اليومي المسموح لاستراحات التدخين.", "استراحة تدخين", duration
         cur.execute(
@@ -202,13 +207,16 @@ def _special_request_policy(cur, employee_id, branch_id, request_type, lock=Fals
             (employee_id,),
         )
         last = cur.fetchone()
-        last_at = last["taken_at"] if isinstance(last, dict) else (last[0] if last else None)
+        last_at = last["taken_at"] if last else None
         if last_at and (now - last_at).total_seconds() < int(gap) * 60:
             remaining = int(gap) - int((now - last_at).total_seconds() // 60)
             return False, f"يجب الانتظار {max(1, remaining)} دقيقة قبل طلب استراحة تدخين أخرى.", "استراحة تدخين", duration
         return True, None, "استراحة تدخين", int(duration)
     if request_type in {"break", "lunch"}:
-        enabled, duration, start, end = row[6], row[7], row[8], row[9]
+        enabled = row["lunch_enabled"]
+        duration = row["lunch_duration_minutes"]
+        start = row["lunch_start_time"]
+        end = row["lunch_end_time"]
         if not enabled:
             return False, "استراحة الغداء غير مفعّلة في هذا الفرع.", "استراحة الغداء", duration
         if not _within_time_window(current_time, start, end):
@@ -233,7 +241,7 @@ def _record_special_request_approval(cur, employee_id, request_type, duration):
             (employee_id,),
         )
         row = cur.fetchone()
-        limit = int(row["smoke_daily_limit"] if isinstance(row, dict) else row[0])
+        limit = int(row["smoke_daily_limit"])
         cur.execute(
             """INSERT INTO daily_cigarettes(employee_id,date,count,updated_at)
                SELECT %s,%s,1,CURRENT_TIMESTAMP WHERE %s>0
