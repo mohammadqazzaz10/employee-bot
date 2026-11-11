@@ -10,6 +10,23 @@ ALTER TABLE employees ALTER COLUMN employee_code SET NOT NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS uq_employees_employee_code
     ON employees (UPPER(employee_code));
 
+-- Keep legacy employee creation paths compatible: the existing Telegram/admin
+-- code and integrations may omit employee_code when inserting a new employee.
+CREATE OR REPLACE FUNCTION assign_employee_web_code()
+RETURNS TRIGGER AS $
+BEGIN
+    IF NEW.employee_code IS NULL OR BTRIM(NEW.employee_code) = '' THEN
+        NEW.employee_code := 'EMP' || LPAD(NEW.id::TEXT, 5, '0');
+    END IF;
+    RETURN NEW;
+END;
+$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trg_employees_assign_web_code ON employees;
+CREATE TRIGGER trg_employees_assign_web_code
+BEFORE INSERT ON employees
+FOR EACH ROW EXECUTE FUNCTION assign_employee_web_code();
+
 CREATE TABLE IF NOT EXISTS web_users (
     id BIGSERIAL PRIMARY KEY,
     username VARCHAR(64) NOT NULL,
