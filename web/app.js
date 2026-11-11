@@ -70,6 +70,9 @@ function showPortal(user) {
   const isAdmin = user.role !== "employee";
   document.querySelectorAll(".admin-only").forEach((el) => el.hidden = !isAdmin);
   document.querySelectorAll(".super-only").forEach((el) => el.hidden = user.role !== "super_admin");
+  const employeeRequestsNav = document.querySelector('[data-page="requests"]');
+  if (employeeRequestsNav) employeeRequestsNav.hidden = isAdmin;
+  $("addEmployeeButton").hidden = !["super_admin", "branch_manager"].includes(user.role);
   $("requestTypesCard").hidden = isAdmin;
   $("timerCard").hidden = isAdmin;
   $("quickActions").hidden = isAdmin;
@@ -145,7 +148,7 @@ function renderTimer(timer) {
   timerInterval = window.setInterval(tick, 1000);
 }
 function renderRequests(rows) {
-  $("myRequests").innerHTML = rows.length ? rows.map((row) => `<tr><td>${escapeHtml(row.request_type)}</td><td>${formatDate(row.requested_at)}</td><td><span class="status-pill ${statusClass(row.status)}">${statusLabel(row.status)}</span></td><td>${escapeHtml(row.notes || "—")}</td></tr>`).join("") : '<tr><td colspan="4" class="empty-cell">لا توجد طلبات حتى الآن.</td></tr>';
+  $("myRequests").innerHTML = rows.length ? rows.map((row) => `<tr><td>${escapeHtml(row.request_label || row.request_type)}</td><td>${formatDate(row.requested_at)}</td><td><span class="status-pill ${statusClass(row.status)}">${statusLabel(row.status)}</span></td><td>${escapeHtml(row.notes || "—")}</td></tr>`).join("") : '<tr><td colspan="4" class="empty-cell">لا توجد طلبات حتى الآن.</td></tr>';
 }
 async function submitRequest(code, button) {
   button.disabled = true;
@@ -175,7 +178,7 @@ async function loadManagerRequests(status = "pending") {
     const data = await api("/admin/requests?status=" + encodeURIComponent(status));
     const rows = data.requests || [];
     $("managerRequests").innerHTML = rows.length ? rows.map((row) => `
-      <article class="manager-request"><div><strong>${escapeHtml(row.full_name)} · ${escapeHtml(row.request_type)}</strong><p>${escapeHtml(row.job_title || "")} · ${escapeHtml(row.branch_name || "")} · ${formatDate(row.requested_at)}</p><time>${escapeHtml(row.notes || "لا توجد ملاحظات")} · ${statusLabel(row.status)}</time></div>
+      <article class="manager-request"><div><strong>${escapeHtml(row.full_name)} · ${escapeHtml(row.request_label || row.request_type)}</strong><p>${escapeHtml(row.job_title || "")} · ${escapeHtml(row.branch_name || "")} · ${formatDate(row.requested_at)}</p><time>${escapeHtml(row.notes || "لا توجد ملاحظات")} · ${statusLabel(row.status)}</time></div>
       ${row.status === "pending" ? `<div class="request-actions"><button class="approve-button" data-decision="approved" data-id="${row.id}">موافقة</button><button class="reject-button" data-decision="rejected" data-id="${row.id}">رفض</button></div>` : ""}</article>`).join("") : '<div class="content-card empty-cell">لا توجد طلبات في هذا القسم.</div>';
   } catch (error) { flash(error.message, true); }
 }
