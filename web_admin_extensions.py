@@ -244,3 +244,78 @@ def update_meeting(meeting_id):
         return jsonify({"ok": True, "message": "تم تحديث حالة الاجتماع."})
     finally:
         conn.close()
+
+
+@app.get("/api/admin/site-settings")
+@roles_required("super_admin")
+def get_site_settings():
+    conn = _db()
+    try:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SELECT setting_key,setting_value FROM web_app_settings ORDER BY setting_key")
+            return jsonify({"ok": True, "settings": {row["setting_key"]: row["setting_value"] for row in cur.fetchall()}})
+    finally:
+        conn.close()
+
+
+@app.patch("/api/admin/site-settings")
+@roles_required("super_admin")
+def update_site_settings():
+    payload = request.get_json(silent=True)
+    payload = payload if isinstance(payload, dict) else {}
+    allowed = {"site_name": (2, 80), "site_tagline": (2, 120),
+               "support_message": (0, 240), "maintenance_notice": (0, 300)}
+    if not payload or not set(payload).issubset(allowed):
+        return _json_error("إعدادات الموقع غير صالحة.", 400)
+    for key, value in payload.items():
+        if not isinstance(value, str) or not allowed[key][0] <= len(value.strip()) <= allowed[key][1]:
+            return _json_error("تحقق من طول النص في إعدادات الموقع.", 400)
+    conn = _db()
+    try:
+        with conn.cursor() as cur:
+            for key, value in payload.items():
+                cur.execute(
+                    """INSERT INTO web_app_settings(setting_key,setting_value,updated_by,updated_at)
+                       VALUES(%s,%s::jsonb,%s,CURRENT_TIMESTAMP)
+                       ON CONFLICT(setting_key) DO UPDATE
+                         SET setting_value=EXCLUDED.setting_value,updated_by=EXCLUDED.updated_by,
+                             updated_at=CURRENT_TIMESTAMP""",
+                    (key, __import__("json").dumps(value, ensure_ascii=False), g.current_user["id"]))
+            _audit(cur, g.current_user["id"], None, "site_settings_updated", "site", "global",
+                   {"keys": list(payload)})
+        conn.commit()
+        return jsonify({"ok": True, "message": "تم حفظ إعدادات الموقع العامة."})
+    finally:
+        conn.close()
+
+
+@app.get("/api/system/process-meeting-reminders")
+@roles_required("employee", "super_admin", "branch_manager", "supervisor")
+def process_meeting_reminders():
+    """Durably fan out the 15-minute reminder when an authenticated client is polling."""
+    conn = _db()
+    try:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(
+                """SELECT id,branch_id,title,starts_at FROM web_meetings
+                   WHERE status='scheduled' AND reminder_sent_at IS NULL
+                     AND starts_at > CURRENT_TIMESTAMP
+                     AND starts_at <= CURRENT_TIMESTAMP + INTERVAL '15 minutes'
+                   ORDER BY starts_at FOR UPDATE SKIP LOCKED LIMIT 20"""
+            )
+            due = cur.fetchall()
+            for meeting in due:
+                cur.execute(
+                    """INSERT INTO web_notifications(recipient_user_id,employee_id,notification_type,title,body)
+                       SELECT u.id,u.employee_id,'meeting_reminder','تذكير باجتماع: ' || %s,
+                              'موعد الاجتماع بعد 15 دقيقة تقريبًا.'
+                       FROM web_users u JOIN employees e ON e.id=u.employee_id
+                       WHERE u.role='employee' AND u.is_active=TRUE AND e.is_active=TRUE
+                         AND e.branch_id=%s""",
+                    (meeting["title"], meeting["branch_id"]))
+                cur.execute("UPDATE web_meetings SET reminder_sent_at=CURRENT_TIMESTAMP WHERE id=%s",
+                            (meeting["id"],))
+            conn.commit()
+            return jsonify({"ok": True, "processed": len(due)})
+    finally:
+        conn.close()
