@@ -50,3 +50,9 @@ See [DEPLOYMENT.md](DEPLOYMENT.md) for the deployment and initial admin setup st
 GitHub Actions compiles the Python code, initializes PostgreSQL, applies/checks numbered migrations, and runs unit, contract, and PostgreSQL integration tests. CI success is not a substitute for live staging tests and a verified database backup before production use.
 
 Never commit `.env`, bootstrap tokens, employee passwords, activation codes, or database URLs.
+
+## Web administration additions (migrations 008–009)
+
+The web portal includes branch-scoped employee activation/blocking, super-admin branch rename/activation, branch-scoped employee announcements, meeting scheduling/cancellation, and super-admin site branding/support text settings. These actions are audited. Meeting creation sends an immediate in-app notification; a 15-minute reminder is queued when an authenticated portal client polls the reminder endpoint. This is best-effort while clients are online, not a guaranteed background scheduler.
+
+The notification sound is a user-enabled foreground browser sound. Browser/system notifications require the employee's permission and browser support. Background push delivery and guaranteed ringing while the browser is closed are not claimed by this release. Telegram and SMS are not required.
