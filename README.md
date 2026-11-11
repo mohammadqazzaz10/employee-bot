@@ -23,7 +23,7 @@ Branch-aware employee management platform with an Arabic RTL web portal (PWA), P
 
 1. Install dependencies: `python -m pip install .`
 2. Set `DATABASE_URL` and `DATABASE_SSLMODE` in your environment.
-3. Run `python -m scripts.bootstrap` to initialize the base schema and apply all numbered migrations, including the latest numbered migrations through `010_web_notification_events.sql`.
+3. Run `python -m scripts.bootstrap` to initialize the base schema and apply all numbered migrations, including the latest numbered migrations through `011_web_push_and_work_tasks.sql`.
 4. Set `COOKIE_SECURE=false` only for local HTTP development.
 5. Run `python web_app.py` and open `http://localhost:8080`.
 6. Set `WEB_BOOTSTRAP_TOKEN` to a long random secret and open `/setup` to create the first super-admin account. Remove the token after successful setup.
@@ -55,11 +55,15 @@ Never commit `.env`, bootstrap tokens, employee passwords, activation codes, or 
 
 The web portal includes branch-scoped employee activation/blocking, super-admin branch rename/activation, branch-scoped employee announcements, meeting scheduling/cancellation, and super-admin site branding/support text settings. These actions are audited. Meeting creation sends an immediate in-app notification; a 15-minute reminder is queued when an authenticated portal client polls the reminder endpoint. This is best-effort while clients are online, not a guaranteed background scheduler.
 
-Employees can enable a two-tone browser alert and optional system notifications. While the browser page remains alive, notifications are polled and may alert even when the tab is hidden; browser throttling, device power settings and permission can affect delivery. Web Push delivery and guaranteed ringing while the browser is closed are not implemented. Telegram and SMS are not required.
+Employees can enable browser notifications and subscribe each device to authenticated Web Push. New notification rows are queued in PostgreSQL and delivered by the server-side pywebpush worker using VAPID keys, including when the browser/PWA is closed (subject to browser support, permission, network and OS battery policies). The service worker displays the push and opens the portal when tapped. Foreground SSE and polling remain as fallbacks. Configure `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, and `VAPID_SUBJECT` on the host before enabling employee push subscriptions.
+
+## Work task tracking (migration 011)
+
+Managers and supervisors can create branch-scoped tasks, assign each task to one or more active employees, set priority and due time, and receive status updates. Employees can start, complete, or mark a task as blocked. Every assignment and status change is stored in an append-only event history, and task assignments generate in-app notifications plus Web Push for subscribed devices. Branch managers cannot assign or inspect tasks outside their branch; employees can only see and update their own assignments.
 
 
 ## Live portal synchronization
 
 While an authenticated portal is open, employee and manager dashboard data refreshes automatically every 3 seconds without a full page reload. Notification inserts publish recipient-scoped PostgreSQL `NOTIFY` events through an authenticated Server-Sent Events (SSE) endpoint; the browser immediately refreshes the recipient's notifications and dashboard. The event contains no personal data, and each account listens on its own database channel. A 15-second polling fallback and EventSource automatic reconnection cover transient disconnects. The stream is short-lived and reconnects periodically to revalidate the session. Branch managers only receive events for notifications addressed to their own account; super-admin recipients follow the existing authorization scope.
 
-SSE requires the page to remain open and a live network connection. It improves foreground delivery but is not Web Push and does not guarantee alerts while the browser/PWA is fully closed. Browser audio still requires an initial user gesture and notification permission is required for OS notifications.
+SSE remains the foreground synchronization fallback. Web Push is delivered separately by the server-side queue worker and can reach subscribed devices while the page is closed, subject to browser/OS support and permission. Each device must subscribe after signing in; the private VAPID key must remain in the hosting provider's secret environment. Browser audio still requires an initial user gesture.

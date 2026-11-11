@@ -157,9 +157,13 @@ class EmployeePortalPostgresIntegrationTests(unittest.TestCase):
                     cur.execute(
                         """INSERT INTO web_notifications
                            (recipient_user_id,notification_type,title,body)
-                           VALUES(%s,'integration_event','Test event','No personal data in stream')""",
+                           VALUES(%s,'integration_event','Test event','No personal data in stream')
+                           RETURNING id""",
                         (recipient_id,),
                     )
+                    notification_id = cur.fetchone()[0]
+                    cur.execute("SELECT 1 FROM web_push_queue WHERE notification_id=%s", (notification_id,))
+                    self.assertIsNotNone(cur.fetchone(), "Notification insert must enqueue a Web Push delivery.")
                 conn.commit()
             finally:
                 conn.close()
@@ -168,6 +172,47 @@ class EmployeePortalPostgresIntegrationTests(unittest.TestCase):
             self.assertIn("data: {}", event)
         finally:
             response.close()
+
+    def test_work_tasks_are_assigned_scoped_and_status_history_is_recorded(self):
+        # A branch manager can only assign work to active employees in their own branch.
+        rejected = self.manager_client.post("/api/admin/tasks", headers=self.manager_headers, json={
+            "title": "Cross-branch task",
+            "employee_ids": [self.employee_one["id"], self.employee_two["id"]],
+        })
+        self.assertEqual(rejected.status_code, 400)
+
+        created = self.manager_client.post("/api/admin/tasks", headers=self.manager_headers, json={
+            "title": "Arrange the front shelves",
+            "description": "Place the new arrivals in the marked section.",
+            "priority": "high",
+            "employee_ids": [self.employee_one["id"]],
+        })
+        self.assertEqual(created.status_code, 201, created.get_data(as_text=True))
+        assignment_id = created.get_json()["assignment_ids"][0]
+
+        manager_tasks = self.manager_client.get("/api/work/tasks").get_json()["tasks"]
+        self.assertIn(assignment_id, [row["assignment_id"] for row in manager_tasks])
+        employee_tasks = self.employee_client.get("/api/work/tasks").get_json()["tasks"]
+        self.assertIn(assignment_id, [row["assignment_id"] for row in employee_tasks])
+
+        updated = self.employee_client.patch(
+            f"/api/work/tasks/{assignment_id}", headers=self.employee_headers,
+            json={"status": "in_progress", "note": "بدأت ترتيب الرفوف."},
+        )
+        self.assertEqual(updated.status_code, 200)
+        history = self.employee_client.get(f"/api/work/tasks/{assignment_id}/events")
+        self.assertEqual(history.status_code, 200)
+        self.assertTrue(any(event["to_status"] == "in_progress" for event in history.get_json()["events"]))
+
+        # Another branch employee cannot read or mutate the assignment.
+        self.assertNotIn(assignment_id, [
+            row["assignment_id"] for row in self.admin_client.get("/api/work/tasks?branch_id=" + str(self.branch_ids[1])).get_json()["tasks"]
+        ])
+
+    def test_push_configuration_is_explicit_when_vapid_is_not_configured(self):
+        response = self.admin_client.get("/api/push/config")
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.get_json()["enabled"])
 
     @classmethod
     def tearDownClass(cls):

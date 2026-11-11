@@ -290,3 +290,102 @@
   window.setInterval(pollNotifications, 15000);
   window.setTimeout(pollNotifications, 1200);
 })();
+
+
+/* True background Web Push: subscription is bound to the authenticated account on the server. */
+(() => {
+  const csrfToken = () => decodeURIComponent(document.cookie.split("; ").find(x => x.startsWith("employee_csrf="))?.split("=")[1] || "");
+  const api = async (path, method = "GET", body) => {
+    const response = await fetch("/api" + path, {
+      method, credentials: "same-origin",
+      headers: {"Content-Type":"application/json", ...(method === "GET" ? {} : {"X-CSRF-Token":csrfToken()})},
+      body: body === undefined ? undefined : JSON.stringify(body)
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.message || "تعذر تفعيل الإشعارات.");
+    return data;
+  };
+  const decodeKey = value => {
+    const padded = value + "=".repeat((4 - value.length % 4) % 4);
+    const raw = atob(padded.replace(/-/g, "+").replace(/_/g, "/"));
+    return Uint8Array.from(raw, char => char.charCodeAt(0));
+  };
+  let pushButton = null, registration = null, pushEnabled = false;
+
+  function ensureButton() {
+    const host = document.querySelector(".topbar-actions");
+    if (!host) return;
+    const existing = document.getElementById("pushEnableButton");
+    if (existing) { pushButton = existing; return; }
+    pushButton = document.createElement("button");
+    pushButton.type = "button";
+    pushButton.id = "pushEnableButton";
+    pushButton.className = "soft-button";
+    pushButton.textContent = "تفعيل إشعارات الهاتف";
+    pushButton.hidden = true;
+    pushButton.addEventListener("click", enablePush);
+    host.insertBefore(pushButton, host.lastElementChild);
+  }
+
+  async function setupPush() {
+    ensureButton();
+    if (!pushButton || !("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window)) return;
+    try {
+      const config = await api("/push/config");
+      pushEnabled = Boolean(config.enabled && config.public_key);
+      if (!pushEnabled) { pushButton.hidden = true; return; }
+      registration = await navigator.serviceWorker.register("/sw.js", {scope:"/"});
+      await navigator.serviceWorker.ready;
+      pushButton.hidden = !portalOpen();
+      const existing = await registration.pushManager.getSubscription();
+      if (existing && Notification.permission === "granted") {
+        await api("/push/subscriptions", "POST", existing.toJSON());
+        pushButton.textContent = "إشعارات الهاتف مفعّلة ✓";
+      } else {
+        pushButton.textContent = "تفعيل إشعارات الهاتف";
+      }
+    } catch (_) {
+      if (pushButton) pushButton.hidden = true;
+    }
+  }
+
+  function portalOpen() {
+    const portal = document.getElementById("portalView");
+    return Boolean(portal && !portal.hidden);
+  }
+
+  async function enablePush() {
+    if (!pushEnabled || !pushButton) return;
+    pushButton.disabled = true;
+    const original = pushButton.textContent;
+    try {
+      const permission = Notification.permission === "granted" ? "granted" : await Notification.requestPermission();
+      if (permission !== "granted") throw new Error("يجب السماح بإشعارات المتصفح من إعدادات الجهاز.");
+      registration ||= await navigator.serviceWorker.register("/sw.js", {scope:"/"});
+      await navigator.serviceWorker.ready;
+      const config = await api("/push/config");
+      const subscription = await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: decodeKey(config.public_key)
+      });
+      await api("/push/subscriptions", "POST", subscription.toJSON());
+      pushButton.textContent = "إشعارات الهاتف مفعّلة ✓";
+    } catch (error) {
+      pushButton.textContent = original;
+      alert(error.message || "تعذر تفعيل الإشعارات. تحقق من دعم المتصفح والاتصال.");
+    } finally {
+      pushButton.disabled = false;
+    }
+  }
+
+  window.addEventListener("employee-portal:opened", () => {
+    ensureButton();
+    if (pushButton) pushButton.hidden = !pushEnabled;
+    setupPush();
+  });
+  window.addEventListener("employee-portal:closed", () => {
+    if (pushButton) pushButton.hidden = true;
+  });
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", ensureButton);
+  else ensureButton();
+})();
