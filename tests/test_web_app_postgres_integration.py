@@ -150,7 +150,7 @@ class EmployeePortalPostgresIntegrationTests(unittest.TestCase):
         self.assertEqual(response.mimetype, "text/event-stream")
         stream = iter(response.response)
         try:
-            self.assertIn("retry: 3000", next(stream))
+            self.assertIn("retry: 3000", next(stream).decode("utf-8"))
             conn = psycopg2.connect(os.environ["DATABASE_URL"], sslmode="disable")
             try:
                 with conn.cursor() as cur:
@@ -163,7 +163,7 @@ class EmployeePortalPostgresIntegrationTests(unittest.TestCase):
                 conn.commit()
             finally:
                 conn.close()
-            event = next(stream)
+            event = next(stream).decode("utf-8")
             self.assertIn("event: refresh", event)
             self.assertIn("data: {}", event)
         finally:
