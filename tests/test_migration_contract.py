@@ -59,6 +59,9 @@ class MigrationContractTests(unittest.TestCase):
             "create table if not exists web_timers",
             "create table if not exists web_notifications",
             "create table if not exists web_audit_log",
+            "updated_by_web_user_id",
+            "changed_by_web_user_id",
+            "create table if not exists web_login_throttles",
         ):
             with self.subTest(fragment=fragment):
                 self.assertIn(fragment, sql)
