@@ -299,8 +299,21 @@ $("activationForm").addEventListener("submit", async (event) => {
   }
   const button = $("activateSubmit"); button.disabled = true;
   try {
+    const activationCode = $("activationCode").value
+      .replace(/[\\s\\u200B-\\u200F\\u202A-\\u202E\\u2060\\uFEFF]/g, "");
+    const password = $("newPassword").value;
+    if (activationCode.length < 24) {
+      $("activationMessage").style.color = "#b24e48";
+      $("activationMessage").textContent = "رمز التفعيل غير مكتمل. انسخه كاملاً من الإدارة.";
+      return;
+    }
+    if (password.length < 10 || password.length > 256) {
+      $("activationMessage").style.color = "#b24e48";
+      $("activationMessage").textContent = "كلمة المرور يجب أن تكون بين 10 و256 خانة.";
+      return;
+    }
     const data = await api("/auth/activate", {method:"POST",body:JSON.stringify({
-      activation_code:$("activationCode").value.trim(),password:$("newPassword").value
+      activation_code:activationCode,password
     })});
     $("activationMessage").style.color = "#4e8b69";
     $("activationMessage").textContent = data.message + " رقمك الوظيفي: " + data.employee_code;

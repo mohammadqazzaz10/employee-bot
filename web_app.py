@@ -6,6 +6,7 @@ import logging
 import os
 import re
 import secrets
+import unicodedata
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 from functools import wraps
@@ -477,9 +478,14 @@ def activate_employee():
     payload = request.get_json(silent=True)
     payload = payload if isinstance(payload, dict) else {}
     code = str(payload.get("activation_code") or "")
+    # Clipboard/mobile keyboards can add whitespace or invisible bidi/format
+    # characters around URL-safe tokens. Remove those without changing the token.
+    code = "".join(ch for ch in code if not ch.isspace() and unicodedata.category(ch) != "Cf")
     password = str(payload.get("password") or "")
-    if len(code) < 24 or len(password) < 10 or len(password) > 256:
-        return _json_error("رمز التفعيل أو كلمة المرور غير صالحين. استخدم كلمة مرور من 10 خانات على الأقل.", 400)
+    if len(code) < 24:
+        return _json_error("رمز التفعيل ناقص أو لم يصل كاملاً. انسخه مجدداً من الإدارة.", 400)
+    if len(password) < 10 or len(password) > 256:
+        return _json_error("كلمة المرور يجب أن تكون بين 10 و256 خانة.", 400)
     conn = _db()
     try:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
