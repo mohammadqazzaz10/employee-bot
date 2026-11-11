@@ -221,7 +221,7 @@ class EmployeePortalPostgresIntegrationTests(unittest.TestCase):
         self.assertEqual(cross_branch_create.status_code, 403)
 
         # Missing CSRF headers are rejected; notifications are scoped and readable.
-        csrf_rejected = self.manager_client.post("/api/employee/call-supervisor", json={})
+        csrf_rejected = self.employee_client.post("/api/employee/call-supervisor", json={})
         self.assertEqual(csrf_rejected.status_code, 403)
         called = self.employee_client.post("/api/employee/call-supervisor", headers=self.employee_headers, json={
             "message": "اختبار استدعاء المشرف",
