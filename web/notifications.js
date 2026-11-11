@@ -202,19 +202,26 @@
   }
 
   function attachSoundControl() {
-    const button = document.getElementById("employeeSoundButton");
-    if (!button || button.dataset.runtimeSoundAttached === "true") return;
+    const existing = document.getElementById("employeeSoundButton");
+    if (!existing || existing.dataset.runtimeSoundAttached === "true") return;
+    // Replace the legacy button to avoid its stale closure toggling a different state.
+    const button = existing.cloneNode(true);
     button.dataset.runtimeSoundAttached = "true";
+    existing.replaceWith(button);
     const sync = () => {
       const enabled = localStorage.getItem(SOUND_KEY) === "true";
       button.textContent = enabled ? "♫" : "♩";
-      button.title = enabled ? "الصوت مفعّل — اضغط لاختبار الصوت أو إيقافه" : "الصوت متوقف — اضغط لتفعيل صوت التنبيهات";
+      button.title = enabled ? "الصوت مفعّل — اضغط لإيقافه أو تشغيل تجربة صوتية" : "الصوت متوقف — اضغط لتفعيل صوت التنبيهات";
       button.setAttribute("aria-label", button.title);
-      if (enabled) unlockAudioFromGesture();
     };
     button.addEventListener("click", () => {
+      const nextEnabled = localStorage.getItem(SOUND_KEY) !== "true";
+      localStorage.setItem(SOUND_KEY, String(nextEnabled));
       sync();
-      if (localStorage.getItem(SOUND_KEY) === "true") unlockAudioFromGesture();
+      if (nextEnabled) {
+        unlockAudioFromGesture();
+        playAlertTone();
+      }
     });
     sync();
   }
