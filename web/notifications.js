@@ -314,7 +314,9 @@
 
   function ensureButton() {
     const host = document.querySelector(".topbar-actions");
-    if (!host || document.getElementById("pushEnableButton")) return;
+    if (!host) return;
+    const existing = document.getElementById("pushEnableButton");
+    if (existing) { pushButton = existing; return; }
     pushButton = document.createElement("button");
     pushButton.type = "button";
     pushButton.id = "pushEnableButton";
