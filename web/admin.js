@@ -279,5 +279,26 @@
     }catch(_){}
   }
   const ready=setInterval(()=>{addControl();if(document.getElementById("employeeSoundButton"))clearInterval(ready);},300);
-  setInterval(poll,15000);
+  async function applyPublicSiteInfo(){
+    try{
+      const response=await fetch("/api/site-info",{credentials:"same-origin",cache:"no-store"});
+      if(!response.ok)return;
+      const data=await response.json(),s=data.settings||{};
+      const brand=document.querySelector(".brand-copy strong"),sub=document.querySelector(".brand-copy small");
+      if(brand)brand.textContent=s.site_name||"رفيق العمل";
+      if(sub)sub.textContent=s.site_tagline||"منظومة إدارة الموظفين";
+      document.title=(s.site_name||"رفيق العمل")+" | بوابة الموظفين";
+      const help=document.querySelector(".help-mini small");
+      if(help&&s.support_message)help.textContent=s.support_message;
+      const old=document.getElementById("globalSiteNotice");if(old)old.remove();
+      if(s.maintenance_notice){
+        const banner=document.createElement("div");banner.id="globalSiteNotice";
+        banner.className="content-card";banner.textContent=s.maintenance_notice;
+        document.querySelector(".main-panel")?.prepend(banner);
+      }
+    }catch(_){}
+  }
+  applyPublicSiteInfo();
+  setInterval(applyPublicSiteInfo,60000);
+
 })();
