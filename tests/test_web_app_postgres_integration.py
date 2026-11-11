@@ -46,15 +46,22 @@ class EmployeePortalPostgresIntegrationTests(unittest.TestCase):
         cls.admin_csrf = login.get_json()["csrf_token"]
         cls.admin_headers = {"X-CSRF-Token": cls.admin_csrf}
 
+        branch_one = cls.admin_client.post("/api/admin/branches", headers=cls.admin_headers, json={
+            "code": "webtest" + cls.suffix + "1",
+            "name": "Web Test Branch 1 " + cls.suffix,
+        })
+        if branch_one.status_code != 201:
+            raise AssertionError("Web branch creation failed: " + branch_one.get_data(as_text=True))
+        cls.branch_ids.append(branch_one.get_json()["branch"]["id"])
+
         conn = psycopg2.connect(os.environ["DATABASE_URL"], sslmode="disable")
         try:
             with conn.cursor() as cur:
-                for index in (1, 2):
-                    cur.execute(
-                        "INSERT INTO branches(code,name,is_active) VALUES(%s,%s,TRUE) RETURNING id",
-                        ("webtest" + cls.suffix + str(index), "Web Test Branch " + str(index) + " " + cls.suffix),
-                    )
-                    cls.branch_ids.append(cur.fetchone()[0])
+                cur.execute(
+                    "INSERT INTO branches(code,name,is_active) VALUES(%s,%s,TRUE) RETURNING id",
+                    ("webtest" + cls.suffix + "2", "Web Test Branch 2 " + cls.suffix),
+                )
+                cls.branch_ids.append(cur.fetchone()[0])
             conn.commit()
         finally:
             conn.close()
