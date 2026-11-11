@@ -121,6 +121,10 @@ def auth_required(fn):
         if not user:
             return _json_error("انتهت الجلسة. سجّل الدخول من جديد.", 401)
         g.current_user = user
+        if user["must_change_password"] and request.path not in {
+            "/api/auth/me", "/api/auth/logout", "/api/auth/change-password"
+        }:
+            return _json_error("يجب تغيير كلمة المرور المؤقتة قبل استخدام النظام.", 403)
         if request.method not in {"GET", "HEAD", "OPTIONS"} and not _require_csrf():
             return _json_error("تعذر التحقق الأمني من الطلب. حدّث الصفحة وحاول مجددًا.", 403)
         return fn(*args, **kwargs)
@@ -237,6 +241,35 @@ def login():
     conn = _db()
     try:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            ip_hash = _hash(request.remote_addr or "unknown")
+            cur.execute(
+                """INSERT INTO web_login_throttles(ip_hash,attempts,window_started_at)
+                   VALUES(%s,0,CURRENT_TIMESTAMP) ON CONFLICT(ip_hash) DO NOTHING""",
+                (ip_hash,),
+            )
+            cur.execute(
+                """SELECT attempts,window_started_at,blocked_until
+                   FROM web_login_throttles WHERE ip_hash=%s FOR UPDATE""",
+                (ip_hash,),
+            )
+            throttle = cur.fetchone()
+            now = datetime.now(timezone.utc)
+            if throttle["blocked_until"] and throttle["blocked_until"] > now:
+                conn.rollback()
+                return _json_error("محاولات دخول كثيرة. انتظر قليلًا ثم حاول مجددًا.", 429)
+            attempts_ip = 1 if throttle["window_started_at"] < now - timedelta(minutes=10) else int(throttle["attempts"]) + 1
+            blocked_ip = attempts_ip >= 25
+            cur.execute(
+                """UPDATE web_login_throttles SET attempts=%s,
+                   window_started_at=CASE WHEN window_started_at < CURRENT_TIMESTAMP - INTERVAL '10 minutes'
+                                           THEN CURRENT_TIMESTAMP ELSE window_started_at END,
+                   blocked_until=CASE WHEN %s THEN CURRENT_TIMESTAMP + INTERVAL '15 minutes' ELSE NULL END,
+                   updated_at=CURRENT_TIMESTAMP WHERE ip_hash=%s""",
+                (attempts_ip, blocked_ip, ip_hash),
+            )
+            if blocked_ip:
+                conn.commit()
+                return _json_error("محاولات دخول كثيرة. تم إيقاف المحاولة مؤقتًا.", 429)
             cur.execute(
                 """SELECT u.*, b.name AS branch_name, e.employee_code, e.job_title,
                           e.is_active AS employee_active
@@ -269,6 +302,11 @@ def login():
                 """UPDATE web_users SET failed_login_attempts=0, locked_until=NULL,
                    last_login_at=CURRENT_TIMESTAMP, updated_at=CURRENT_TIMESTAMP WHERE id=%s""",
                 (user["id"],),
+            )
+            cur.execute(
+                """UPDATE web_login_throttles SET attempts=0,blocked_until=NULL,
+                   window_started_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP WHERE ip_hash=%s""",
+                (ip_hash,),
             )
             raw_token = secrets.token_urlsafe(40)
             csrf_token = secrets.token_urlsafe(32)
