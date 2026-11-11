@@ -1466,9 +1466,10 @@ def server_error(error):
     return "حدث خطأ داخلي.", 500
 
 
+# Register additive admin APIs after the core app and its security decorators exist.
+# This must run before app.run so direct local execution and Gunicorn expose the same routes.
+import web_admin_extensions  # noqa: E402,F401
+
+
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", "8080")), debug=False)
-
-
-# Register additive admin APIs after the core app and its security decorators exist.
-import web_admin_extensions  # noqa: E402,F401
