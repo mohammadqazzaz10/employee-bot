@@ -149,6 +149,7 @@ class EmployeePortalPostgresIntegrationTests(unittest.TestCase):
         self.assertEqual(settings.status_code, 200)
         saved = self.manager_client.patch("/api/admin/settings", headers=self.manager_headers, json={
             "smoke_enabled": True, "smoke_duration_minutes": 8, "smoke_daily_limit": 4,
+            "smoke_start_time": "00:00", "smoke_end_time": None, "smoke_gap_minutes": 0,
         })
         self.assertEqual(saved.status_code, 200)
         forbidden_settings = self.manager_client.get(
@@ -171,7 +172,10 @@ class EmployeePortalPostgresIntegrationTests(unittest.TestCase):
         # The employee can see only their branch request types and submit a request.
         types = self.employee_client.get("/api/employee/request-types")
         self.assertEqual(types.status_code, 200)
-        self.assertIn("webtest-break", [row["code"] for row in types.get_json()["request_types"]])
+        visible_codes = [row["code"] for row in types.get_json()["request_types"]]
+        self.assertIn("webtest-break", visible_codes)
+        self.assertIn("smoke", visible_codes)
+        self.assertIn("break", visible_codes)
         created_request = self.employee_client.post("/api/employee/requests", headers=self.employee_headers, json={
             "request_type": "webtest-break",
         })
@@ -207,6 +211,63 @@ class EmployeePortalPostgresIntegrationTests(unittest.TestCase):
         self.assertIsNotNone(expired["timer"]["completed_at"])
         returned = self.employee_client.post("/api/employee/timer/return", headers=self.employee_headers, json={})
         self.assertEqual(returned.status_code, 200)
+
+        # Smoke approval atomically records the daily counter and last-smoke timestamp.
+        smoke_request = self.employee_client.post("/api/employee/requests", headers=self.employee_headers, json={
+            "request_type": "smoke",
+        })
+        self.assertEqual(smoke_request.status_code, 201)
+        smoke_id = smoke_request.get_json()["request_id"]
+        smoke_approval = self.manager_client.post(
+            f"/api/admin/requests/{smoke_id}/decision",
+            headers=self.manager_headers, json={"decision": "approved"},
+        )
+        self.assertEqual(smoke_approval.status_code, 200)
+        self.employee_client.get("/api/employee/summary")
+        conn = psycopg2.connect(os.environ["DATABASE_URL"], sslmode="disable")
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT count FROM daily_cigarettes WHERE employee_id=%s AND date=(CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Amman')::date",
+                            (self.employee_one["id"],))
+                self.assertEqual(cur.fetchone()[0], 1)
+                cur.execute("SELECT COUNT(*) FROM cigarette_times WHERE employee_id=%s", (self.employee_one["id"],))
+                self.assertEqual(cur.fetchone()[0], 1)
+                cur.execute("UPDATE web_timers SET ends_at=CURRENT_TIMESTAMP - INTERVAL '1 minute' WHERE employee_id=%s",
+                            (self.employee_one["id"],))
+            conn.commit()
+        finally:
+            conn.close()
+        self.employee_client.get("/api/employee/summary")
+        self.assertEqual(self.employee_client.post("/api/employee/timer/return", headers=self.employee_headers, json={}).status_code, 200)
+
+        # Lunch is recorded once per Jordan-local work date and is also timed.
+        lunch_request = self.employee_client.post("/api/employee/requests", headers=self.employee_headers, json={
+            "request_type": "break",
+        })
+        self.assertEqual(lunch_request.status_code, 201)
+        lunch_id = lunch_request.get_json()["request_id"]
+        lunch_approval = self.manager_client.post(
+            f"/api/admin/requests/{lunch_id}/decision",
+            headers=self.manager_headers, json={"decision": "approved"},
+        )
+        self.assertEqual(lunch_approval.status_code, 200)
+        conn = psycopg2.connect(os.environ["DATABASE_URL"], sslmode="disable")
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT taken FROM lunch_breaks WHERE employee_id=%s AND date=(CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Amman')::date",
+                            (self.employee_one["id"],))
+                self.assertTrue(cur.fetchone()[0])
+                cur.execute("UPDATE web_timers SET ends_at=CURRENT_TIMESTAMP - INTERVAL '1 minute' WHERE employee_id=%s",
+                            (self.employee_one["id"],))
+            conn.commit()
+        finally:
+            conn.close()
+        self.employee_client.get("/api/employee/summary")
+        self.assertEqual(self.employee_client.post("/api/employee/timer/return", headers=self.employee_headers, json={}).status_code, 200)
+        duplicate_lunch = self.employee_client.post("/api/employee/requests", headers=self.employee_headers, json={
+            "request_type": "break",
+        })
+        self.assertEqual(duplicate_lunch.status_code, 409)
 
         # Branch managers cannot read or create records in another branch.
         manager_employees = self.manager_client.get("/api/admin/employees").get_json()["employees"]
