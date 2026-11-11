@@ -6,6 +6,7 @@
   const seen = new Set();
   let initialized = false;
   let polling = false;
+  let eventStream = null;
   let audioContext = null;
   let controlsObserver = null;
 
@@ -165,12 +166,31 @@
     badge.hidden = unread === 0;
   }
 
+  function stopEventStream() {
+    if (eventStream) {
+      eventStream.close();
+      eventStream = null;
+    }
+  }
+
+  function ensureEventStream() {
+    if (!portalIsOpen() || eventStream || !("EventSource" in window)) return;
+    eventStream = new EventSource("/api/events/notifications", { withCredentials: true });
+    eventStream.addEventListener("refresh", () => {
+      pollNotifications();
+      window.dispatchEvent(new Event("employee-portal:refresh"));
+    });
+    // EventSource automatically reconnects after a dropped stream.
+  }
+
   async function pollNotifications() {
     if (!portalIsOpen()) {
       initialized = false;
       seen.clear();
+      stopEventStream();
       return;
     }
+    ensureEventStream();
     if (polling) return;
     polling = true;
     try {
@@ -182,6 +202,7 @@
       if (response.status === 401) {
         initialized = false;
         seen.clear();
+        stopEventStream();
         return;
       }
       if (!response.ok) return;
@@ -259,6 +280,6 @@
     });
   }
 
-  window.setInterval(pollNotifications, 3000);
+  window.setInterval(pollNotifications, 15000);
   window.setTimeout(pollNotifications, 1200);
 })();
