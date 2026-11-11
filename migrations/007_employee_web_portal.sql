@@ -52,6 +52,14 @@ CREATE TABLE IF NOT EXISTS web_sessions (
 CREATE INDEX IF NOT EXISTS idx_web_sessions_user_active
     ON web_sessions (user_id, expires_at DESC) WHERE revoked_at IS NULL;
 
+CREATE TABLE IF NOT EXISTS web_login_throttles (
+    ip_hash CHAR(64) PRIMARY KEY,
+    attempts INTEGER NOT NULL DEFAULT 0 CHECK (attempts >= 0),
+    window_started_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    blocked_until TIMESTAMPTZ,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE IF NOT EXISTS web_activation_tokens (
     id BIGSERIAL PRIMARY KEY,
     employee_id INTEGER NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
