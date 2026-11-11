@@ -28,7 +28,7 @@ class WebPushAndWorkTrackingContractTests(unittest.TestCase):
         html = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
         js = (ROOT / "web" / "work.js").read_text(encoding="utf-8")
         self.assertIn('<script src="/work.js" defer></script>', html)
-        self.assertIn('data-page = "workTasks"', js)
+        self.assertIn('nav.dataset.page = "workTasks"', js)
         self.assertIn('"/admin/tasks"', js)
         self.assertIn('"/work/tasks"', js)
         self.assertIn('data-task-history', js)
