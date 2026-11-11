@@ -382,6 +382,19 @@ $("employeesTable").addEventListener("click", async (event) => {
   } catch (error) { flash(error.message,true); }
   finally { button.disabled = false; }
 });
+$("addBranchButton").addEventListener("click", () => $("branchModal").showModal());
+$("branchForm").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const payload = Object.fromEntries(new FormData(form).entries());
+  try {
+    const data = await api("/admin/branches",{method:"POST",body:JSON.stringify(payload)});
+    $("branchModal").close();
+    form.reset();
+    flash(data.message || "تم إنشاء الفرع.");
+    await loadSettings();
+  } catch (error) { $("branchFormMessage").textContent = error.message; }
+});
 $("addEmployeeButton").addEventListener("click", async () => {
   if (!branchesCache.length) { const data = await api("/admin/branches"); branchesCache = data.branches || []; fillBranchOptions(); }
   $("employeeModal").showModal();
