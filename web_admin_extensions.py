@@ -301,7 +301,7 @@ def process_meeting_reminders():
                    WHERE status='scheduled' AND reminder_sent_at IS NULL
                      AND starts_at > CURRENT_TIMESTAMP
                      AND starts_at <= CURRENT_TIMESTAMP + INTERVAL '15 minutes'
-                   ORDER BY starts_at FOR UPDATE SKIP LOCKED LIMIT 20"""
+                   ORDER BY starts_at LIMIT 20 FOR UPDATE SKIP LOCKED"""
             )
             due = cur.fetchall()
             for meeting in due:
