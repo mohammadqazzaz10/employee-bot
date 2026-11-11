@@ -78,7 +78,7 @@ CREATE TABLE IF NOT EXISTS web_timers (
 );
 CREATE UNIQUE INDEX IF NOT EXISTS uq_web_timers_employee_active
     ON web_timers (employee_id)
-    WHERE completed_at IS NULL AND returned_at IS NULL;
+    WHERE returned_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_web_timers_active_end
     ON web_timers (ends_at)
     WHERE completed_at IS NULL AND returned_at IS NULL;
