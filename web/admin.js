@@ -188,3 +188,55 @@
   document.addEventListener("DOMContentLoaded",ensureTools);
   const ready=setInterval(()=>{if($("sideNav")&&$("pageFeedback")){ensureTools();clearInterval(ready);}},250);
 })();
+
+/* Follow-up controls: persistent branding, status actions, and due-meeting reminder polling. */
+(() => {
+  const csrfToken=()=>decodeURIComponent(document.cookie.split("; ").find(x=>x.startsWith("employee_csrf="))?.split("=")[1]||"");
+  const call=async(path,method="GET",body)=>{const r=await fetch("/api"+path,{method,credentials:"same-origin",headers:{"Content-Type":"application/json",...(method==="GET"?{}:{"X-CSRF-Token":csrfToken()})},body:body===undefined?undefined:JSON.stringify(body)});const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.message||"تعذر تنفيذ العملية");return d;};
+  const esc2=v=>String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+  let employees=new Map(),loading=false;
+  async function installGlobalSettings(){
+    const page=document.getElementById("page-adminTools");if(!page||document.getElementById("siteSettingsExtra"))return;
+    const card=document.createElement("section");card.className="content-card";card.id="siteSettingsExtra";
+    card.innerHTML='<div class="card-title-row"><div><span class="eyebrow">هوية النظام</span><h2>إعدادات الموقع العامة</h2></div></div><form id="siteSettingsExtraForm" class="settings-grid"><label>اسم النظام<input name="site_name" maxlength="80" required></label><label>الوصف المختصر<input name="site_tagline" maxlength="120" required></label><label style="grid-column:1/-1">رسالة المساعدة<input name="support_message" maxlength="240"></label><label style="grid-column:1/-1">إعلان عام<input name="maintenance_notice" maxlength="300"></label><div class="settings-actions"><button class="primary-button compact" type="submit">حفظ إعدادات الموقع</button><span id="siteSettingsExtraMessage" class="form-message"></span></div></form>';
+    page.appendChild(card);
+    try{const data=await call("/admin/site-settings");const form=document.getElementById("siteSettingsExtraForm");for(const [k,v] of Object.entries(data.settings||{})){if(form.elements[k])form.elements[k].value=v;}apply(data.settings||{});}
+    catch(e){document.getElementById("siteSettingsExtraMessage").textContent=e.message;}
+    document.getElementById("siteSettingsExtraForm").addEventListener("submit",async e=>{
+      e.preventDefault();const f=new FormData(e.currentTarget),payload=Object.fromEntries(f.entries());
+      try{const r=await call("/admin/site-settings","PATCH",payload);document.getElementById("siteSettingsExtraMessage").textContent=r.message;apply(payload);}
+      catch(err){document.getElementById("siteSettingsExtraMessage").textContent=err.message;}
+    });
+  }
+  function apply(s){
+    const name=s.site_name||"رفيق العمل",tag=s.site_tagline||"منظومة إدارة الموظفين";
+    const brand=document.querySelector(".brand-copy strong"),sub=document.querySelector(".brand-copy small");
+    if(brand)brand.textContent=name;if(sub)sub.textContent=tag;document.title=name+" | بوابة الموظفين";
+  }
+  async function enhanceEmployees(){
+    if(loading)return;loading=true;
+    try{const d=await call("/admin/employees");employees=new Map((d.employees||[]).map(e=>[e.employee_code,e]));}
+    catch(_){}finally{loading=false;}
+    document.querySelectorAll("#employeesTable tr").forEach(row=>{
+      const cells=row.querySelectorAll("td");if(cells.length<5)return;
+      const emp=employees.get(cells[1].textContent.trim()),actions=cells[4];if(!emp||!actions)return;
+      let button=actions.querySelector("[data-employee-status]");
+      if(!button){button=document.createElement("button");button.type="button";button.className="mini-button";actions.appendChild(button);}
+      button.dataset.employeeStatus=emp.id;button.dataset.active=String(emp.is_active);
+      button.textContent=emp.is_active?"حظر الموظف":"إعادة التفعيل";
+      button.classList.toggle("danger-button",Boolean(emp.is_active));
+    });
+  }
+  document.addEventListener("click",e=>{
+    if(e.target.closest('[data-page="adminTools"]'))setTimeout(installGlobalSettings,150);
+    if(e.target.closest('[data-page="employees"]'))setTimeout(enhanceEmployees,250);
+  });
+  document.getElementById("employeesTable")&&new MutationObserver(()=>enhanceEmployees()).observe(document.getElementById("employeesTable"),{childList:true,subtree:true});
+  document.getElementById("employeesTable")?.addEventListener("click",async e=>{
+    const b=e.target.closest("[data-employee-status]");if(!b)return;
+    try{const active=b.dataset.active!=="true";const r=await call("/admin/employees/"+b.dataset.employeeStatus+"/status","PATCH",{is_active:active});b.dataset.active=String(active);b.textContent=active?"حظر الموظف":"إعادة التفعيل";b.classList.toggle("danger-button",active);window.alert(r.message);}
+    catch(err){window.alert(err.message);}
+  });
+  setInterval(()=>{if(!document.hidden)call("/system/process-meeting-reminders").catch(()=>{});},20000);
+  const ready=setInterval(()=>{if(document.getElementById("page-adminTools")){installGlobalSettings();clearInterval(ready);}},300);
+})();
