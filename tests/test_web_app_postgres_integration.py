@@ -306,5 +306,68 @@ class EmployeePortalPostgresIntegrationTests(unittest.TestCase):
         self.assertEqual(self.manager_client.get("/api/auth/me").status_code, 401)
 
 
+    def test_manager_employee_block_broadcast_meetings_and_global_settings(self):
+        changed = self.manager_client.post("/api/auth/change-password", headers=self.manager_headers, json={
+            "current_password": "Temporary-Manager-2026!",
+            "new_password": "Permanent-Manager-2026!",
+        })
+        self.assertEqual(changed.status_code, 200)
+
+        blocked = self.manager_client.patch(
+            f"/api/admin/employees/{self.employee_one['id']}/status",
+            headers=self.manager_headers, json={"is_active": False},
+        )
+        self.assertEqual(blocked.status_code, 200)
+        self.assertEqual(self.employee_client.get("/api/auth/me").status_code, 401)
+        reactivated = self.manager_client.patch(
+            f"/api/admin/employees/{self.employee_one['id']}/status",
+            headers=self.manager_headers, json={"is_active": True},
+        )
+        self.assertEqual(reactivated.status_code, 200)
+
+        announcement = self.manager_client.post("/api/admin/announcements", headers=self.manager_headers, json={
+            "title": "تعميم اختبار",
+            "body": "رسالة اختبار للفرع",
+        })
+        self.assertEqual(announcement.status_code, 201)
+        self.assertGreaterEqual(announcement.get_json()["recipients"], 1)
+
+        from datetime import datetime, timedelta, timezone
+        meeting = self.manager_client.post("/api/admin/meetings", headers=self.manager_headers, json={
+            "title": "اجتماع اختبار",
+            "agenda": "مراجعة سير العمل",
+            "location": "قاعة الاختبار",
+            "starts_at": (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat(),
+        })
+        self.assertEqual(meeting.status_code, 201)
+        meeting_id = meeting.get_json()["meeting"]["id"]
+        listed = self.manager_client.get("/api/admin/meetings").get_json()["meetings"]
+        self.assertIn(meeting_id, [row["id"] for row in listed])
+        cancelled = self.manager_client.patch(
+            f"/api/admin/meetings/{meeting_id}", headers=self.manager_headers,
+            json={"status": "cancelled"},
+        )
+        self.assertEqual(cancelled.status_code, 200)
+
+        denied_site_settings = self.manager_client.get("/api/admin/site-settings")
+        self.assertEqual(denied_site_settings.status_code, 403)
+        site_settings = self.admin_client.patch("/api/admin/site-settings", headers=self.admin_headers, json={
+            "site_name": "رفيق العمل",
+            "site_tagline": "منظومة إدارة الموظفين",
+        })
+        self.assertEqual(site_settings.status_code, 200)
+
+        renamed = self.admin_client.patch(
+            f"/api/admin/branches/{self.branch_ids[0]}",
+            headers=self.admin_headers, json={"name": "Web Test Branch 1 " + self.suffix + " Renamed"},
+        )
+        self.assertEqual(renamed.status_code, 200)
+        restored = self.admin_client.patch(
+            f"/api/admin/branches/{self.branch_ids[0]}",
+            headers=self.admin_headers, json={"name": "Web Test Branch 1 " + self.suffix},
+        )
+        self.assertEqual(restored.status_code, 200)
+
+
 if __name__ == "__main__":
     unittest.main()
