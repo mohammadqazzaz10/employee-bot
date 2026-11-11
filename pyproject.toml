@@ -14,10 +14,11 @@ dependencies = [
     "Flask>=3.1,<4",
     "gunicorn>=23,<24",
     "tzdata>=2025.2",
+    "pywebpush>=2.0.3,<3",
 ]
 
 [tool.setuptools]
-py-modules = ["bot", "branch_settings", "request_types", "broadcast", "web_app", "web_admin_extensions"]
+py-modules = ["bot", "branch_settings", "request_types", "broadcast", "web_app", "web_admin_extensions", "web_work_extensions"]
 
 [tool.setuptools.packages.find]
 include = ["scripts*"]
