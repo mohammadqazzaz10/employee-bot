@@ -380,5 +380,13 @@ $("installButton").addEventListener("click", async () => {
   if (!installPrompt) return;
   installPrompt.prompt(); await installPrompt.userChoice; installPrompt = null; $("installButton").hidden = true;
 });
+window.setInterval(() => {
+  if (!currentUser || document.hidden) return;
+  loadNotifications();
+  const activePage = document.querySelector(".page-section.active")?.id;
+  if (currentUser.role === "employee" && activePage === "page-home") loadEmployeeDashboard();
+  if (currentUser.role !== "employee" && activePage === "page-home") loadAdminDashboard();
+  if (currentUser.role !== "employee" && activePage === "page-manageRequests") loadManagerRequests($("requestFilter").value);
+}, 20000);
 if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("/sw.js").catch(() => {}));
 loadSession();
