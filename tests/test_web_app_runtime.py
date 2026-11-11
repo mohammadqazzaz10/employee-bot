@@ -10,6 +10,8 @@ class EmployeeWebRuntimeTests(unittest.TestCase):
         response = app.test_client().get("/")
         self.assertEqual(response.status_code, 200)
         self.assertIn("رفيق العمل".encode("utf-8"), response.data)
+        self.assertEqual(response.headers.get("X-Frame-Options"), "DENY")
+        self.assertIn("frame-ancestors 'none'", response.headers.get("Content-Security-Policy", ""))
 
     def test_setup_page_is_available_for_one_time_admin_provisioning(self):
         response = app.test_client().get("/setup")
@@ -27,6 +29,8 @@ class EmployeeWebRuntimeTests(unittest.TestCase):
     def test_login_rejects_empty_credentials_before_database_access(self):
         response = app.test_client().post("/api/auth/login", json={})
         self.assertEqual(response.status_code, 400)
+        malformed = app.test_client().post("/api/auth/login", json=["not", "an", "object"])
+        self.assertEqual(malformed.status_code, 400)
 
     def test_api_routes_are_present(self):
         routes = {rule.rule for rule in app.url_map.iter_rules()}
