@@ -55,6 +55,9 @@ class EmployeePortalContractTests(unittest.TestCase):
         self.assertIn('api("/employee/requests"', js)
         self.assertIn('api("/admin/requests/"', js)
         self.assertIn('api("/employee/call-supervisor"', js)
+        self.assertIn('api("/admin/settings"', js)
+        self.assertIn('api("/admin/request-types"', js)
+        self.assertIn('id="branchSettingsForm"', (WEB / "index.html").read_text(encoding="utf-8"))
 
     def test_frontend_and_backend_are_connected_by_same_origin_api(self):
         source = (ROOT / "web_app.py").read_text(encoding="utf-8")
