@@ -23,7 +23,7 @@ Branch-aware employee management platform with an Arabic RTL web portal (PWA), P
 
 1. Install dependencies: `python -m pip install .`
 2. Set `DATABASE_URL` and `DATABASE_SSLMODE` in your environment.
-3. Run `python -m scripts.bootstrap` to initialize the base schema and apply all numbered migrations, including `007_employee_web_portal.sql`.
+3. Run `python -m scripts.bootstrap` to initialize the base schema and apply all numbered migrations, including the latest numbered migrations through `010_web_notification_events.sql`.
 4. Set `COOKIE_SECURE=false` only for local HTTP development.
 5. Run `python web_app.py` and open `http://localhost:8080`.
 6. Set `WEB_BOOTSTRAP_TOKEN` to a long random secret and open `/setup` to create the first super-admin account. Remove the token after successful setup.
@@ -56,3 +56,10 @@ Never commit `.env`, bootstrap tokens, employee passwords, activation codes, or 
 The web portal includes branch-scoped employee activation/blocking, super-admin branch rename/activation, branch-scoped employee announcements, meeting scheduling/cancellation, and super-admin site branding/support text settings. These actions are audited. Meeting creation sends an immediate in-app notification; a 15-minute reminder is queued when an authenticated portal client polls the reminder endpoint. This is best-effort while clients are online, not a guaranteed background scheduler.
 
 Employees can enable a two-tone browser alert and optional system notifications. While the browser page remains alive, notifications are polled and may alert even when the tab is hidden; browser throttling, device power settings and permission can affect delivery. Web Push delivery and guaranteed ringing while the browser is closed are not implemented. Telegram and SMS are not required.
+
+
+## Live portal synchronization
+
+While an authenticated portal is open, employee and manager dashboard data refreshes automatically every 3 seconds without a full page reload. Notification inserts publish recipient-scoped PostgreSQL `NOTIFY` events through an authenticated Server-Sent Events (SSE) endpoint; the browser immediately refreshes the recipient's notifications and dashboard. The event contains no personal data, and each account listens on its own database channel. A 15-second polling fallback and EventSource automatic reconnection cover transient disconnects. The stream is short-lived and reconnects periodically to revalidate the session. Branch managers only receive events for notifications addressed to their own account; super-admin recipients follow the existing authorization scope.
+
+SSE requires the page to remain open and a live network connection. It improves foreground delivery but is not Web Push and does not guarantee alerts while the browser/PWA is fully closed. Browser audio still requires an initial user gesture and notification permission is required for OS notifications.

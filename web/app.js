@@ -2,6 +2,7 @@ const $ = (id) => document.getElementById(id);
 let currentUser = null;
 let installPrompt = null;
 let timerInterval = null;
+let renderedTimerKey = null;
 let branchesCache = [];
 
 function readCookie(name) {
@@ -49,9 +50,12 @@ function showLogin(message = "") {
   currentUser = null;
   $("loginView").hidden = false;
   $("portalView").hidden = true;
+  window.dispatchEvent(new Event("employee-portal:closed"));
   $("profileButton").hidden = true;
   $("loginMessage").textContent = message;
   if (timerInterval) window.clearInterval(timerInterval);
+  if (liveSyncTimer) window.clearInterval(liveSyncTimer);
+  renderedTimerKey = null;
 }
 function showPortal(user) {
   currentUser = user;
@@ -87,7 +91,51 @@ function showPortal(user) {
   if (isAdmin) loadAdminDashboard();
   else loadEmployeeDashboard();
   loadNotifications();
+  startLiveSync();
+  window.dispatchEvent(new Event("employee-portal:opened"));
 }
+let liveSyncTimer = null;
+let liveSyncBusy = false;
+let portalMutationBusy = false;
+let lastRequestTypesRefresh = 0;
+
+async function syncPortalData() {
+  if (!currentUser || document.hidden || liveSyncBusy || portalMutationBusy) return;
+  const portal = $("portalView");
+  if (!portal || portal.hidden || currentUser.must_change_password) return;
+  liveSyncBusy = true;
+  try {
+    if (currentUser.role === "employee") {
+      const refreshTypes = Date.now() - lastRequestTypesRefresh >= 30000;
+      await loadEmployeeDashboard({ silent: true, refreshTypes });
+    } else {
+      // The overview endpoint is refreshed independently from the request list.
+      // Only fetch the selected request filter while that page is actually open.
+      await loadAdminDashboard({ silent: true, loadRequests: false });
+      const activePage = document.querySelector(".page-section.active")?.id;
+      if (activePage === "page-manageRequests") {
+        await loadManagerRequests($("requestFilter")?.value || "pending", { silent: true });
+      }
+    }
+  } finally {
+    liveSyncBusy = false;
+  }
+}
+
+function startLiveSync() {
+  if (liveSyncTimer) window.clearInterval(liveSyncTimer);
+  liveSyncTimer = window.setInterval(syncPortalData, 3000);
+}
+window.addEventListener("employee-portal:refresh", () => {
+  syncPortalData();
+});
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden && currentUser) {
+    syncPortalData();
+    loadNotifications();
+  }
+});
+
 async function loadSession() {
   try {
     const data = await api("/auth/me");
@@ -95,26 +143,36 @@ async function loadSession() {
     else showLogin();
   } catch { showLogin(); }
 }
-async function loadEmployeeDashboard() {
+async function loadEmployeeDashboard({ silent = false, refreshTypes = true } = {}) {
   try {
-    const [summary, types] = await Promise.all([api("/employee/summary"), api("/employee/request-types")]);
+    const requests = [api("/employee/summary")];
+    if (refreshTypes) requests.push(api("/employee/request-types"));
+    const [summary, types] = await Promise.all(requests);
     const profile = summary.profile || {};
     $("employeeName").textContent = profile.full_name || currentUser.full_name;
     $("employeeMeta").textContent = [profile.job_title, profile.branch_name].filter(Boolean).join(" • ");
     $("statTwo").textContent = summary.pending_count ?? 0;
     renderTimer(summary.timer);
-    $("requestTypes").innerHTML = (types.request_types || []).length
-      ? types.request_types.map((type, index) => `<button class="request-type" data-request-type="${escapeHtml(type.code)}"><span class="type-symbol">${["◷","✧","▣","♧"][index % 4]}</span><strong>${escapeHtml(type.label)}</strong><small>المدة ${Number(type.duration_minutes)} دقيقة • يتطلب موافقة</small></button>`).join("")
-      : '<div class="empty-cell">لا توجد أنواع طلبات مفعّلة لفرعك حاليًا.</div>';
-    $("requestTypes").querySelectorAll("[data-request-type]").forEach((button) => {
-      button.addEventListener("click", () => submitRequest(button.dataset.requestType, button));
-    });
+    if (types) {
+      lastRequestTypesRefresh = Date.now();
+      $("requestTypes").innerHTML = (types.request_types || []).length
+        ? types.request_types.map((type, index) => `<button class="request-type" data-request-type="${escapeHtml(type.code)}"><span class="type-symbol">${["◷","✧","▣","♧"][index % 4]}</span><strong>${escapeHtml(type.label)}</strong><small>المدة ${Number(type.duration_minutes)} دقيقة • يتطلب موافقة</small></button>`).join("")
+        : '<div class="empty-cell">لا توجد أنواع طلبات مفعّلة لفرعك حاليًا.</div>';
+      $("requestTypes").querySelectorAll("[data-request-type]").forEach((button) => {
+        button.addEventListener("click", () => submitRequest(button.dataset.requestType, button));
+      });
+    }
     $("requestTypes").querySelectorAll("button").forEach((button) => button.disabled = Boolean(summary.timer));
     renderRequests(summary.recent_requests || []);
     $("statThree").textContent = summary.timer ? "نشطة" : "لا يوجد";
-  } catch (error) { flash(error.message, true); }
+  } catch (error) {
+    if (!silent) flash(error.message, true);
+  }
 }
 function renderTimer(timer) {
+  const timerKey = timer ? [timer.id ?? "", timer.started_at ?? "", timer.ends_at ?? ""].join("|") : "none";
+  if (timerKey === renderedTimerKey) return;
+  renderedTimerKey = timerKey;
   if (timerInterval) window.clearInterval(timerInterval);
   if (!timer) {
     $("timerValue").textContent = "--:--";
@@ -155,14 +213,21 @@ function renderRequests(rows) {
   $("myRequests").innerHTML = rows.length ? rows.map((row) => `<tr><td>${escapeHtml(row.request_label || row.request_type)}</td><td>${formatDate(row.requested_at)}</td><td><span class="status-pill ${statusClass(row.status)}">${statusLabel(row.status)}</span></td><td>${escapeHtml(row.notes || "—")}</td></tr>`).join("") : '<tr><td colspan="4" class="empty-cell">لا توجد طلبات حتى الآن.</td></tr>';
 }
 async function submitRequest(code, button) {
+  if (portalMutationBusy) return;
+  portalMutationBusy = true;
   button.disabled = true;
   try {
     const result = await api("/employee/requests", {method:"POST", body:JSON.stringify({request_type:code})});
     flash(result.message || "تم إرسال الطلب.");
     await loadEmployeeDashboard();
-  } catch (error) { flash(error.message, true); button.disabled = false; }
+  } catch (error) {
+    flash(error.message, true);
+    button.disabled = false;
+  } finally {
+    portalMutationBusy = false;
+  }
 }
-async function loadAdminDashboard() {
+async function loadAdminDashboard({ silent = false, loadRequests = true } = {}) {
   try {
     const data = await api("/admin/overview");
     const stats = data.stats || {};
@@ -174,17 +239,17 @@ async function loadAdminDashboard() {
     ].map(([label,value]) => `<div class="admin-stat"><strong>${Number(value || 0)}</strong><small>${label}</small></div>`).join("");
     $("statTwoLabel").textContent = "طلبات معلّقة";
     $("statThreeLabel").textContent = "استراحات نشطة";
-    await loadManagerRequests("pending");
-  } catch (error) { flash(error.message, true); }
+    if (loadRequests) await loadManagerRequests("pending");
+  } catch (error) { if (!silent) flash(error.message, true); }
 }
-async function loadManagerRequests(status = "pending") {
+async function loadManagerRequests(status = "pending", { silent = false } = {}) {
   try {
     const data = await api("/admin/requests?status=" + encodeURIComponent(status));
     const rows = data.requests || [];
     $("managerRequests").innerHTML = rows.length ? rows.map((row) => `
       <article class="manager-request"><div><strong>${escapeHtml(row.full_name)} · ${escapeHtml(row.request_label || row.request_type)}</strong><p>${escapeHtml(row.job_title || "")} · ${escapeHtml(row.branch_name || "")} · ${formatDate(row.requested_at)}</p><time>${escapeHtml(row.notes || "لا توجد ملاحظات")} · ${statusLabel(row.status)}</time></div>
       ${row.status === "pending" ? `<div class="request-actions"><button class="approve-button" data-decision="approved" data-id="${row.id}">موافقة</button><button class="reject-button" data-decision="rejected" data-id="${row.id}">رفض</button></div>` : ""}</article>`).join("") : '<div class="content-card empty-cell">لا توجد طلبات في هذا القسم.</div>';
-  } catch (error) { flash(error.message, true); }
+  } catch (error) { if (!silent) flash(error.message, true); }
 }
 async function loadEmployees() {
   try {
@@ -339,6 +404,8 @@ $("passwordForm").addEventListener("submit", async (event) => {
     if (currentUser.role === "employee") await loadEmployeeDashboard();
     else await loadAdminDashboard();
     await loadNotifications();
+    startLiveSync();
+    window.dispatchEvent(new Event("employee-portal:opened"));
   } catch (error) { $("passwordFormMessage").textContent = error.message; }
 });
 $("logoutButton").addEventListener("click", async () => {
@@ -362,14 +429,22 @@ $("returnButton").addEventListener("click", async () => {
 });
 $("managerRequests").addEventListener("click", async (event) => {
   const button = event.target.closest("[data-decision]");
-  if (!button) return;
+  if (!button || portalMutationBusy) return;
+  portalMutationBusy = true;
   button.disabled = true;
   try {
     const data = await api("/admin/requests/" + button.dataset.id + "/decision",{
       method:"POST",body:JSON.stringify({decision:button.dataset.decision})
     });
-    flash(data.message); await loadManagerRequests($("requestFilter").value); await loadAdminDashboard();
-  } catch (error) { flash(error.message,true); button.disabled = false; }
+    flash(data.message);
+    await loadManagerRequests($("requestFilter").value);
+    await loadAdminDashboard({ loadRequests: false });
+  } catch (error) {
+    flash(error.message,true);
+    button.disabled = false;
+  } finally {
+    portalMutationBusy = false;
+  }
 });
 $("requestFilter").addEventListener("change", () => loadManagerRequests($("requestFilter").value));
 $("employeesTable").addEventListener("click", async (event) => {

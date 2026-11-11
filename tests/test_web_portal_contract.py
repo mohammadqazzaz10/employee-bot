@@ -59,6 +59,37 @@ class EmployeePortalContractTests(unittest.TestCase):
         self.assertIn('api("/admin/request-types"', js)
         self.assertIn('id="branchSettingsForm"', (WEB / "index.html").read_text(encoding="utf-8"))
 
+
+    def test_live_portal_sync_refreshes_without_rebuilding_the_timer(self):
+        js = (WEB / "app.js").read_text(encoding="utf-8")
+        self.assertIn("window.setInterval(syncPortalData, 3000)", js)
+        self.assertIn('document.addEventListener("visibilitychange"', js)
+        self.assertIn('activePage === "page-manageRequests"', js)
+        self.assertIn('if (timerKey === renderedTimerKey) return;', js)
+        self.assertIn("lastRequestTypesRefresh", js)
+
+    def test_live_sync_keeps_manager_filter_and_limits_background_refresh(self):
+        js = (WEB / "app.js").read_text(encoding="utf-8")
+        self.assertIn('await loadManagerRequests($("requestFilter")?.value || "pending", { silent: true });', js)
+        self.assertIn('await loadAdminDashboard({ loadRequests: false });', js)
+        self.assertIn("if (!currentUser || document.hidden || liveSyncBusy || portalMutationBusy) return;", js)
+
+    def test_notifications_are_checked_frequently_without_page_reload(self):
+        js = (WEB / "notifications.js").read_text(encoding="utf-8")
+        self.assertIn("window.setInterval(pollNotifications, 15000)", js)
+        self.assertNotIn("window.location.reload", js)
+
+    def test_authenticated_sse_refreshes_dashboard_and_notifications(self):
+        backend = (ROOT / "web_app.py").read_text(encoding="utf-8")
+        client = (WEB / "notifications.js").read_text(encoding="utf-8")
+        app = (WEB / "app.js").read_text(encoding="utf-8")
+        self.assertIn('@app.get("/api/events/notifications")', backend)
+        self.assertIn('@app.get("/api/events/notifications")\n@auth_required', backend)
+        self.assertIn('LISTEN {}', backend)
+        self.assertIn('new EventSource("/api/events/notifications"', client)
+        self.assertIn('window.dispatchEvent(new Event("employee-portal:refresh"))', client)
+        self.assertIn('window.addEventListener("employee-portal:refresh"', app)
+
     def test_frontend_and_backend_are_connected_by_same_origin_api(self):
         source = (ROOT / "web_app.py").read_text(encoding="utf-8")
         js = (WEB / "app.js").read_text(encoding="utf-8")
