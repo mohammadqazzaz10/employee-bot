@@ -631,7 +631,7 @@ def employee_requests():
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute(
                 """SELECT r.id,r.request_type,r.status,r.requested_at,r.responded_at,r.notes,
-                          COALESCE(t.label,r.request_type) AS request_label
+                          CASE WHEN r.request_type='smoke' THEN 'استراحة تدخين' WHEN r.request_type IN ('break','lunch') THEN 'استراحة الغداء' ELSE COALESCE(t.label,r.request_type) END AS request_label
                    FROM requests r LEFT JOIN branch_request_types t
                      ON t.branch_id=(SELECT branch_id FROM employees WHERE id=r.employee_id)
                     AND t.code=r.request_type
