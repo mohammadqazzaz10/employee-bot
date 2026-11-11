@@ -19,7 +19,7 @@ The current Render Blueprint launches the employee portal as a Python Web Servic
 
 ## Database safety
 
-Migration `007_employee_web_portal.sql` is additive. It adds employee codes, web accounts, hashed sessions, one-time activation codes, web timers, notifications, audit events, and a separate web decision actor column. It does not delete employee records, requests, Telegram IDs, or legacy tables.
+Migrations `007_employee_web_portal.sql` through `009_web_site_settings.sql` are additive. They add employee web accounts and sessions, timers, notifications, audit events, employee status controls, meetings, and global site settings. They do not delete employee records, requests, Telegram IDs, or legacy tables.
 
 If you are connecting an existing database, make a backup and verify that you can restore it before deploying. Review the existing migration ledger and checksums first. Do not point a new Blueprint at a production database without confirming the exact database resource and migration history.
 
@@ -50,7 +50,7 @@ The legacy Telegram bot remains in the repository for a later, separately tested
 ## Before inviting employees
 
 - Confirm latest GitHub Actions checks are green.
-- Confirm migration `007` is applied and checksums match.
+- Confirm migrations `007`–`009` are applied and checksums match.
 - Test admin bootstrap and remove the bootstrap secret.
 - Test employee activation, login, password changes, session expiry/logout, and account lockout.
 - Test branch isolation with at least two branches and two branch managers.
@@ -60,3 +60,9 @@ The legacy Telegram bot remains in the repository for a later, separately tested
 - Keep the Telegram worker disabled until separately configured and tested.
 
 A green CI run confirms automated checks only; it does not prove a live Render deployment or production readiness.
+
+## Administration and notifications
+
+Managers can add employees, issue activation codes, reset employee passwords, block/reactivate employees, configure branch break policies and request buttons, send branch announcements, and create/cancel meetings. Super-admins can also rename/disable branches and edit global portal branding and support text. Every administrative change is audited.
+
+Meeting creation sends an in-app notification immediately. A 15-minute reminder is processed by authenticated portal clients polling every 20 seconds. It is not a guaranteed server-side scheduler when all clients are offline. Sound is a foreground browser tone after the user enables it; browser notifications require permission. Background push/ringing while the browser is closed is not implemented in this deployment.
