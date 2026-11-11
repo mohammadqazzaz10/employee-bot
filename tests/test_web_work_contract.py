@@ -1,6 +1,8 @@
 from pathlib import Path
 import unittest
 
+from web_work_extensions import _valid_push_endpoint
+
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -15,6 +17,13 @@ class WebPushAndWorkTrackingContractTests(unittest.TestCase):
         self.assertIn('self.addEventListener("push"', worker)
         self.assertIn('pushManager.subscribe(', client)
         self.assertIn('applicationServerKey: decodeKey(config.public_key)', client)
+
+    def test_push_subscription_endpoints_are_limited_to_browser_push_providers(self):
+        self.assertTrue(_valid_push_endpoint("https://fcm.googleapis.com/fcm/send/example"))
+        self.assertTrue(_valid_push_endpoint("https://updates.push.services.mozilla.com/wpush/v2/example"))
+        self.assertFalse(_valid_push_endpoint("https://attacker.example/collect"))
+        self.assertFalse(_valid_push_endpoint("http://fcm.googleapis.com/fcm/send/example"))
+        self.assertFalse(_valid_push_endpoint("https://user@fcm.googleapis.com/fcm/send/example"))
 
     def test_task_workflow_is_branch_scoped_and_audited(self):
         backend = (ROOT / "web_work_extensions.py").read_text(encoding="utf-8")
