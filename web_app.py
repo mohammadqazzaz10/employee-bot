@@ -821,7 +821,7 @@ def decide_employee_request(request_id):
             if decision == "approved" and request_kind:
                 cur.execute(
                     """SELECT 1 FROM web_timers WHERE employee_id=%s
-                       AND completed_at IS NULL AND returned_at IS NULL FOR UPDATE""",
+                       AND returned_at IS NULL FOR UPDATE""",
                     (row["employee_id"],))
                 if cur.fetchone():
                     conn.rollback()
