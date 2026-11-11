@@ -499,7 +499,7 @@ def create_employee_request():
                 return _json_error("لديك طلب مماثل قيد الانتظار بالفعل.", 409)
             cur.execute(
                 """SELECT 1 FROM web_timers WHERE employee_id=%s
-                   AND completed_at IS NULL AND returned_at IS NULL FOR UPDATE""",
+                   AND returned_at IS NULL FOR UPDATE""",
                 (employee["id"],))
             if cur.fetchone():
                 conn.rollback()
@@ -531,6 +531,11 @@ def return_employee_timer():
     conn = _db()
     try:
         with conn.cursor() as cur:
+            cur.execute(
+                """UPDATE web_timers SET completed_at=ends_at
+                   WHERE employee_id=%s AND completed_at IS NULL
+                     AND ends_at<=CURRENT_TIMESTAMP AND returned_at IS NULL""",
+                (_employee_id(g.current_user),))
             cur.execute(
                 """UPDATE web_timers SET returned_at=CURRENT_TIMESTAMP
                    WHERE employee_id=%s AND completed_at IS NOT NULL AND returned_at IS NULL
