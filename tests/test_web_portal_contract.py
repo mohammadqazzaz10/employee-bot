@@ -72,7 +72,7 @@ class EmployeePortalContractTests(unittest.TestCase):
         js = (WEB / "app.js").read_text(encoding="utf-8")
         self.assertIn('await loadManagerRequests($("requestFilter")?.value || "pending", { silent: true });', js)
         self.assertIn('await loadAdminDashboard({ loadRequests: false });', js)
-        self.assertIn("if (!currentUser || document.hidden || liveSyncBusy) return;", js)
+        self.assertIn("if (!currentUser || document.hidden || liveSyncBusy || portalMutationBusy) return;", js)
 
     def test_notifications_are_checked_frequently_without_page_reload(self):
         js = (WEB / "notifications.js").read_text(encoding="utf-8")
