@@ -46,14 +46,14 @@
     return region;
   }
 
-  function playAlertTone() {
+  async function playAlertTone() {
     if (localStorage.getItem(SOUND_KEY) !== "true") return;
     const Audio = window.AudioContext || window.webkitAudioContext;
     if (!Audio) return;
     try {
       audioContext ||= new Audio();
-      if (audioContext.state === "suspended") audioContext.resume().catch(() => {});
-      if (audioContext.state === "closed") return;
+      if (audioContext.state === "suspended") await audioContext.resume();
+      if (audioContext.state !== "running") return;
       const now = audioContext.currentTime;
       [880, 660, 880].forEach((frequency, index) => {
         const oscillator = audioContext.createOscillator();
