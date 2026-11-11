@@ -7,6 +7,7 @@ import os
 import re
 import secrets
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 from functools import wraps
 
 import psycopg2
@@ -21,6 +22,7 @@ CSRF_COOKIE = "employee_csrf"
 SESSION_HOURS = 12
 MAX_LOGIN_FAILURES = 6
 LOCK_MINUTES = 15
+JORDAN_TZ = ZoneInfo("Asia/Amman")
 
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO"))
 logger = logging.getLogger("employee-web")
@@ -141,6 +143,122 @@ def roles_required(*roles):
             return fn(*args, **kwargs)
         return wrapped
     return decorator
+
+
+
+def _jordan_now():
+    return datetime.now(JORDAN_TZ)
+
+
+def _within_time_window(current_time, start_time=None, end_time=None):
+    if start_time is None and end_time is None:
+        return True
+    if start_time is None:
+        return current_time < end_time
+    if end_time is None:
+        return current_time >= start_time
+    if start_time <= end_time:
+        return start_time <= current_time < end_time
+    return current_time >= start_time or current_time < end_time
+
+
+def _special_request_policy(cur, employee_id, branch_id, request_type, lock=False):
+    """Validate the existing branch smoking/lunch policy using Jordan local time."""
+    suffix = " FOR UPDATE" if lock else " FOR SHARE"
+    cur.execute(
+        """INSERT INTO branch_settings(branch_id) VALUES(%s) ON CONFLICT DO NOTHING""",
+        (branch_id,),
+    )
+    cur.execute(
+        """SELECT smoke_enabled,smoke_daily_limit,smoke_duration_minutes,
+                  smoke_start_time,smoke_end_time,smoke_gap_minutes,
+                  lunch_enabled,lunch_duration_minutes,lunch_start_time,lunch_end_time
+           FROM branch_settings WHERE branch_id=%s""" + suffix,
+        (branch_id,),
+    )
+    row = cur.fetchone()
+    if not row:
+        return False, "تعذر تحميل سياسة الفرع.", None, None
+    now = _jordan_now()
+    current_time = now.time().replace(tzinfo=None)
+    today = now.date()
+    if request_type == "smoke":
+        enabled, limit, duration, start, end, gap = row[:6]
+        if not enabled:
+            return False, "استراحة التدخين غير مفعّلة في هذا الفرع.", "استراحة تدخين", duration
+        if not _within_time_window(current_time, start, end):
+            return False, "الطلب خارج الوقت المسموح لاستراحة التدخين.", "استراحة تدخين", duration
+        cur.execute(
+            "SELECT count FROM daily_cigarettes WHERE employee_id=%s AND date=%s",
+            (employee_id, today),
+        )
+        count_row = cur.fetchone()
+        count = int(count_row["count"] if isinstance(count_row, dict) else count_row[0]) if count_row else 0
+        if count >= int(limit):
+            return False, "وصلت إلى الحد اليومي المسموح لاستراحات التدخين.", "استراحة تدخين", duration
+        cur.execute(
+            """SELECT taken_at FROM cigarette_times
+               WHERE employee_id=%s ORDER BY taken_at DESC LIMIT 1""",
+            (employee_id,),
+        )
+        last = cur.fetchone()
+        last_at = last["taken_at"] if isinstance(last, dict) else (last[0] if last else None)
+        if last_at and (now - last_at).total_seconds() < int(gap) * 60:
+            remaining = int(gap) - int((now - last_at).total_seconds() // 60)
+            return False, f"يجب الانتظار {max(1, remaining)} دقيقة قبل طلب استراحة تدخين أخرى.", "استراحة تدخين", duration
+        return True, None, "استراحة تدخين", int(duration)
+    if request_type in {"break", "lunch"}:
+        enabled, duration, start, end = row[6], row[7], row[8], row[9]
+        if not enabled:
+            return False, "استراحة الغداء غير مفعّلة في هذا الفرع.", "استراحة الغداء", duration
+        if not _within_time_window(current_time, start, end):
+            return False, "الطلب خارج الوقت المسموح لاستراحة الغداء.", "استراحة الغداء", duration
+        cur.execute(
+            "SELECT 1 FROM lunch_breaks WHERE employee_id=%s AND date=%s AND taken=TRUE FOR UPDATE",
+            (employee_id, today),
+        )
+        if cur.fetchone():
+            return False, "تم تسجيل استراحة الغداء لهذا اليوم بالفعل.", "استراحة الغداء", duration
+        return True, None, "استراحة الغداء", int(duration)
+    return False, "نوع الطلب غير مدعوم.", None, None
+
+
+def _record_special_request_approval(cur, employee_id, request_type, duration):
+    now = _jordan_now()
+    today = now.date()
+    if request_type == "smoke":
+        cur.execute(
+            """SELECT smoke_daily_limit FROM branch_settings
+               WHERE branch_id=(SELECT branch_id FROM employees WHERE id=%s) FOR UPDATE""",
+            (employee_id,),
+        )
+        row = cur.fetchone()
+        limit = int(row["smoke_daily_limit"] if isinstance(row, dict) else row[0])
+        cur.execute(
+            """INSERT INTO daily_cigarettes(employee_id,date,count,updated_at)
+               SELECT %s,%s,1,CURRENT_TIMESTAMP WHERE %s>0
+               ON CONFLICT(employee_id,date)
+               DO UPDATE SET count=daily_cigarettes.count+1,updated_at=CURRENT_TIMESTAMP
+               WHERE daily_cigarettes.count<%s
+               RETURNING count""",
+            (employee_id, today, limit, limit),
+        )
+        if not cur.fetchone():
+            raise ValueError("تم الوصول إلى الحد اليومي لاستراحات التدخين.")
+        cur.execute(
+            "INSERT INTO cigarette_times(employee_id,taken_at) VALUES(%s,%s)",
+            (employee_id, now),
+        )
+        return
+    if request_type in {"break", "lunch"}:
+        cur.execute(
+            """INSERT INTO lunch_breaks(employee_id,date,taken,taken_at)
+               VALUES(%s,%s,TRUE,%s) ON CONFLICT(employee_id,date) DO NOTHING
+               RETURNING id""",
+            (employee_id, today, now),
+        )
+        if not cur.fetchone():
+            raise ValueError("تم تسجيل استراحة الغداء لهذا اليوم بالفعل.")
 
 
 def _audit(cur, actor_id, branch_id, action, target_type=None, target_id=None, details=None):
