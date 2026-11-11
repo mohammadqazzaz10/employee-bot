@@ -1,27 +1,28 @@
 from pathlib import Path
 import unittest
 
-
 ROOT = Path(__file__).resolve().parents[1]
 
 
 class RenderDeploymentContractTests(unittest.TestCase):
-    def test_render_blueprint_uses_background_worker_and_managed_postgres(self):
+    def test_render_blueprint_starts_web_portal_without_telegram_secrets(self):
         blueprint = (ROOT / "render.yaml").read_text(encoding="utf-8")
-        self.assertIn("type: worker", blueprint)
+        self.assertIn("type: web", blueprint)
+        self.assertIn("name: employee-web-portal", blueprint)
         self.assertIn("runtime: python", blueprint)
         self.assertIn("branch: main", blueprint)
-        self.assertIn("numInstances: 1", blueprint)
+        self.assertIn("plan: starter", blueprint)
         self.assertIn("autoDeployTrigger: checksPass", blueprint)
         self.assertIn("buildCommand: python -m pip install .", blueprint)
         self.assertIn("preDeployCommand: python -m scripts.bootstrap", blueprint)
-        self.assertIn("startCommand: python bot.py", blueprint)
+        self.assertIn("gunicorn", blueprint)
+        self.assertIn("web_app:app", blueprint)
+        self.assertIn("healthCheckPath: /healthz", blueprint)
         self.assertIn("fromDatabase:", blueprint)
         self.assertIn("property: connectionString", blueprint)
-        self.assertIn("postgresMajorVersion: '16'", blueprint)
-        self.assertIn("sync: false", blueprint)
-        self.assertNotIn("TELEGRAM_BOT_TOKEN: ", blueprint)
-        self.assertNotIn("DATABASE_URL: ", blueprint)
+        self.assertIn("WEB_BOOTSTRAP_TOKEN", blueprint)
+        self.assertNotIn("TELEGRAM_BOT_TOKEN", blueprint)
+        self.assertNotIn("SUPER_ADMIN_TELEGRAM_ID", blueprint)
 
     def test_render_and_ci_use_the_same_supported_python_version(self):
         version = (ROOT / ".python-version").read_text(encoding="utf-8").strip()

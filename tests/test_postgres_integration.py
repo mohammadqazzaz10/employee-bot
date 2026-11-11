@@ -361,7 +361,7 @@ class PostgreSQLIntegrationTests(unittest.TestCase):
                     SELECT COUNT(*) FROM schema_migrations
                     WHERE version = ANY(%s)
                 """, (list(bot.REQUIRED_MIGRATIONS),))
-                self.assertEqual(cur.fetchone()[0], 6)
+                self.assertEqual(cur.fetchone()[0], len(bot.REQUIRED_MIGRATIONS))
                 cur.execute("SELECT 1 FROM pg_indexes WHERE indexname='uq_employees_active_phone'")
                 self.assertIsNotNone(cur.fetchone())
                 cur.execute("SELECT 1 FROM pg_indexes WHERE indexname='uq_employees_active_telegram_id'")

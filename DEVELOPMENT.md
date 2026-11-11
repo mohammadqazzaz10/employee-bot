@@ -1,43 +1,56 @@
-# Employee Bot — development notes
+# Employee Operations Platform — development notes
 
-## Runtime configuration
-- Python 3.11+
-- PostgreSQL via `DATABASE_URL`
-- Telegram via `TELEGRAM_BOT_TOKEN`
-- First super administrator via `SUPER_ADMIN_TELEGRAM_ID`
-- Render Web Services use `RENDER_EXTERNAL_URL` plus `WEBHOOK_SECRET`; Background Workers use long polling.
-- Local secrets belong in `.env`, which is ignored by Git. See `.env.example` and `DEPLOYMENT.md`.
+## Runtime modes
+
+### Web portal (current web-first target)
+- Python 3.11+, Flask, Gunicorn, PostgreSQL.
+- Environment: DATABASE_URL, DATABASE_SSLMODE, COOKIE_SECURE, WEB_BOOTSTRAP_TOKEN.
+- Run migrations with python -m scripts.bootstrap.
+- Run locally with python web_app.py; open http://localhost:8080.
+- Create the first web super-admin once through /setup; remove WEB_BOOTSTRAP_TOKEN immediately afterward.
+- Telegram is not required for the web portal.
+
+### Optional legacy Telegram worker
+- TELEGRAM_BOT_TOKEN and SUPER_ADMIN_TELEGRAM_ID.
+- Webhook mode additionally uses RENDER_EXTERNAL_URL and WEBHOOK_SECRET; polling mode does not.
+- Telegram source remains in the repository but the current Render Blueprint does not start it.
 
 ## Database lifecycle
-The application initializes the base tables when `DATABASE_URL` is present, even if no Telegram token is configured; in that database-only bootstrap mode it exits without starting Telegram. Numbered SQL migrations 001–006 are applied separately with `python -m scripts.migrate` after a verified backup. The bot runtime refuses to start until all six migrations are recorded. The runner uses a PostgreSQL advisory lock, applies migrations in numeric order, and records SHA-256 checksums. Use `python -m scripts.migrate --check` to verify the migration ledger without changing the schema.
 
-Do not edit an applied migration; add a new numbered migration. Migration 005 deliberately stops if duplicate active phone numbers or orphaned branch-settings rows are detected.
+The bootstrap initializes the base schema and applies numbered migrations 001–007 in numeric order. The migration runner uses a PostgreSQL advisory lock and records SHA-256 checksums. Verify with python -m scripts.migrate --check.
 
-## Implemented on this development branch
-- Registration-only Telegram contact linking, with atomic checks against account/phone reassignment.
-- Database-backed super-admin and branch roles; authorization fails closed when PostgreSQL is unavailable.
-- Branch-scoped employee onboarding/listing, request approvals, notifications, settings, custom request types, and broadcast recipients.
-- Full employee profile fields: name, job title, phone, branch, Telegram link, and active state.
-- Branch-specific smoking and lunch policy, including daily limits, durations, time windows, and minimum intervals.
-- Audited configurable request buttons with per-branch durations and active state.
-- Persisted countdowns, expiry alerts, exact timer-message return confirmation, and restart recovery.
-- Durable timer-start outbox committed with approval/accounting; failed delivery is retried.
-- Broadcast text/voice/audio, individual recipient selection, delivery logs, acknowledgements, and repeated reminders.
-- CI workflow with Python compile checks and PostgreSQL 16 integration tests.
+Migration 007 is additive. It adds employee codes, web users, hashed sessions, login throttles, activation tokens, web timers, notifications, audit records, and a separate web decision actor field. It also installs an employee-code trigger so existing Telegram/admin insertion paths that omit employee_code remain compatible. Do not edit any applied migration; add a new numbered migration.
+
+## Implemented web portal features
+
+- Arabic RTL, responsive PWA layout with animated states and install prompt.
+- Employee activation with one-time expiring codes and self-chosen passwords.
+- Employee login, password hashing, account lockout, IP throttling, CSRF-protected sessions, logout, and mandatory temporary-password changes.
+- Employee dashboard, branch-configured request types, request history, timer countdown, return confirmation, and supervisor call.
+- Smoking and lunch requests enforce Jordan-local time windows, daily limits, minimum gaps, and one-lunch-per-day accounting at both request and approval time.
+- Manager dashboard, branch-scoped request inbox, atomic decisions, employee creation, and activation-code issue.
+- Super-admin provisioning of branches, branch managers, and supervisors.
+- Branch-scoped smoking/lunch policy controls and audited configurable request types with per-branch durations.
+- Notifications, audit log, branch isolation, and API responses excluded from service-worker caches.
 
 ## Local checks
+
 ```bash
 python -m pip install .
+python -m scripts.bootstrap
 python -m compileall -q .
 python -m unittest discover -s tests -v
 ```
 
 ## Production gates
-- Latest GitHub Actions run must pass on the exact PR head SHA.
-- Apply migrations 001–006 to the intended database only after a backup has been restored successfully in a separate test database.
-- Verify existing employee phone uniqueness before migration 005.
-- Exercise Telegram onboarding, approvals, timers, restart recovery, broadcast acknowledgements, and access revocation in staging.
-- Rehearse backup/restore and review logs for delivery failures.
-- Configure Render secrets and deploy only after explicit approval.
 
-CI tests do not prove Telegram API delivery, notification sound behavior, or Render deployment. The PR remains a draft and is not production-approved.
+- Latest GitHub Actions run must pass on the exact PR head SHA.
+- Back up and verify restore before using an existing database.
+- Test bootstrap, employee activation, login, password change, session expiry/logout, and account lockout.
+- Test branch isolation with at least two branches and different manager accounts.
+- Test request creation, concurrent decisions, timer expiry, and return confirmation.
+- Test Android/iOS PWA install behavior and notification behavior on real devices.
+- Configure Render secrets only in Render; never commit them.
+- Do not invite employees until a real Render staging deployment passes.
+
+CI does not prove live Render deployment, browser/device compatibility, or delivery of notifications while the PWA is closed.

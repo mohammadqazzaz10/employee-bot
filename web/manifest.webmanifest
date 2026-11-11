@@ -1,0 +1,15 @@
+{
+  "name": "رفيق العمل - بوابة الموظفين",
+  "short_name": "رفيق العمل",
+  "description": "بوابة الموظفين لإدارة الطلبات والاستراحات",
+  "lang": "ar",
+  "dir": "rtl",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f4f7f5",
+  "theme_color": "#102a25",
+  "icons": [
+    { "src": "/icons/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

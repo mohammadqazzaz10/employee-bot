@@ -5,6 +5,7 @@ ROOT = Path(__file__).resolve().parents[1]
 MIGRATION = ROOT / "migrations" / "001_multibranch_foundation.sql"
 INTEGRITY_MIGRATION = ROOT / "migrations" / "005_preproduction_integrity.sql"
 TIMER_ACK_MIGRATION = ROOT / "migrations" / "006_timer_return_acknowledgements.sql"
+WEB_MIGRATION = ROOT / "migrations" / "007_employee_web_portal.sql"
 RUNNER = ROOT / "scripts" / "migrate.py"
 
 
@@ -47,6 +48,27 @@ class MigrationContractTests(unittest.TestCase):
         sql = TIMER_ACK_MIGRATION.read_text(encoding="utf-8").lower()
         self.assertIn("returned_at", sql)
         self.assertIn("idx_active_timers_unreturned", sql)
+
+    def test_web_portal_migration_adds_employee_accounts_sessions_and_timers(self):
+        sql = WEB_MIGRATION.read_text(encoding="utf-8").lower()
+        for fragment in (
+            "alter table employees add column if not exists employee_code",
+            "create table if not exists web_users",
+            "create table if not exists web_sessions",
+            "create table if not exists web_activation_tokens",
+            "create table if not exists web_timers",
+            "create table if not exists web_notifications",
+            "create table if not exists web_audit_log",
+            "updated_by_web_user_id",
+            "changed_by_web_user_id",
+            "create table if not exists web_login_throttles",
+            "assign_employee_web_code",
+            "trg_employees_assign_web_code",
+        ):
+            with self.subTest(fragment=fragment):
+                self.assertIn(fragment, sql)
+        self.assertNotIn("drop table", sql)
+        self.assertNotIn("delete from employees", sql)
 
     def test_migration_runner_checks_checksums_and_serializes_execution(self):
         source = RUNNER.read_text(encoding="utf-8")
