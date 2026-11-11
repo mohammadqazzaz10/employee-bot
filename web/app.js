@@ -190,7 +190,7 @@ async function loadEmployees() {
   try {
     const [data, branches] = await Promise.all([api("/admin/employees"), api("/admin/branches")]);
     branchesCache = branches.branches || [];
-    $("employeesTable").innerHTML = (data.employees || []).length ? data.employees.map((employee) => `<tr><td>${escapeHtml(employee.full_name)}<br><small>${escapeHtml(employee.job_title || "")}</small></td><td>${escapeHtml(employee.employee_code)}</td><td>${escapeHtml(employee.branch_name)}</td><td><span class="status-pill ${employee.has_web_account ? "status-approved" : "status-pending"}">${employee.has_web_account ? "مفعّل" : "غير مفعّل"}</span></td><td><button class="mini-button" data-activation="${employee.id}" ${employee.has_web_account ? "disabled" : ""}>رمز تفعيل</button></td></tr>`).join("") : '<tr><td colspan="5" class="empty-cell">لا يوجد موظفون مسجلون.</td></tr>';
+    $("employeesTable").innerHTML = (data.employees || []).length ? data.employees.map((employee) => `<tr><td>${escapeHtml(employee.full_name)}<br><small>${escapeHtml(employee.job_title || "")}</small></td><td>${escapeHtml(employee.employee_code)}</td><td>${escapeHtml(employee.branch_name)}</td><td><span class="status-pill ${employee.has_web_account ? "status-approved" : "status-pending"}">${employee.has_web_account ? "مفعّل" : "غير مفعّل"}</span></td><td>${employee.has_web_account ? `<button class="mini-button" data-reset-password="${employee.id}">إعادة تعيين</button>` : `<button class="mini-button" data-activation="${employee.id}">رمز تفعيل</button>`}</td></tr>`).join("") : '<tr><td colspan="5" class="empty-cell">لا يوجد موظفون مسجلون.</td></tr>';
     fillBranchOptions();
   } catch (error) { flash(error.message, true); }
 }
@@ -370,6 +370,18 @@ $("employeesTable").addEventListener("click", async (event) => {
     await loadEmployees();
   } catch (error) { flash(error.message,true); button.disabled = false; }
 });
+$("employeesTable").addEventListener("click", async (event) => {
+  const button = event.target.closest("[data-reset-password]");
+  if (!button) return;
+  button.disabled = true;
+  try {
+    const data = await api("/admin/employees/" + button.dataset.resetPassword + "/reset-password",{method:"POST",body:"{}"});
+    $("temporaryPasswordResult").textContent = data.temporary_password;
+    $("temporaryPasswordModal").showModal();
+    flash(data.message);
+  } catch (error) { flash(error.message,true); }
+  finally { button.disabled = false; }
+});
 $("addEmployeeButton").addEventListener("click", async () => {
   if (!branchesCache.length) { const data = await api("/admin/branches"); branchesCache = data.branches || []; fillBranchOptions(); }
   $("employeeModal").showModal();
@@ -457,6 +469,10 @@ $("notificationList").addEventListener("click", async (event) => {
   if (!button) return;
   try { await api("/notifications/" + button.dataset.read + "/read",{method:"POST",body:"{}"}); await loadNotifications(); }
   catch (error) { flash(error.message,true); }
+});
+$("copyTemporaryPassword").addEventListener("click", async () => {
+  try { await navigator.clipboard.writeText($("temporaryPasswordResult").textContent); $("copyTemporaryPassword").firstChild.textContent = "تم النسخ "; }
+  catch { flash("تعذر النسخ التلقائي. اضغط مطولًا على كلمة المرور لنسخها.",true); }
 });
 $("copyActivation").addEventListener("click", async () => {
   try { await navigator.clipboard.writeText($("activationResult").textContent); $("copyActivation").firstChild.textContent = "تم النسخ "; }
