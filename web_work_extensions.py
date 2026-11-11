@@ -405,11 +405,14 @@ def update_work_task(assignment_id):
                 conn.rollback()
                 return _json_error("لا تملك صلاحية تعديل مهمة هذا الفرع.", 403)
             old_status = row["status"]
+            status_label = {"pending": "جديدة", "in_progress": "قيد التنفيذ",
+                            "completed": "مكتملة", "blocked": "متعذرة", "cancelled": "ملغاة"}[status]
             cur.execute(
                 """UPDATE work_task_assignments SET status=%s,updated_at=CURRENT_TIMESTAMP,
                    completed_at=CASE WHEN %s='completed' THEN CURRENT_TIMESTAMP ELSE NULL END
                    WHERE id=%s""", (status, status, assignment_id)
             )
+            cur.execute("UPDATE work_tasks SET updated_at=CURRENT_TIMESTAMP WHERE id=%s", (row["task_id"],))
             cur.execute(
                 """INSERT INTO work_task_events(assignment_id,actor_user_id,event_type,from_status,to_status,note)
                    VALUES(%s,%s,'status_changed',%s,%s,%s)""",
@@ -420,7 +423,7 @@ def update_work_task(assignment_id):
                     """INSERT INTO web_notifications(recipient_user_id,notification_type,title,body)
                        SELECT id,'task_updated','تحديث مهمة: ' || %s,%s
                        FROM web_users WHERE branch_id=%s AND role IN ('branch_manager','supervisor') AND is_active=TRUE""",
-                    (row["title"], row["employee_name"] + " حدّث حالة المهمة إلى " + status),
+                    (row["title"], row["employee_name"] + " حدّث حالة المهمة إلى " + status_label),
                 )
             else:
                 cur.execute(
