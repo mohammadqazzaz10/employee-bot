@@ -1,74 +1,50 @@
-# Employee Bot
+# Employee Operations Platform
 
-Telegram employee operations bot for break requests, leave/vacation requests, branch management, announcements, and timed reminders, backed by PostgreSQL.
+Branch-aware employee management platform with an Arabic RTL web portal (PWA), PostgreSQL backend, and optional Telegram integration.
 
-## Quick links
-- [Deployment and Render setup](DEPLOYMENT.md)
-- [Development notes](DEVELOPMENT.md)
-- [Security review and production gates](docs/SECURITY_REVIEW.md)
-- [SQL migrations](migrations/)
+## Main capabilities
+
+- Employee web accounts activated by one-time codes; no Telegram registration or Premium subscription is required.
+- Employee self-service for branch-configured requests, request history, countdown timers, return confirmation, and supervisor call requests.
+- Manager and supervisor portal with branch-scoped request review, approval/rejection, employee management, and notifications.
+- Super-admin account setup and branch-scoped manager provisioning.
+- Responsive installable PWA with Arabic RTL interface.
+- Existing Telegram bot source is retained as an optional future channel; the web portal can run without a Telegram bot token.
 
 ## Requirements
-- Python 3.11.11 (pinned for CI and Render in `.python-version`)
-- PostgreSQL (CI runs PostgreSQL 16; Render Blueprint provisions managed PostgreSQL)
-- Telegram bot token from BotFather
+
+- Python 3.11
+- PostgreSQL 16+
+- Render (or another HTTPS-capable Python host)
 
 ## Local setup
+
 1. Install dependencies: `python -m pip install .`
-2. Copy `.env.example` to `.env` and set `DATABASE_URL` and `DATABASE_SSLMODE`; leave `TELEGRAM_BOT_TOKEN` empty for the bootstrap.
-3. Run `python bot.py` once. It creates the base tables and exits without starting Telegram.
-4. Take and verify a database backup, then apply numbered migrations:
-   `python -m scripts.migrate`
-5. Verify the migration ledger and checksums:
-   `python -m scripts.migrate --check`
-6. Only then add `TELEGRAM_BOT_TOKEN` and `SUPER_ADMIN_TELEGRAM_ID`, and start the bot with `python bot.py`.
+2. Set `DATABASE_URL` and `DATABASE_SSLMODE` in your environment.
+3. Run `python -m scripts.bootstrap` to initialize the base schema and apply all numbered migrations, including `007_employee_web_portal.sql`.
+4. Set `COOKIE_SECURE=false` only for local HTTP development.
+5. Run `python web_app.py` and open `http://localhost:8080`.
+6. Set `WEB_BOOTSTRAP_TOKEN` to a long random secret and open `/setup` to create the first super-admin account. Remove the token after successful setup.
 
-The bot runtime refuses to start without `TELEGRAM_BOT_TOKEN`, `DATABASE_URL`, and all migrations 001–006. The one-time database bootstrap needs only `DATABASE_URL`. Never commit `.env`, Telegram tokens, webhook secrets, or database URLs.
+## Render web-first deployment
 
-## Employee and branch administration
-Every employee profile includes a full name, job title, phone number, and branch. An employee links their own Telegram account by sending `/start` and sharing their own contact. Linking is allowed only for an active pre-registered employee and cannot move an account or claim another employee's phone.
+The root `render.yaml` provisions the web service and PostgreSQL database. It does not request a Telegram token and does not start the Telegram worker. Render runs the database bootstrap before launching Gunicorn.
 
-The super admin or a manager/supervisor assigned to a branch can create an employee profile with:
-`/add_employee BRANCH_ID PHONE FULL_NAME | JOB_TITLE`
+See [DEPLOYMENT.md](DEPLOYMENT.md) for the deployment and initial admin setup steps.
 
-The super admin creates a branch with `/add_branch CODE | NAME` and lists branches with `/list_branches`. A new branch is seeded with its own settings and default bathroom/prayer request buttons. The super admin assigns a branch role with `/assign_branch_admin TELEGRAM_ID BRANCH_ID [branch_manager|supervisor]` and revokes one branch assignment with `/remove_branch_admin TELEGRAM_ID BRANCH_ID`. A manager can view and operate only within assigned branches; the super admin has global access.
+## Security model
 
-## Branch policy settings
-Managers use `/settings` to edit their branch's smoking and lunch policy. A super admin can select a branch with `/settings BRANCH_ID`.
+- Employee identity, role, and branch are loaded from the authenticated server-side session.
+- Employee passwords are never stored in plaintext.
+- Session tokens are opaque and stored as SHA-256 hashes; session cookies are HttpOnly, Secure in production, and SameSite=Lax.
+- Mutating authenticated API calls require a CSRF token.
+- Branch managers and supervisors are restricted to their assigned branch.
+- Web decisions use a dedicated `decided_by_web_user_id` field and do not overwrite legacy Telegram actor IDs.
+- Activation codes are random, hashed at rest, single-use, and expire after 24 hours.
+- API responses are not cached by the service worker.
 
-- Smoking: enable/disable, daily limit, duration, allowed start/end times, and minimum interval.
-- Lunch: enable/disable, duration, and optional allowed time window.
-- Daytime, overnight, and open-ended time windows are supported.
-- Every change is stored per branch and audited with the actor and timestamp.
+## Verification
 
-## Timed request buttons
-After migrations 001 and 002, each branch receives bathroom and prayer buttons, each with a 10-minute default duration. Managers use `/request_types` (or `/request_types BRANCH_ID`) to create additional timed buttons, set durations from 1–240 minutes, and enable/disable them. An authorized manager's approval is required before a timer begins.
+GitHub Actions compiles the Python code, initializes PostgreSQL, applies/checks numbered migrations, and runs unit, contract, and PostgreSQL integration tests. CI success is not a substitute for live staging tests and a verified database backup before production use.
 
-## Timers and employee notifications
-- Countdown with progress bar, remaining time, and expected finish time.
-- Timer state is persisted in PostgreSQL and restored after restarts.
-- Approved timed requests create a durable timer-start outbox record in the same transaction as the request decision and accounting changes.
-- Temporary Telegram delivery or timer persistence failures are retried; a crash after Telegram accepts a message but before persistence may result in a duplicate start notification (at-least-once delivery).
-- The expiry alert includes a return-to-work confirmation button. A stale button cannot clear a newer timer.
-
-## Manager broadcasts
-Managers use `/broadcast` to choose a permitted branch or audience, select employees individually, and send text, voice, or audio. Every recipient has an individual acknowledgement button. Reminders repeat every 60 seconds until acknowledged and are restored after restart. Telegram clients control notification sound and mute settings; the bot cannot force continuous ringing or autoplay an audio attachment.
-
-## Database and deployment
-- The root `render.yaml` defines a Render Background Worker and a managed PostgreSQL database in Frankfurt.
-- The worker uses Telegram long polling, one instance, and a private database connection; no webhook URL or public web service is needed.
-- Render runs `python -m scripts.bootstrap` before starting the bot. The bootstrap initializes base tables, applies migrations 001–006, and verifies migration checksums.
-- Build command: `python -m pip install .`; start command: `python bot.py`.
-- Secrets are entered only in Render environment settings. The Blueprint prompts for `TELEGRAM_BOT_TOKEN` and `SUPER_ADMIN_TELEGRAM_ID`; it never stores secret values in Git.
-- See [DEPLOYMENT.md](DEPLOYMENT.md) for the exact Blueprint steps and safe handling of existing databases.
-
-## Verification status
-GitHub Actions compiles Python sources and runs unit/contract plus PostgreSQL integration tests against PostgreSQL 16. CI does not replace staging or live Telegram verification.
-
-Before production, complete:
-- Successful latest CI for the current `main` commit.
-- For an existing database, a verified backup/restore rehearsal before applying migrations.
-- Staging/Telegram end-to-end tests for onboarding, request approvals, timers, broadcasts, permissions, and recovery.
-- Render Blueprint configuration, secret entry, and a controlled first deployment.
-
-The multi-branch implementation has been merged into `main` (PR #1). GitHub Actions passed for the merge commit. This confirms automated code and PostgreSQL test success, not a live Render deployment or Telegram end-to-end verification.
+Never commit `.env`, bootstrap tokens, employee passwords, activation codes, or database URLs.
