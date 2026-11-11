@@ -5,6 +5,7 @@ import logging
 import os
 import threading
 import time
+from urllib.parse import urlsplit
 from datetime import datetime, timezone
 
 from flask import g, jsonify, request
@@ -18,6 +19,23 @@ _push_thread_lock = threading.Lock()
 VAPID_PUBLIC_KEY = os.environ.get("VAPID_PUBLIC_KEY", "").strip()
 VAPID_PRIVATE_KEY = os.environ.get("VAPID_PRIVATE_KEY", "").strip()
 VAPID_SUBJECT = os.environ.get("VAPID_SUBJECT", "mailto:admin@example.com").strip()
+
+
+def _valid_push_endpoint(value):
+    if not isinstance(value, str) or len(value) > 2048:
+        return False
+    try:
+        parsed = urlsplit(value)
+        host = (parsed.hostname or "").lower()
+        trusted_host = (
+            host in {"fcm.googleapis.com", "updates.push.services.mozilla.com",
+                     "push.services.mozilla.com", "web.push.apple.com"}
+            or host.endswith(".notify.windows.com")
+        )
+        return (parsed.scheme == "https" and trusted_host and parsed.port in (None, 443)
+                and not parsed.username and not parsed.password and not parsed.fragment)
+    except ValueError:
+        return False
 
 
 def _b64url_valid(value, maximum=512):
@@ -162,7 +180,7 @@ def save_push_subscription():
     endpoint = payload.get("endpoint")
     keys = payload.get("keys") if isinstance(payload.get("keys"), dict) else {}
     p256dh, auth = keys.get("p256dh"), keys.get("auth")
-    if (not isinstance(endpoint, str) or not endpoint.startswith("https://") or len(endpoint) > 2048
+    if (not _valid_push_endpoint(endpoint)
             or not _b64url_valid(p256dh, 256) or not _b64url_valid(auth, 128)):
         return _json_error("بيانات اشتراك الإشعارات غير صالحة.", 400)
     conn = _db()
@@ -190,7 +208,7 @@ def delete_push_subscription():
     payload = request.get_json(silent=True)
     payload = payload if isinstance(payload, dict) else {}
     endpoint = payload.get("endpoint")
-    if not isinstance(endpoint, str) or not endpoint.startswith("https://"):
+    if not _valid_push_endpoint(endpoint):
         return _json_error("بيانات الجهاز غير صالحة.", 400)
     conn = _db()
     try:
