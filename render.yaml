@@ -1,20 +1,18 @@
-# Render Blueprint for the Telegram employee bot.
-# Use a paid Background Worker so preDeployCommand runs before each deployment.
-# Secrets are prompted for in the Render Dashboard and are never stored in Git.
-
+# Web-first deployment: no Telegram token is required to launch the employee portal.
+# Telegram worker code remains in the repository and can be added later as a separate service.
 services:
-  - type: worker
-    name: employee-bot
+  - type: web
+    name: employee-web-portal
     runtime: python
     branch: main
+    plan: starter
+    region: frankfurt
     numInstances: 1
     autoDeployTrigger: checksPass
-    region: frankfurt
-    plan: 0.5c-512mb
     buildCommand: python -m pip install .
     preDeployCommand: python -m scripts.bootstrap
-    startCommand: python bot.py
-    maxShutdownDelaySeconds: 120
+    startCommand: gunicorn --workers 2 --threads 4 --timeout 60 --access-logfile - --error-logfile - web_app:app
+    healthCheckPath: /healthz
     envVars:
       - key: DATABASE_URL
         fromDatabase:
@@ -22,9 +20,9 @@ services:
           property: connectionString
       - key: DATABASE_SSLMODE
         value: prefer
-      - key: TELEGRAM_BOT_TOKEN
-        sync: false
-      - key: SUPER_ADMIN_TELEGRAM_ID
+      - key: COOKIE_SECURE
+        value: "true"
+      - key: WEB_BOOTSTRAP_TOKEN
         sync: false
 
 databases:
