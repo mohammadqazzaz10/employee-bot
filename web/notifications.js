@@ -259,6 +259,6 @@
     });
   }
 
-  window.setInterval(pollNotifications, 7000);
+  window.setInterval(pollNotifications, 3000);
   window.setTimeout(pollNotifications, 1200);
 })();
