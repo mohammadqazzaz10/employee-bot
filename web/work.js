@@ -55,7 +55,7 @@
   }
 
   async function configureRole() {
-    if (!ready || !window.currentUser && typeof currentUser === "undefined") return;
+    if (!ready || !currentUser) return;
     const user = currentUser;
     const manager = user.role !== "employee";
     $("workTasksTitle").textContent = manager ? "متابعة مهام الموظفين" : "مهامي";
