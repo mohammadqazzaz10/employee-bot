@@ -11,6 +11,11 @@ class EmployeeWebRuntimeTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn("رفيق العمل".encode("utf-8"), response.data)
 
+    def test_setup_page_is_available_for_one_time_admin_provisioning(self):
+        response = app.test_client().get("/setup")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("WEB_BOOTSTRAP_TOKEN".encode("utf-8"), response.data)
+
     def test_bootstrap_fails_closed_without_configured_secret(self):
         response = app.test_client().post(
             "/api/setup/bootstrap",
