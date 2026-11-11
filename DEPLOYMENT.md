@@ -34,6 +34,10 @@ If you are connecting an existing database, make a backup and verify that you ca
 
 No Telegram bot token, Telegram user ID, webhook URL, or Telegram webhook secret is required for the web portal.
 
+## Optional Telegram integration (not enabled by this Blueprint)
+
+The legacy Telegram bot remains in the repository for a later, separately tested rollout. If it is enabled in a future deployment, its configuration may use `TELEGRAM_BOT_TOKEN`, `SUPER_ADMIN_TELEGRAM_ID`, `RENDER_EXTERNAL_URL`, and `WEBHOOK_SECRET` (only when deliberately switching to webhook mode). Render supplies `RENDER_EXTERNAL_URL` to Web Services. These variables are intentionally absent from the current web-first Blueprint; do not add them unless you are explicitly enabling and testing the Telegram worker.
+
 ## Local development
 
 1. Install: `python -m pip install .`
