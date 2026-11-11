@@ -1470,8 +1470,7 @@ def server_error(error):
 # When launched as "python web_app.py", alias __main__ so the extension imports this
 # exact Flask app rather than creating a second module/app instance.
 import sys
-if __name__ == "__main__":
-    sys.modules.setdefault("web_app", sys.modules[__name__])
+sys.modules.setdefault("web_app", sys.modules[__name__])
 import web_admin_extensions  # noqa: E402,F401
 
 
