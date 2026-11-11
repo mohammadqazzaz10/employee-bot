@@ -47,5 +47,6 @@ jobs:
           node --check web/app.js
           node --check web/admin.js
           node --check web/setup.js
+          node --check web/notifications.js
       - name: Run unit and PostgreSQL integration tests
         run: python -m unittest discover -s tests -v
