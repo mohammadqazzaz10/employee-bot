@@ -200,6 +200,42 @@ function fillBranchOptions() {
   $("adminBranch").innerHTML = options;
   $("branchField").hidden = currentUser?.role !== "super_admin";
 }
+async function loadSettings() {
+  try {
+    const branchData = await api("/admin/branches");
+    branchesCache = branchData.branches || [];
+    const selector = $("settingsBranchSelector");
+    if (currentUser.role === "super_admin") {
+      selector.innerHTML = branchesCache.map((b) => `<option value="${b.id}">${escapeHtml(b.name)}</option>`).join("");
+      selector.hidden = false;
+      if (!selector.value && branchesCache.length) selector.value = String(branchesCache[0].id);
+    }
+    const branchId = currentUser.role === "super_admin" ? selector.value : currentUser.branch_id;
+    if (!branchId) throw new Error("لا يوجد فرع نشط لإدارة إعداداته.");
+    const query = currentUser.role === "super_admin" ? "?branch_id=" + encodeURIComponent(branchId) : "";
+    const [settingsData, typesData] = await Promise.all([
+      api("/admin/settings" + query), api("/admin/request-types" + query)
+    ]);
+    const form = $("branchSettingsForm"), values = settingsData.settings;
+    for (const name of ["smoke_enabled","lunch_enabled"]) form.elements[name].checked = Boolean(values[name]);
+    for (const name of ["smoke_daily_limit","smoke_duration_minutes","smoke_start_time","smoke_end_time","smoke_gap_minutes","lunch_duration_minutes","lunch_start_time","lunch_end_time"]) {
+      form.elements[name].value = values[name] ?? "";
+    }
+    renderAdminRequestTypes(typesData.request_types || []);
+    fillBranchOptions();
+  } catch (error) { $("settingsMessage").textContent = error.message; }
+}
+function renderAdminRequestTypes(rows) {
+  $("requestTypesAdmin").innerHTML = rows.length ? rows.map((row) => `<tr>
+    <td>${escapeHtml(row.label)}</td>
+    <td><input type="number" min="1" max="240" value="${Number(row.duration_minutes)}" data-type-duration="${row.id}" style="width:82px;height:32px;border:1px solid #e5ece7;border-radius:7px;padding:0 7px"></td>
+    <td><span class="status-pill ${row.is_active ? "status-approved" : "status-rejected"}">${row.is_active ? "مفعّل" : "معطّل"}</span></td>
+    <td><div class="request-actions"><button class="mini-button" data-save-type="${row.id}">حفظ</button><button class="mini-button" data-toggle-type="${row.id}" data-active="${row.is_active ? "true" : "false"}">${row.is_active ? "تعطيل" : "تفعيل"}</button></div></td>
+  </tr>`).join("") : '<tr><td colspan="4" class="empty-cell">لا توجد أنواع طلبات في هذا الفرع.</td></tr>';
+}
+function selectedSettingsBranch() {
+  return currentUser?.role === "super_admin" ? $("settingsBranchSelector").value : currentUser?.branch_id;
+}
 async function loadAdmins() {
   try {
     const [users, branches] = await Promise.all([api("/admin/users"), api("/admin/branches")]);
@@ -229,6 +265,7 @@ async function changePage(page) {
   if (page === "employees") loadEmployees();
   if (page === "manageRequests") loadManagerRequests($("requestFilter").value);
   if (page === "admins") loadAdmins();
+  if (page === "settings") loadSettings();
   if (page === "notifications") loadNotifications();
 }
 $("loginForm").addEventListener("submit", async (event) => {
@@ -359,6 +396,61 @@ $("adminForm").addEventListener("submit", async (event) => {
     $("adminModal").close(); event.currentTarget.reset(); flash("تم إنشاء حساب المشرف.");
     await loadAdmins();
   } catch (error) { $("adminFormMessage").textContent = error.message; }
+});
+$("settingsBranchSelector").addEventListener("change", loadSettings);
+$("branchSettingsForm").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const payload = {
+    smoke_enabled: form.elements.smoke_enabled.checked,
+    smoke_daily_limit: Number(form.elements.smoke_daily_limit.value),
+    smoke_duration_minutes: Number(form.elements.smoke_duration_minutes.value),
+    smoke_start_time: form.elements.smoke_start_time.value,
+    smoke_end_time: form.elements.smoke_end_time.value || null,
+    smoke_gap_minutes: Number(form.elements.smoke_gap_minutes.value),
+    lunch_enabled: form.elements.lunch_enabled.checked,
+    lunch_duration_minutes: Number(form.elements.lunch_duration_minutes.value),
+    lunch_start_time: form.elements.lunch_start_time.value || null,
+    lunch_end_time: form.elements.lunch_end_time.value || null
+  };
+  if (currentUser.role === "super_admin") payload.branch_id = selectedSettingsBranch();
+  const button = form.querySelector('button[type="submit"]');
+  button.disabled = true;
+  try {
+    const data = await api("/admin/settings",{method:"PATCH",body:JSON.stringify(payload)});
+    $("settingsMessage").style.color = "#4e8b69";
+    $("settingsMessage").textContent = data.message;
+    await loadSettings();
+  } catch (error) { $("settingsMessage").style.color = "#b45d54"; $("settingsMessage").textContent = error.message; }
+  finally { button.disabled = false; }
+});
+$("requestTypeForm").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const payload = {label:form.elements.label.value.trim(),duration_minutes:Number(form.elements.duration_minutes.value)};
+  if (currentUser.role === "super_admin") payload.branch_id = selectedSettingsBranch();
+  try {
+    const data = await api("/admin/request-types",{method:"POST",body:JSON.stringify(payload)});
+    $("requestTypeMessage").style.color = "#4e8b69";
+    $("requestTypeMessage").textContent = data.message;
+    form.reset(); form.elements.duration_minutes.value = 10;
+    await loadSettings();
+  } catch (error) { $("requestTypeMessage").style.color = "#b45d54"; $("requestTypeMessage").textContent = error.message; }
+});
+$("requestTypesAdmin").addEventListener("click", async (event) => {
+  const save = event.target.closest("[data-save-type]");
+  const toggle = event.target.closest("[data-toggle-type]");
+  if (!save && !toggle) return;
+  const id = (save || toggle).dataset.saveType || (save || toggle).dataset.toggleType;
+  const payload = {};
+  if (save) payload.duration_minutes = Number(document.querySelector('[data-type-duration="' + id + '"]').value);
+  if (toggle) payload.is_active = toggle.dataset.active !== "true";
+  if (currentUser.role === "super_admin") payload.branch_id = selectedSettingsBranch();
+  try {
+    await api("/admin/request-types/" + id,{method:"PATCH",body:JSON.stringify(payload)});
+    flash("تم تحديث نوع الطلب.");
+    await loadSettings();
+  } catch (error) { flash(error.message,true); }
 });
 $("notificationList").addEventListener("click", async (event) => {
   const button = event.target.closest("[data-read]");
