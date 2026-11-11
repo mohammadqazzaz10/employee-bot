@@ -92,6 +92,7 @@ REQUIRED_MIGRATIONS = (
     "004_broadcast_acknowledgements.sql",
     "005_preproduction_integrity.sql",
     "006_timer_return_acknowledgements.sql",
+    "007_employee_web_portal.sql",
 )
 
 
