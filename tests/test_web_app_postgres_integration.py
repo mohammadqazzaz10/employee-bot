@@ -157,9 +157,13 @@ class EmployeePortalPostgresIntegrationTests(unittest.TestCase):
                     cur.execute(
                         """INSERT INTO web_notifications
                            (recipient_user_id,notification_type,title,body)
-                           VALUES(%s,'integration_event','Test event','No personal data in stream')""",
+                           VALUES(%s,'integration_event','Test event','No personal data in stream')
+                           RETURNING id""",
                         (recipient_id,),
                     )
+                    notification_id = cur.fetchone()[0]
+                    cur.execute("SELECT 1 FROM web_push_queue WHERE notification_id=%s", (notification_id,))
+                    self.assertIsNotNone(cur.fetchone(), "Notification insert must enqueue a Web Push delivery.")
                 conn.commit()
             finally:
                 conn.close()
