@@ -816,7 +816,7 @@ def decide_employee_request(request_id):
                     return _json_error("لدى الموظف مؤقت نشط بالفعل.", 409)
             cur.execute(
                 """UPDATE requests SET status=%s,responded_at=CURRENT_TIMESTAMP,
-                   decided_by=%s,decided_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP
+                   decided_by_web_user_id=%s,decided_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP
                    WHERE id=%s AND status='pending'""",
                 (decision, g.current_user["id"], request_id))
             if decision == "approved" and request_kind:
