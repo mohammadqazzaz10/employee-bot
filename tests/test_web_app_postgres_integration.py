@@ -136,6 +136,39 @@ class EmployeePortalPostgresIntegrationTests(unittest.TestCase):
         cls.employee_ids.append(employee["id"])
         return employee
 
+    def test_authenticated_sse_stream_delivers_a_recipient_refresh_signal(self):
+        conn = psycopg2.connect(os.environ["DATABASE_URL"], sslmode="disable")
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT id FROM web_users WHERE username=%s", ("webroot_" + self.suffix,))
+                recipient_id = cur.fetchone()[0]
+        finally:
+            conn.close()
+
+        response = self.admin_client.get("/api/events/notifications", buffered=False)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.mimetype, "text/event-stream")
+        stream = iter(response.response)
+        try:
+            self.assertIn("retry: 3000", next(stream))
+            conn = psycopg2.connect(os.environ["DATABASE_URL"], sslmode="disable")
+            try:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        """INSERT INTO web_notifications
+                           (recipient_user_id,notification_type,title,body)
+                           VALUES(%s,'integration_event','Test event','No personal data in stream')""",
+                        (recipient_id,),
+                    )
+                conn.commit()
+            finally:
+                conn.close()
+            event = next(stream)
+            self.assertIn("event: refresh", event)
+            self.assertIn("data: {}", event)
+        finally:
+            response.close()
+
     @classmethod
     def tearDownClass(cls):
         for key, value in cls.original.items():
