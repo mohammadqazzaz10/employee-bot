@@ -135,4 +135,20 @@ CREATE TABLE IF NOT EXISTS web_audit_log (
 CREATE INDEX IF NOT EXISTS idx_web_audit_branch_date
     ON web_audit_log (branch_id, created_at DESC);
 
+-- Keep web actor IDs separate from legacy Telegram numeric actor columns.
+ALTER TABLE branch_settings
+    ADD COLUMN IF NOT EXISTS updated_by_web_user_id BIGINT REFERENCES web_users(id) ON DELETE SET NULL;
+ALTER TABLE branch_settings_audit
+    ALTER COLUMN changed_by DROP NOT NULL;
+ALTER TABLE branch_settings_audit
+    ADD COLUMN IF NOT EXISTS changed_by_web_user_id BIGINT REFERENCES web_users(id) ON DELETE SET NULL;
+
+ALTER TABLE branch_request_types
+    ADD COLUMN IF NOT EXISTS created_by_web_user_id BIGINT REFERENCES web_users(id) ON DELETE SET NULL,
+    ADD COLUMN IF NOT EXISTS updated_by_web_user_id BIGINT REFERENCES web_users(id) ON DELETE SET NULL;
+ALTER TABLE branch_request_types_audit
+    ALTER COLUMN changed_by DROP NOT NULL;
+ALTER TABLE branch_request_types_audit
+    ADD COLUMN IF NOT EXISTS changed_by_web_user_id BIGINT REFERENCES web_users(id) ON DELETE SET NULL;
+
 COMMIT;
