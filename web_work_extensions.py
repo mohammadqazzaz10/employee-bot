@@ -18,6 +18,12 @@ _push_thread = None
 _push_thread_lock = threading.Lock()
 VAPID_PUBLIC_KEY = os.environ.get("VAPID_PUBLIC_KEY", "").strip()
 VAPID_PRIVATE_KEY = os.environ.get("VAPID_PRIVATE_KEY", "").strip()
+if VAPID_PRIVATE_KEY.startswith("base64:"):
+    try:
+        VAPID_PRIVATE_KEY = base64.b64decode(VAPID_PRIVATE_KEY[7:]).decode("utf-8")
+    except Exception:
+        logger.error("VAPID_PRIVATE_KEY is not valid base64; Web Push remains disabled")
+        VAPID_PRIVATE_KEY = ""
 VAPID_SUBJECT = os.environ.get("VAPID_SUBJECT", "mailto:admin@example.com").strip()
 
 
