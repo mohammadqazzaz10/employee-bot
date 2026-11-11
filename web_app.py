@@ -398,14 +398,18 @@ def employee_summary():
                      AND ends_at<=CURRENT_TIMESTAMP""", (employee_id,))
             cur.execute(
                 """SELECT id,request_type,started_at,ends_at,completed_at,returned_at
-                   FROM web_timers WHERE employee_id=%s AND completed_at IS NULL AND returned_at IS NULL
+                   FROM web_timers WHERE employee_id=%s AND returned_at IS NULL
                    ORDER BY started_at DESC LIMIT 1""", (employee_id,))
             timer = cur.fetchone()
             cur.execute("SELECT COUNT(*) FROM requests WHERE employee_id=%s AND status='pending'", (employee_id,))
             pending = cur.fetchone()["count"]
             cur.execute(
-                """SELECT id,request_type,status,requested_at,responded_at,notes
-                   FROM requests WHERE employee_id=%s ORDER BY requested_at DESC LIMIT 5""", (employee_id,))
+                """SELECT r.id,r.request_type,r.status,r.requested_at,r.responded_at,r.notes,
+                          COALESCE(t.label,r.request_type) AS request_label
+                   FROM requests r LEFT JOIN branch_request_types t
+                     ON t.branch_id=(SELECT branch_id FROM employees WHERE id=r.employee_id)
+                    AND t.code=r.request_type
+                   WHERE r.employee_id=%s ORDER BY r.requested_at DESC LIMIT 5""", (employee_id,))
             recent = cur.fetchall()
         conn.commit()
         return jsonify({"ok": True, "profile": dict(profile) if profile else None,
@@ -439,8 +443,12 @@ def employee_requests():
     try:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute(
-                """SELECT id,request_type,status,requested_at,responded_at,notes
-                   FROM requests WHERE employee_id=%s ORDER BY requested_at DESC LIMIT 50""",
+                """SELECT r.id,r.request_type,r.status,r.requested_at,r.responded_at,r.notes,
+                          COALESCE(t.label,r.request_type) AS request_label
+                   FROM requests r LEFT JOIN branch_request_types t
+                     ON t.branch_id=(SELECT branch_id FROM employees WHERE id=r.employee_id)
+                    AND t.code=r.request_type
+                   WHERE r.employee_id=%s ORDER BY r.requested_at DESC LIMIT 50""",
                 (_employee_id(g.current_user),))
             rows = cur.fetchall()
         return jsonify({"ok": True, "requests": [dict(x) for x in rows]})
@@ -740,11 +748,14 @@ def admin_requests():
     conn = _db()
     try:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            sql = """SELECT r.id,r.request_type,r.status,r.requested_at,r.notes,
+            sql = """SELECT r.id,r.request_type,COALESCE(rt.label,r.request_type) AS request_label,
+                            r.status,r.requested_at,r.notes,
                             e.id AS employee_id,e.employee_code,e.full_name,e.job_title,
                             b.name AS branch_name
                      FROM requests r JOIN employees e ON e.id=r.employee_id
-                     JOIN branches b ON b.id=e.branch_id"""
+                     JOIN branches b ON b.id=e.branch_id
+                     LEFT JOIN branch_request_types rt
+                       ON rt.branch_id=e.branch_id AND rt.code=r.request_type"""
             clauses, params = [], []
             if status != "all":
                 clauses.append("r.status=%s")
