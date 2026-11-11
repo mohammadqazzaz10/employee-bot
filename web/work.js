@@ -49,7 +49,7 @@
     $("workTasksRefresh").addEventListener("click", loadTasks);
     $("workTaskForm").addEventListener("submit", createTask);
     $("workTaskList").addEventListener("click", handleTaskAction);
-    $("workTaskBranch")?.addEventListener("change", loadEmployees);
+    $("workTaskBranch")?.addEventListener("change", () => { loadEmployees(); loadTasks(); });
     ready = true;
     configureRole();
   }
@@ -167,8 +167,7 @@
 
   window.addEventListener("employee-portal:opened", () => {
     install();
-    configureRole();
-    loadTasks();
+    configureRole().then(loadTasks);
   });
   window.addEventListener("employee-portal:refresh", () => {
     if ($("page-workTasks")?.classList.contains("active")) loadTasks();
