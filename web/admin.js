@@ -15,7 +15,7 @@
   const esc = (v) => String(v ?? "").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
   const feedback = (id,msg,bad=false) => { const el=$(id); if(el){el.textContent=msg;el.style.color=bad?"#b45d54":"#4e8b69";} };
   const activeBranch = () => $("settingsBranchSelector")?.value || "";
-  let soundEnabled = false, knownNotifications = new Set(), audioContext = null;
+  let soundEnabled = localStorage.getItem("employee-sound-enabled") === "true", knownNotifications = new Set(), audioContext = null;
 
   function ensureTools() {
     const nav=$("sideNav"), panel=document.querySelector(".main-panel");
@@ -86,6 +86,7 @@
     $("editBranch").addEventListener("change",fillBranchEdit);
     $("soundToggle").addEventListener("click",()=>{
       soundEnabled=!soundEnabled;
+      localStorage.setItem("employee-sound-enabled",String(soundEnabled));
       if(soundEnabled){const C=window.AudioContext||window.webkitAudioContext;if(C){audioContext ||= new C();audioContext.resume();beep();}}
       $("soundToggle").textContent=soundEnabled?"إيقاف صوت التنبيه":"تفعيل صوت التنبيه";
       feedback("soundMessage",soundEnabled?"تم تفعيل الصوت أثناء فتح البوابة.":"تم إيقاف الصوت.");
@@ -242,6 +243,7 @@
   let enabled=localStorage.getItem("employee-sound-enabled")==="true";
   let audio=null, seen=new Set(), initialized=false;
   const tone=()=>{
+    enabled=localStorage.getItem("employee-sound-enabled")==="true";
     if(!enabled)return;
     const C=window.AudioContext||window.webkitAudioContext;if(!C)return;
     audio ||= new C();audio.resume();
@@ -265,7 +267,7 @@
     actions.insertBefore(n,b.nextSibling);
   }
   async function poll(){
-    if(!document.cookie.includes("employee_session="))return;
+    // Session cookie is HttpOnly; the authenticated API validates it.
     try{
       const r=await fetch("/api/notifications",{credentials:"same-origin",cache:"no-store"});
       if(!r.ok)return;const d=await r.json();
