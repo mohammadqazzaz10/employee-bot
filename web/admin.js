@@ -1,0 +1,190 @@
+/* Additive manager tools. All mutations are sent to the authenticated same-origin API. */
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const csrf = () => decodeURIComponent(document.cookie.split("; ").find(x => x.startsWith("employee_csrf="))?.split("=")[1] || "");
+  const api = async (path, method="GET", body) => {
+    const response = await fetch("/api" + path, {
+      method, credentials:"same-origin",
+      headers: {"Content-Type":"application/json", ...(method==="GET"?{}:{"X-CSRF-Token":csrf()})},
+      body: body === undefined ? undefined : JSON.stringify(body)
+    });
+    const data = await response.json().catch(()=>({}));
+    if (!response.ok) throw new Error(data.message || "تعذر تنفيذ العملية.");
+    return data;
+  };
+  const esc = (v) => String(v ?? "").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+  const feedback = (id,msg,bad=false) => { const el=$(id); if(el){el.textContent=msg;el.style.color=bad?"#b45d54":"#4e8b69";} };
+  const activeBranch = () => $("settingsBranchSelector")?.value || "";
+  let soundEnabled = false, knownNotifications = new Set(), audioContext = null;
+
+  function ensureTools() {
+    const nav=$("sideNav"), panel=document.querySelector(".main-panel");
+    if(!nav || !panel || $("page-adminTools")) return;
+    const item=document.createElement("button");
+    item.className="nav-item admin-only"; item.dataset.page="adminTools";
+    item.innerHTML="<span>✦</span> الإدارة المتقدمة";
+    nav.appendChild(item);
+    const section=document.createElement("section");
+    section.className="page-section"; section.id="page-adminTools";
+    section.innerHTML=`
+      <div class="page-heading"><div><div class="eyebrow">التحكم الإداري</div><h1>الإدارة المتقدمة</h1><p>التعاميم والاجتماعات وإدارة حالة الموظفين والفروع.</p></div></div>
+      <div class="content-card">
+        <div class="card-title-row"><div><span class="eyebrow">تواصل فوري</span><h2>إرسال تعميم أو تنبيه</h2></div></div>
+        <form id="announcementForm" class="settings-grid">
+          <label>عنوان التنبيه<input name="title" maxlength="160" required placeholder="تنبيه إداري مهم"></label>
+          <label>الفرع<select name="branch_id" id="announcementBranch"></select></label>
+          <label>موظف محدد (اختياري)<input name="employee_id" type="number" min="1" placeholder="اتركه فارغًا لإرسال التعميم للفرع"></label>
+          <label style="grid-column:1/-1">نص الرسالة<textarea name="body" rows="4" maxlength="5000" required placeholder="اكتب تفاصيل التنبيه..."></textarea></label>
+          <div class="settings-actions"><button class="primary-button compact" type="submit">إرسال الآن</button><span id="announcementMessage" class="form-message"></span></div>
+        </form>
+      </div>
+      <div class="content-card">
+        <div class="card-title-row"><div><span class="eyebrow">تنظيم العمل</span><h2>جدولة اجتماع</h2></div></div>
+        <form id="meetingForm" class="settings-grid">
+          <label>عنوان الاجتماع<input name="title" maxlength="160" required></label>
+          <label>الفرع<select name="branch_id" id="meetingBranch"></select></label>
+          <label>الموعد (بتوقيت جهازك)<input name="starts_at" type="datetime-local" required></label>
+          <label>المكان أو رابط الاجتماع<input name="location" maxlength="180" placeholder="قاعة الاجتماعات / رابط"></label>
+          <label style="grid-column:1/-1">جدول الأعمال<textarea name="agenda" rows="3" maxlength="5000"></textarea></label>
+          <div class="settings-actions"><button class="primary-button compact" type="submit">إنشاء الاجتماع وإشعار الموظفين</button><span id="meetingMessage" class="form-message"></span></div>
+        </form>
+        <div id="meetingList" class="manager-request-list"></div>
+      </div>
+      <div class="content-card">
+        <div class="card-title-row"><div><span class="eyebrow">تخصيص الفرع</span><h2>تعديل اسم الفرع وحالته</h2></div></div>
+        <form id="branchEditForm" class="settings-grid">
+          <label>الفرع<select name="branch_id" id="editBranch"></select></label>
+          <label>الاسم الجديد<input name="name" maxlength="120" required></label>
+          <label class="setting-toggle"><input name="is_active" type="checkbox" checked><span><strong>الفرع نشط</strong><small>إلغاء التفعيل يمنع العمليات الجديدة في الفرع</small></span></label>
+          <div class="settings-actions"><button class="primary-button compact" type="submit">حفظ بيانات الفرع</button><span id="branchEditMessage" class="form-message"></span></div>
+        </form>
+      </div>
+      <div class="content-card">
+        <div class="card-title-row"><div><span class="eyebrow">التنبيهات الصوتية</span><h2>الصوت وإشعارات المتصفح</h2></div></div>
+        <p class="card-subtitle">فعّل الصوت بعد تفاعل مباشر مع الصفحة. يعمل التنبيه الصوتي أثناء فتح البوابة؛ التنبيهات في الخلفية تعتمد على دعم المتصفح وإعدادات الجهاز.</p>
+        <div class="request-actions"><button class="primary-button compact" id="soundToggle" type="button">تفعيل صوت التنبيه</button><button class="soft-button" id="browserNotify" type="button">السماح بإشعارات المتصفح</button><span id="soundMessage" class="form-message"></span></div>
+      </div>`;
+    panel.appendChild(section);
+    item.addEventListener("click",()=>changePage("adminTools"));
+    $("announcementForm").addEventListener("submit", async e=>{
+      e.preventDefault(); const f=new FormData(e.currentTarget);
+      const payload={title:f.get("title"),body:f.get("body"),branch_id:f.get("branch_id")||undefined,employee_id:f.get("employee_id")?Number(f.get("employee_id")):undefined};
+      try{const r=await api("/admin/announcements","POST",payload);feedback("announcementMessage",r.message);e.currentTarget.reset();}
+      catch(err){feedback("announcementMessage",err.message,true);}
+    });
+    $("meetingForm").addEventListener("submit",async e=>{
+      e.preventDefault();const f=new FormData(e.currentTarget);
+      const payload={title:f.get("title"),agenda:f.get("agenda"),location:f.get("location"),starts_at:new Date(f.get("starts_at")).toISOString(),branch_id:f.get("branch_id")||undefined};
+      try{const r=await api("/admin/meetings","POST",payload);feedback("meetingMessage",r.message);e.currentTarget.reset();await loadMeetings();}
+      catch(err){feedback("meetingMessage",err.message,true);}
+    });
+    $("branchEditForm").addEventListener("submit",async e=>{
+      e.preventDefault();const f=new FormData(e.currentTarget);const id=f.get("branch_id");
+      try{const r=await api("/admin/branches/"+id,"PATCH",{name:f.get("name"),is_active:f.get("is_active")==="on"});feedback("branchEditMessage",r.message);await loadBranches();}
+      catch(err){feedback("branchEditMessage",err.message,true);}
+    });
+    $("editBranch").addEventListener("change",fillBranchEdit);
+    $("soundToggle").addEventListener("click",()=>{
+      soundEnabled=!soundEnabled;
+      if(soundEnabled){const C=window.AudioContext||window.webkitAudioContext;if(C){audioContext ||= new C();audioContext.resume();beep();}}
+      $("soundToggle").textContent=soundEnabled?"إيقاف صوت التنبيه":"تفعيل صوت التنبيه";
+      feedback("soundMessage",soundEnabled?"تم تفعيل الصوت أثناء فتح البوابة.":"تم إيقاف الصوت.");
+    });
+    $("browserNotify").addEventListener("click",async()=>{
+      if(!("Notification" in window)){feedback("soundMessage","هذا المتصفح لا يدعم إشعارات النظام.",true);return;}
+      const permission=await Notification.requestPermission();
+      feedback("soundMessage",permission==="granted"?"تم السماح بإشعارات المتصفح.":"لم يتم منح إذن الإشعارات.",permission!=="granted");
+    });
+    $("meetingList").addEventListener("click",async e=>{
+      const btn=e.target.closest("[data-meeting-cancel]");if(!btn)return;
+      try{await api("/admin/meetings/"+btn.dataset.meetingCancel,"PATCH",{status:"cancelled"});await loadMeetings();}
+      catch(err){feedback("meetingMessage",err.message,true);}
+    });
+    $("employeesTable")?.addEventListener("click",async e=>{
+      const btn=e.target.closest("[data-employee-status]");if(!btn)return;
+      try{const active=btn.dataset.active!=="true";const r=await api("/admin/employees/"+btn.dataset.employeeStatus+"/status","PATCH",{is_active:active});btn.dataset.active=String(active);btn.textContent=active?"حظر الموظف":"إعادة التفعيل";btn.classList.toggle("danger-button",!active);flash(r.message);await loadEmployeesForStatus();}
+      catch(err){flash(err.message,true);}
+    });
+    loadBranches();
+    loadMeetings();
+    enhanceEmployeeRows();
+    new MutationObserver(enhanceEmployeeRows).observe($("employeesTable"),{childList:true,subtree:true});
+  }
+  function beep(){
+    if(!soundEnabled||!audioContext)return;
+    const osc=audioContext.createOscillator(),gain=audioContext.createGain();
+    osc.type="sine";osc.frequency.value=880;gain.gain.value=0.055;
+    osc.connect(gain);gain.connect(audioContext.destination);osc.start();
+    gain.gain.exponentialRampToValueAtTime(0.001,audioContext.currentTime+0.35);osc.stop(audioContext.currentTime+0.36);
+  }
+  async function loadBranches(){
+    try{
+      const data=await api("/admin/branches");
+      for(const id of ["announcementBranch","meetingBranch","editBranch"]){
+        const el=$(id);if(!el)continue;const previous=el.value;
+        el.innerHTML=(data.branches||[]).map(b=>`<option value="${b.id}">${esc(b.name)}${b.is_active?"":" (موقوف)"}</option>`).join("");
+        if(previous)el.value=previous;
+      }
+      fillBranchEdit();
+    }catch(err){feedback("branchEditMessage",err.message,true);}
+  }
+  function fillBranchEdit(){
+    const select=$("editBranch"), opt=select?.selectedOptions?.[0];
+    if(!opt)return;
+    $("branchEditForm").elements.name.value=opt.textContent.replace(/ \(موقوف\)$/,"");
+    $("branchEditForm").elements.is_active.checked=!opt.textContent.endsWith("(موقوف)");
+  }
+  async function loadMeetings(){
+    try{
+      const data=await api("/admin/meetings"+(activeBranch()?"?branch_id="+encodeURIComponent(activeBranch()):""));
+      $("meetingList").innerHTML=(data.meetings||[]).map(m=>`<article class="manager-request"><div><strong>${esc(m.title)}</strong><p>${esc(m.branch_name)} · ${new Date(m.starts_at).toLocaleString("ar-JO")}</p><time>${esc(m.location||"دون مكان محدد")} · ${esc(m.status)}</time></div>${m.status==="scheduled"?`<button class="mini-button danger-button" data-meeting-cancel="${m.id}">إلغاء الاجتماع</button>`:""}</article>`).join("")||'<div class="empty-cell">لا توجد اجتماعات مجدولة.</div>';
+    }catch(err){$("meetingList").textContent=err.message;}
+  }
+  async function loadEmployeesForStatus(){
+    const rows=document.querySelectorAll("#employeesTable tr");
+    rows.forEach(row=>{const button=row.querySelector("[data-employee-status]");if(button){const active=button.dataset.active==="true";button.textContent=active?"حظر الموظف":"إعادة التفعيل";}});
+  }
+  function enhanceEmployeeRows(){
+    document.querySelectorAll("#employeesTable tr").forEach(row=>{
+      const cells=row.querySelectorAll("td");if(cells.length<5||row.querySelector("[data-employee-status]"))return;
+      const code=cells[1]?.textContent?.trim(), name=cells[0]?.textContent?.trim();
+      const action=cells[4];if(!action||!code)return;
+      const idMatch=action.innerHTML.match(/data-(?:reset-password|activation)="(\d+)"/);
+      const employeeId=idMatch?.[1];
+      if(!employeeId)return;
+      const active=!cells[3].textContent.includes("موقوف");
+      const btn=document.createElement("button");btn.type="button";btn.className="mini-button "+(active?"danger-button":"");
+      btn.dataset.employeeStatus=employeeId;btn.dataset.active=String(active);btn.textContent=active?"حظر الموظف":"إعادة التفعيل";
+      action.appendChild(btn);
+    });
+  }
+  document.addEventListener("click",e=>{
+    const nav=e.target.closest('[data-page="employees"]');
+    if(nav)window.setTimeout(enhanceEmployeeRows,250);
+    const tools=e.target.closest('[data-page="adminTools"]');
+    if(tools)window.setTimeout(()=>{loadBranches();loadMeetings();},100);
+  });
+  const originalFetch=window.fetch.bind(window);
+  // Observe notification poll responses without changing the core API client.
+  window.fetch=async (...args)=>{
+    const response=await originalFetch(...args);
+    try{
+      const url=typeof args[0]==="string"?args[0]:args[0]?.url;
+      if(url?.includes("/api/notifications")&&response.ok){
+        const data=await response.clone().json();
+        for(const n of data.notifications||[]){
+          if(!knownNotifications.has(n.id)){
+            if(knownNotifications.size&&soundEnabled)beep();
+            if(knownNotifications.size&&"Notification" in window&&Notification.permission==="granted"&&document.hidden){
+              new Notification(n.title,{body:n.body,icon:"/icons/icon.svg"});
+            }
+            knownNotifications.add(n.id);
+          }
+        }
+      }
+    }catch(_){}
+    return response;
+  };
+  document.addEventListener("DOMContentLoaded",ensureTools);
+  const ready=setInterval(()=>{if($("sideNav")&&$("pageFeedback")){ensureTools();clearInterval(ready);}},250);
+})();
