@@ -951,13 +951,20 @@ def create_admin_user():
 
 
 def _resolve_admin_branch(cur, user, requested=None):
+    if requested is not None:
+        try:
+            requested = int(requested)
+            if requested < 1:
+                return None
+        except (TypeError, ValueError):
+            return None
     if user["role"] == "super_admin":
         if requested is None:
             cur.execute("SELECT id FROM branches WHERE is_active=TRUE ORDER BY id LIMIT 1")
         else:
             cur.execute("SELECT id FROM branches WHERE id=%s AND is_active=TRUE", (requested,))
     else:
-        if requested is not None and int(requested) != int(user["branch_id"]):
+        if requested is not None and requested != int(user["branch_id"]):
             return None
         cur.execute("SELECT id FROM branches WHERE id=%s AND is_active=TRUE", (user["branch_id"],))
     row = cur.fetchone()
