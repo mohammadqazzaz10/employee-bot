@@ -3,70 +3,131 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#102a25">
-  <meta name="description" content="بوابة الموظفين لإدارة الاستراحات والطلبات والتواصل مع الإدارة">
+  <meta name="theme-color" content="#0d2924">
+  <meta name="description" content="بوابة رفيق العمل لإدارة الموظفين والاستراحات والطلبات">
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="icon" href="/icons/icon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Alexandria:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/styles.css">
   <title>رفيق العمل | بوابة الموظفين</title>
 </head>
 <body>
+  <div class="ambient ambient-one"></div><div class="ambient ambient-two"></div>
   <div class="app-shell">
     <header class="topbar">
-      <a class="brand" href="/" aria-label="رفيق العمل - الرئيسية">
-        <span class="brand-mark">ر</span>
-        <span><strong>رفيق العمل</strong><small>بوابة الموظفين</small></span>
+      <a class="brand" href="/" aria-label="رفيق العمل">
+        <span class="brand-mark"><span>ر</span></span>
+        <span class="brand-copy"><strong>رفيق العمل</strong><small>منظومة إدارة الموظفين</small></span>
       </a>
       <div class="topbar-actions">
-        <span class="connection"><i></i> اتصال آمن</span>
-        <button class="icon-button" id="installButton" hidden aria-label="تثبيت التطبيق">＋</button>
+        <span class="secure-label"><i></i> بيئة عمل آمنة</span>
+        <button class="icon-button" id="installButton" hidden title="تثبيت التطبيق" aria-label="تثبيت التطبيق">↓</button>
         <button class="avatar" id="profileButton" hidden aria-label="الملف الشخصي">م</button>
       </div>
     </header>
 
     <main>
       <section class="auth-view" id="loginView">
-        <div class="welcome">
-          <div class="eyebrow">أهلًا بك في فريقنا</div>
-          <h1>كل أمور عملك،<br><em>في مكان واحد.</em></h1>
-          <p>قدّم طلباتك، تابع استراحاتك، وتواصل مع مشرفك بسهولة وأمان.</p>
-          <div class="trust-row"><span>⌁</span> دخول خاص بكل موظف <b>•</b> بيانات محمية</div>
+        <div class="auth-intro">
+          <div class="intro-kicker"><span class="kicker-line"></span> مساحة عملك الرقمية</div>
+          <h1>عملك أسهل.<br><em>وقتك أوضح.</em></h1>
+          <p>كل ما تحتاجه خلال يوم العمل، من طلب الاستراحة إلى متابعة الطلبات والتواصل مع المشرف، في تجربة واحدة بسيطة.</p>
+          <div class="intro-points">
+            <span><b>✓</b> دخول آمن برقمك الوظيفي</span>
+            <span><b>✓</b> متابعة فورية للطلبات</span>
+            <span><b>✓</b> مصمم للهاتف والكمبيوتر</span>
+          </div>
+          <div class="intro-orbit orbit-a"></div><div class="intro-orbit orbit-b"></div>
         </div>
-        <form class="login-card" id="loginForm">
-          <div class="card-heading"><span class="card-icon">↗</span><div><h2>تسجيل الدخول</h2><p>استخدم بيانات حسابك الوظيفي</p></div></div>
-          <label for="employeeCode">الرقم الوظيفي</label>
-          <input id="employeeCode" name="employeeCode" autocomplete="username" placeholder="مثال: 1025" required>
-          <label for="password">كلمة المرور</label>
-          <div class="password-wrap"><input id="password" name="password" type="password" autocomplete="current-password" placeholder="أدخل كلمة المرور" required><button type="button" id="togglePassword" aria-label="إظهار كلمة المرور">◉</button></div>
-          <button class="primary-button" type="submit" id="loginSubmit">دخول إلى حسابي <span>←</span></button>
-          <p class="form-message" id="loginMessage" role="alert"></p>
-          <div class="login-help">نسيت كلمة المرور؟ تواصل مع مدير فرعك لإعادة تعيينها.</div>
-        </form>
+
+        <div class="auth-card-wrap">
+          <form class="auth-card" id="loginForm">
+            <div class="auth-card-top"><span class="auth-icon">↗</span><span class="micro-tag">بوابة الدخول</span></div>
+            <h2>مرحبًا بعودتك</h2><p class="card-subtitle">سجّل الدخول للوصول إلى حسابك</p>
+            <label for="employeeCode">الرقم الوظيفي أو اسم المستخدم</label>
+            <div class="field-wrap"><span class="field-icon">▤</span><input id="employeeCode" name="employeeCode" autocomplete="username" placeholder="أدخل رقمك الوظيفي" required></div>
+            <label for="password">كلمة المرور</label>
+            <div class="field-wrap"><span class="field-icon">⌑</span><input id="password" name="password" type="password" autocomplete="current-password" placeholder="أدخل كلمة المرور" required><button type="button" class="reveal-button" id="togglePassword" aria-label="إظهار كلمة المرور">◉</button></div>
+            <button class="primary-button" type="submit" id="loginSubmit"><span>تسجيل الدخول</span><b>←</b></button>
+            <p class="form-message" id="loginMessage" role="alert"></p>
+            <div class="auth-switch">لديك رمز تفعيل من الإدارة؟ <button type="button" id="showActivation">تفعيل حساب جديد</button></div>
+            <div class="auth-foot"><span class="shield">♢</span> بياناتك محمية ولا يمكن للموظفين الآخرين الاطلاع عليها.</div>
+          </form>
+
+          <form class="auth-card activation-card" id="activationForm" hidden>
+            <div class="auth-card-top"><span class="auth-icon">✦</span><span class="micro-tag">حساب جديد</span></div>
+            <h2>تفعيل حسابك</h2><p class="card-subtitle">أدخل رمز التفعيل الذي استلمته من الإدارة.</p>
+            <label for="activationCode">رمز التفعيل</label>
+            <div class="field-wrap"><span class="field-icon">⌑</span><input id="activationCode" autocomplete="one-time-code" required placeholder="الصق رمز التفعيل"></div>
+            <label for="newPassword">أنشئ كلمة مرور</label>
+            <div class="field-wrap"><span class="field-icon">▣</span><input id="newPassword" type="password" autocomplete="new-password" minlength="10" required placeholder="10 خانات على الأقل"></div>
+            <label for="confirmPassword">تأكيد كلمة المرور</label>
+            <div class="field-wrap"><span class="field-icon">▣</span><input id="confirmPassword" type="password" autocomplete="new-password" minlength="10" required placeholder="أعد كتابة كلمة المرور"></div>
+            <button class="primary-button" type="submit" id="activateSubmit"><span>تفعيل الحساب</span><b>←</b></button>
+            <p class="form-message" id="activationMessage" role="alert"></p>
+            <div class="auth-switch">لديك حساب بالفعل؟ <button type="button" id="showLogin">العودة لتسجيل الدخول</button></div>
+            <div class="auth-foot"><span class="shield">♢</span> رمز التفعيل صالح لمدة 24 ساعة ويستخدم مرة واحدة.</div>
+          </form>
+        </div>
       </section>
 
       <section class="portal-view" id="portalView" hidden>
-        <div class="greeting">
-          <div><span class="eyebrow" id="todayLabel">مساحة العمل</span><h1>مرحبًا، <span id="employeeName">...</span></h1><p id="employeeMeta">...</p></div>
-          <button class="text-button" id="logoutButton">تسجيل الخروج</button>
+        <aside class="sidebar">
+          <div class="side-profile"><div class="side-avatar" id="sideAvatar">م</div><div><strong id="sideName">المستخدم</strong><small id="sideRole">الموظف</small></div></div>
+          <div class="side-label">القائمة الرئيسية</div>
+          <nav id="sideNav">
+            <button class="nav-item active" data-page="home"><span>⌂</span> الرئيسية</button>
+            <button class="nav-item" data-page="requests"><span>▤</span> طلباتي</button>
+            <button class="nav-item" data-page="notifications"><span>♧</span> الإشعارات <i id="notificationBadge" hidden>0</i></button>
+            <button class="nav-item admin-only" data-page="employees" hidden><span>♙</span> الموظفون</button>
+            <button class="nav-item admin-only" data-page="manageRequests" hidden><span>☷</span> إدارة الطلبات</button>
+            <button class="nav-item admin-only super-only" data-page="admins" hidden><span>♧</span> حسابات المشرفين</button>
+          </nav>
+          <div class="sidebar-bottom"><div class="help-mini"><span>✧</span><strong>تحتاج إلى مساعدة؟</strong><small>تواصل مع مدير فرعك.</small></div><button class="logout-button" id="logoutButton"><span>↪</span> تسجيل الخروج</button></div>
+        </aside>
+
+        <div class="main-panel">
+          <div class="mobile-head"><span class="eyebrow" id="todayLabel">مساحة العمل</span><button class="mobile-menu" id="mobileMenu">☰</button></div>
+          <section class="page-section active" id="page-home">
+            <div class="page-heading"><div><div class="eyebrow">لوحة المتابعة</div><h1>أهلًا، <span id="employeeName">...</span> <span class="wave">✦</span></h1><p id="employeeMeta">نتمنى لك يومًا موفقًا.</p></div><div class="heading-date" id="dateLabel"></div></div>
+            <div class="stats-grid" id="statsGrid">
+              <article class="stat-card stat-main"><span class="stat-icon">♙</span><small id="statOneLabel">حالة الحساب</small><strong id="statOne">نشط</strong><span class="stat-note">حسابك جاهز للاستخدام</span></article>
+              <article class="stat-card"><span class="stat-icon blue">▤</span><small id="statTwoLabel">طلبات معلّقة</small><strong id="statTwo">—</strong><span class="stat-note">بانتظار المراجعة</span></article>
+              <article class="stat-card"><span class="stat-icon amber">◷</span><small id="statThreeLabel">الاستراحة الحالية</small><strong id="statThree">لا يوجد</strong><span class="stat-note">حالة المؤقت الآن</span></article>
+            </div>
+            <div class="content-grid">
+              <section class="content-card timer-card" id="timerCard">
+                <div class="card-title-row"><div><span class="eyebrow">متابعة الوقت</span><h2>حالة الاستراحة</h2></div><span class="live-pill"><i></i> مباشر</span></div>
+                <div class="timer-content"><div class="timer-ring" id="timerRing"><div><strong id="timerValue">--:--</strong><small id="timerCaption">لا توجد استراحة نشطة</small></div></div><div class="timer-details"><strong id="timerTitle">أنت على رأس العمل</strong><p id="timerDescription">عند الموافقة على طلبك سيظهر الوقت المتبقي هنا.</p><button class="soft-button" id="returnButton" hidden>تأكيد العودة للعمل</button></div></div>
+              </section>
+              <section class="content-card quick-card"><div class="card-title-row"><div><span class="eyebrow">اختصارات</span><h2>خدمات سريعة</h2></div></div><div class="quick-actions" id="quickActions"><button class="quick-action" id="callSupervisor"><span class="quick-icon coral">♧</span><strong>استدعاء المشرف</strong><small>اطلب التواصل معك</small></button><button class="quick-action" id="viewRequests"><span class="quick-icon blue">▤</span><strong>متابعة طلباتي</strong><small>اعرف حالة طلباتك</small></button></div></section>
+            </div>
+            <section class="content-card request-types-card" id="requestTypesCard"><div class="card-title-row"><div><span class="eyebrow">الخدمات المتاحة</span><h2>تقديم طلب جديد</h2></div><span class="muted-label">تصل الموافقة من المشرف</span></div><div class="request-type-grid" id="requestTypes"><div class="skeleton"></div><div class="skeleton"></div></div></section>
+            <section class="content-card admin-overview" id="adminOverview" hidden><div class="card-title-row"><div><span class="eyebrow">نظرة عامة</span><h2>ملخص الفرع</h2></div></div><div class="admin-stats" id="adminStats"></div></section>
+            <div class="page-feedback" id="pageFeedback" role="status"></div>
+          </section>
+
+          <section class="page-section" id="page-requests"><div class="page-heading"><div><div class="eyebrow">سجل النشاط</div><h1>طلباتي</h1><p>تابع جميع طلباتك وحالاتها.</p></div></div><section class="content-card"><div class="table-wrap"><table><thead><tr><th>نوع الطلب</th><th>التاريخ</th><th>الحالة</th><th>ملاحظات</th></tr></thead><tbody id="myRequests"><tr><td colspan="4" class="empty-cell">جارٍ تحميل الطلبات...</td></tr></tbody></table></div></section></section>
+
+          <section class="page-section" id="page-notifications"><div class="page-heading"><div><div class="eyebrow">آخر المستجدات</div><h1>الإشعارات</h1><p>كل ما يخص طلباتك وتنبيهات الإدارة.</p></div></div><div class="notification-list" id="notificationList"></div></section>
+
+          <section class="page-section" id="page-employees"><div class="page-heading"><div><div class="eyebrow">إدارة الفريق</div><h1>الموظفون</h1><p>إدارة حسابات الموظفين وتفعيل دخولهم.</p></div><button class="primary-button compact" id="addEmployeeButton">＋ إضافة موظف</button></div><section class="content-card"><div class="table-wrap"><table><thead><tr><th>الموظف</th><th>الرقم الوظيفي</th><th>الفرع</th><th>حساب الويب</th><th>إجراء</th></tr></thead><tbody id="employeesTable"><tr><td colspan="5" class="empty-cell">جارٍ التحميل...</td></tr></tbody></table></div></section></section>
+
+          <section class="page-section" id="page-manageRequests"><div class="page-heading"><div><div class="eyebrow">صندوق الوارد</div><h1>إدارة الطلبات</h1><p>راجع الطلبات واتخذ القرار المناسب.</p></div><select id="requestFilter" class="filter-select"><option value="pending">قيد الانتظار</option><option value="all">كل الطلبات</option><option value="approved">مقبولة</option><option value="rejected">مرفوضة</option></select></div><div class="manager-request-list" id="managerRequests"></div></section>
+
+          <section class="page-section" id="page-admins"><div class="page-heading"><div><div class="eyebrow">إدارة الصلاحيات</div><h1>حسابات المشرفين</h1><p>إضافة مشرف أو مدير وربطه بفرعه.</p></div><button class="primary-button compact" id="addAdminButton">＋ إضافة حساب</button></div><section class="content-card"><div class="table-wrap"><table><thead><tr><th>الاسم</th><th>اسم المستخدم</th><th>الدور</th><th>الفرع</th><th>الحالة</th></tr></thead><tbody id="adminsTable"></tbody></table></div></section></section>
         </div>
-        <div class="status-card">
-          <div class="status-top"><span class="status-dot"></span><span id="statusLabel">حالتك الآن</span><span class="status-chip" id="statusChip">على رأس العمل</span></div>
-          <div class="timer-area"><div><small id="timerCaption">حالة الدوام</small><strong id="timerValue">—</strong></div><div class="timer-ring">◷</div></div>
-          <div class="status-foot" id="statusFoot">سيظهر هنا وضع طلبك أو استراحتك الحالية.</div>
-        </div>
-        <div class="section-heading"><div><span class="eyebrow">الخدمات</span><h2>ماذا تريد أن تفعل؟</h2></div></div>
-        <div class="action-grid" id="actionGrid">
-          <button class="action-card" data-action="break"><span class="action-icon mint">◷</span><strong>طلب استراحة</strong><small>قدّم طلبًا للمشرف</small></button>
-          <button class="action-card" data-action="history"><span class="action-icon blue">▤</span><strong>سجل طلباتي</strong><small>تابع الطلبات السابقة</small></button>
-          <button class="action-card" data-action="call"><span class="action-icon amber">♧</span><strong>استدعاء المشرف</strong><small>أرسل طلب تواصل</small></button>
-          <button class="action-card" data-action="profile"><span class="action-icon violet">◎</span><strong>ملفي الوظيفي</strong><small>بياناتك وفرعك</small></button>
-        </div>
-        <section class="panel"><div class="panel-heading"><h2>آخر الطلبات</h2><span>تحديث مباشر عند الربط</span></div><div id="recentRequests" class="empty-state">لا توجد بيانات للعرض حاليًا.</div></section>
-        <p class="portal-notice" id="portalMessage" role="status"></p>
       </section>
     </main>
-    <footer><span>رفيق العمل</span><span>نظام داخلي لإدارة شؤون الموظفين</span></footer>
+    <footer><span>رفيق العمل <b>•</b> منظومة إدارة الموظفين</span><span>مصمم ليجعل يوم العمل أكثر سهولة وتنظيمًا</span></footer>
   </div>
+
+  <dialog class="modal" id="employeeModal"><form id="employeeForm" method="dialog"><div class="modal-head"><div><span class="eyebrow">ملف جديد</span><h2>إضافة موظف</h2></div><button type="button" class="close-modal" data-close="employeeModal">×</button></div><label>الاسم الكامل<input name="full_name" required maxlength="100" placeholder="اسم الموظف"></label><label>المسمى الوظيفي<input name="job_title" required maxlength="100" placeholder="مثال: أمين صندوق"></label><label>رقم الهاتف<input name="phone_number" required inputmode="tel" placeholder="07XXXXXXXX"></label><label id="branchField" hidden>الفرع<select name="branch_id" id="employeeBranch"></select></label><button class="primary-button" type="submit">حفظ الموظف <b>←</b></button><p class="form-message" id="employeeFormMessage"></p></form></dialog>
+  <dialog class="modal" id="adminModal"><form id="adminForm" method="dialog"><div class="modal-head"><div><span class="eyebrow">صلاحيات النظام</span><h2>إضافة حساب مشرف</h2></div><button type="button" class="close-modal" data-close="adminModal">×</button></div><label>الاسم الكامل<input name="full_name" required></label><label>اسم المستخدم<input name="username" required pattern="[A-Za-z0-9_.-]{3,40}"></label><label>الدور<select name="role"><option value="supervisor">مشرف</option><option value="branch_manager">مدير فرع</option></select></label><label>الفرع<select name="branch_id" id="adminBranch" required></select></label><label>كلمة مرور مؤقتة<input name="temporary_password" type="password" minlength="12" required></label><button class="primary-button" type="submit">إنشاء الحساب <b>←</b></button><p class="form-message" id="adminFormMessage"></p></form></dialog>
+  <dialog class="modal code-modal" id="activationModal"><div class="modal-head"><div><span class="eyebrow">تفعيل الموظف</span><h2>رمز التفعيل</h2></div><button type="button" class="close-modal" data-close="activationModal">×</button></div><p>انسخ هذا الرمز وسلّمه للموظف. يظهر مرة واحدة فقط وصالح لمدة 24 ساعة.</p><code id="activationResult"></code><button class="primary-button" id="copyActivation">نسخ الرمز <b>⧉</b></button></dialog>
+
   <script src="/app.js" defer></script>
 </body>
 </html>
