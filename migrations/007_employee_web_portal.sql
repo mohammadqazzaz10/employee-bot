@@ -34,6 +34,9 @@ CREATE TABLE IF NOT EXISTS web_users (
 CREATE UNIQUE INDEX IF NOT EXISTS uq_web_users_username_ci ON web_users (LOWER(username));
 CREATE INDEX IF NOT EXISTS idx_web_users_branch_role ON web_users (branch_id, role, is_active);
 
+ALTER TABLE requests
+    ADD COLUMN IF NOT EXISTS decided_by_web_user_id BIGINT REFERENCES web_users(id) ON DELETE SET NULL;
+
 CREATE TABLE IF NOT EXISTS web_sessions (
     id BIGSERIAL PRIMARY KEY,
     user_id BIGINT NOT NULL REFERENCES web_users(id) ON DELETE CASCADE,
