@@ -23,7 +23,7 @@ Branch-aware employee management platform with an Arabic RTL web portal (PWA), P
 
 1. Install dependencies: `python -m pip install .`
 2. Set `DATABASE_URL` and `DATABASE_SSLMODE` in your environment.
-3. Run `python -m scripts.bootstrap` to initialize the base schema and apply all numbered migrations, including `007_employee_web_portal.sql`.
+3. Run `python -m scripts.bootstrap` to initialize the base schema and apply all numbered migrations, including the latest numbered migrations through `010_web_notification_events.sql`.
 4. Set `COOKIE_SECURE=false` only for local HTTP development.
 5. Run `python web_app.py` and open `http://localhost:8080`.
 6. Set `WEB_BOOTSTRAP_TOKEN` to a long random secret and open `/setup` to create the first super-admin account. Remove the token after successful setup.
