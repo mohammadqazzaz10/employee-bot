@@ -212,8 +212,10 @@
       if (enabled) unlockAudioFromGesture();
     };
     button.addEventListener("click", () => {
-      window.setTimeout(() => {
-        sync();
+      sync();
+      if (localStorage.getItem(SOUND_KEY) === "true") unlockAudioFromGesture();
+    });
+    sync();
         if (localStorage.getItem(SOUND_KEY) === "true") playAlertTone();
       }, 0);
     });
