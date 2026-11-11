@@ -19,7 +19,7 @@ The current Render Blueprint launches the employee portal as a Python Web Servic
 
 ## Database safety
 
-Migrations `007_employee_web_portal.sql` through `009_web_site_settings.sql` are additive. They add employee web accounts and sessions, timers, notifications, audit events, employee status controls, meetings, and global site settings. They do not delete employee records, requests, Telegram IDs, or legacy tables.
+Migrations `007_employee_web_portal.sql` through `010_web_notification_events.sql` are additive. They add employee web accounts and sessions, timers, notifications, audit events, employee status controls, meetings, and global site settings. They do not delete employee records, requests, Telegram IDs, or legacy tables.
 
 If you are connecting an existing database, make a backup and verify that you can restore it before deploying. Review the existing migration ledger and checksums first. Do not point a new Blueprint at a production database without confirming the exact database resource and migration history.
 
@@ -50,7 +50,7 @@ The legacy Telegram bot remains in the repository for a later, separately tested
 ## Before inviting employees
 
 - Confirm latest GitHub Actions checks are green.
-- Confirm migrations `007`–`009` are applied and checksums match.
+- Confirm migrations `007`–`010` are applied and checksums match.
 - Test admin bootstrap and remove the bootstrap secret.
 - Test employee activation, login, password changes, session expiry/logout, and account lockout.
 - Test branch isolation with at least two branches and two branch managers.
@@ -65,9 +65,9 @@ A green CI run confirms automated checks only; it does not prove a live Render d
 
 Managers can add employees, issue activation codes, reset employee passwords, block/reactivate employees, configure branch break policies and request buttons, send branch announcements, and create/cancel meetings. Super-admins can also rename/disable branches and edit global portal branding and support text. Every administrative change is audited.
 
-Meeting creation sends an in-app notification immediately. A 15-minute reminder is processed by authenticated portal clients polling every 20 seconds. It is not a guaranteed server-side scheduler when all clients are offline. The portal polls for new notifications every 7 seconds while an authenticated portal session is open. New items show an actionable on-screen alert and a foreground browser tone by default after the user first interacts with the page to unlock audio (browser autoplay policy). The sound toggle remains available in the top bar. When the tab is in the background, system notifications use the service worker after browser permission is granted. Clicking a system notification returns to the portal notification list. Guaranteed push/ringing while the browser or PWA is fully closed still requires a separately configured Web Push subscription service and VAPID keys.
+Meeting creation sends an in-app notification immediately. A 15-minute reminder is processed by authenticated portal clients polling every 20 seconds. It is not a guaranteed server-side scheduler when all clients are offline. The portal uses an authenticated Server-Sent Events (SSE) stream backed by recipient-specific PostgreSQL notification channels. Notification inserts trigger an event only for the addressed web account; the event carries no notification content, and the browser fetches content through the existing authenticated API. EventSource reconnects automatically and a 15-second polling fallback remains enabled. Dashboard data also refreshes every 3 seconds as a fallback for non-notification settings changes. New items show an actionable on-screen alert and a foreground browser tone after the user first interacts with the page to unlock audio (browser autoplay policy). The sound toggle remains available in the top bar. When the tab is in the background, system notifications use the service worker after browser permission is granted. Clicking a system notification returns to the portal notification list. Guaranteed push/ringing while the browser or PWA is fully closed still requires a separately configured Web Push subscription service and VAPID keys.
 
 
 ## Live portal refresh behavior
 
-The web client refreshes authenticated employee/manager dashboard data and notification state every 3 seconds while the page is visible. This avoids manual page reloads and recovers on tab focus. It is near-real-time polling; it does not guarantee delivery while the PWA is closed. Validate request submission, manager decisions, timer state, and branch isolation with two real devices before production rollout.
+The web client refreshes authenticated employee/manager dashboard data every 3 seconds while the page is visible. Notification inserts use authenticated SSE events published to per-recipient PostgreSQL channels, with automatic reconnect and a 15-second polling fallback. The event payload contains no personal data; the browser retrieves the recipient's notifications from the normal authenticated API. This does not guarantee delivery while the PWA is closed. Validate request submission, manager decisions, timer state, and branch isolation with two real devices before production rollout.
