@@ -237,7 +237,6 @@ def list_work_tasks():
                 if not emp:
                     return _json_error("ملف الموظف غير موجود.", 404)
                 branch_filter = "AND t.branch_id=%s"
-                values = (user["employee_id"], emp["branch_id"])
                 employee_filter = "AND a.employee_id=%s"
                 values = (emp["branch_id"], user["employee_id"])
             else:
