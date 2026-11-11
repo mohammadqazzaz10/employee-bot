@@ -80,10 +80,13 @@ function showPortal(user) {
   $("statOneLabel").textContent = isAdmin ? "دورك في النظام" : "حالة الحساب";
   $("statOne").textContent = roleNames[user.role] || "نشط";
   $("statOne").style.fontSize = isAdmin ? "14px" : "";
+  if (user.must_change_password) {
+    $("passwordModal").showModal();
+    return;
+  }
   if (isAdmin) loadAdminDashboard();
   else loadEmployeeDashboard();
   loadNotifications();
-  if (user.must_change_password) $("passwordModal").showModal();
 }
 async function loadSession() {
   try {
@@ -283,6 +286,9 @@ $("passwordForm").addEventListener("submit", async (event) => {
     $("passwordModal").close();
     form.reset();
     flash(data.message || "تم تغيير كلمة المرور.");
+    if (currentUser.role === "employee") await loadEmployeeDashboard();
+    else await loadAdminDashboard();
+    await loadNotifications();
   } catch (error) { $("passwordFormMessage").textContent = error.message; }
 });
 $("logoutButton").addEventListener("click", async () => {
