@@ -206,6 +206,7 @@ def bootstrap_super_admin():
     conn = _db()
     try:
         with conn.cursor() as cur:
+            cur.execute("SELECT pg_advisory_xact_lock(hashtext('employee-web-bootstrap'))")
             cur.execute("SELECT COUNT(*) FROM web_users")
             if cur.fetchone()[0] != 0:
                 conn.rollback()
@@ -474,7 +475,8 @@ def create_employee_request():
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute(
                 """SELECT e.id,e.branch_id,e.full_name
-                   FROM employees e WHERE e.id=%s AND e.is_active=TRUE FOR UPDATE""",
+                   FROM employees e JOIN branches b ON b.id=e.branch_id AND b.is_active=TRUE
+                   WHERE e.id=%s AND e.is_active=TRUE FOR UPDATE OF e""",
                 (_employee_id(g.current_user),))
             employee = cur.fetchone()
             if not employee:
@@ -688,7 +690,7 @@ def create_employee():
     if phone.startswith("07") and len(phone) == 10:
         phone = "962" + phone[1:]
     branch_id = payload.get("branch_id") or g.current_user["branch_id"]
-    if not full_name or not job_title or not (10 <= len(phone) <= 15):
+    if not full_name or not job_title or not (10 <= len(phone) <= 15) or not branch_id:
         return _json_error("أدخل الاسم والمسمى الوظيفي ورقم هاتف صحيحًا.", 400)
     conn = _db()
     try:
@@ -696,6 +698,10 @@ def create_employee():
             if not _branch_allowed(cur, g.current_user, branch_id):
                 conn.rollback()
                 return _json_error("لا تملك صلاحية إنشاء موظف في هذا الفرع.", 403)
+            cur.execute("SELECT 1 FROM branches WHERE id=%s AND is_active=TRUE", (branch_id,))
+            if not cur.fetchone():
+                conn.rollback()
+                return _json_error("الفرع غير موجود أو غير نشط.", 400)
             cur.execute(
                 """INSERT INTO employees(employee_code,phone_number,full_name,job_title,branch_id,is_active)
                    VALUES(%s,%s,%s,%s,%s,TRUE) RETURNING id,employee_code""",
@@ -792,6 +798,7 @@ def decide_employee_request(request_id):
                 """SELECT r.id,r.employee_id,r.request_type,r.status,e.branch_id,e.full_name,
                           u.id AS employee_user_id
                    FROM requests r JOIN employees e ON e.id=r.employee_id
+                   JOIN branches b ON b.id=e.branch_id AND b.is_active=TRUE
                    LEFT JOIN web_users u ON u.employee_id=e.id AND u.is_active=TRUE
                    WHERE r.id=%s FOR UPDATE OF r,e""", (request_id,))
             row = cur.fetchone()
