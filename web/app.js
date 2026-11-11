@@ -94,6 +94,7 @@ function showPortal(user) {
 }
 let liveSyncTimer = null;
 let liveSyncBusy = false;
+let lastRequestTypesRefresh = 0;
 
 async function syncPortalData() {
   if (!currentUser || document.hidden || liveSyncBusy) return;
@@ -102,7 +103,8 @@ async function syncPortalData() {
   liveSyncBusy = true;
   try {
     if (currentUser.role === "employee") {
-      await loadEmployeeDashboard({ silent: true, refreshTypes: false });
+      const refreshTypes = Date.now() - lastRequestTypesRefresh >= 30000;
+      await loadEmployeeDashboard({ silent: true, refreshTypes });
     } else {
       // The overview endpoint is refreshed independently from the request list.
       // Only fetch the selected request filter while that page is actually open.
@@ -146,6 +148,7 @@ async function loadEmployeeDashboard({ silent = false, refreshTypes = true } = {
     $("statTwo").textContent = summary.pending_count ?? 0;
     renderTimer(summary.timer);
     if (types) {
+      lastRequestTypesRefresh = Date.now();
       $("requestTypes").innerHTML = (types.request_types || []).length
         ? types.request_types.map((type, index) => `<button class="request-type" data-request-type="${escapeHtml(type.code)}"><span class="type-symbol">${["◷","✧","▣","♧"][index % 4]}</span><strong>${escapeHtml(type.label)}</strong><small>المدة ${Number(type.duration_minutes)} دقيقة • يتطلب موافقة</small></button>`).join("")
         : '<div class="empty-cell">لا توجد أنواع طلبات مفعّلة لفرعك حاليًا.</div>';
@@ -388,6 +391,7 @@ $("passwordForm").addEventListener("submit", async (event) => {
     if (currentUser.role === "employee") await loadEmployeeDashboard();
     else await loadAdminDashboard();
     await loadNotifications();
+    startLiveSync();
   } catch (error) { $("passwordFormMessage").textContent = error.message; }
 });
 $("logoutButton").addEventListener("click", async () => {
@@ -417,7 +421,9 @@ $("managerRequests").addEventListener("click", async (event) => {
     const data = await api("/admin/requests/" + button.dataset.id + "/decision",{
       method:"POST",body:JSON.stringify({decision:button.dataset.decision})
     });
-    flash(data.message); await loadManagerRequests($("requestFilter").value); await loadAdminDashboard();
+    flash(data.message);
+    await loadManagerRequests($("requestFilter").value);
+    await loadAdminDashboard({ loadRequests: false });
   } catch (error) { flash(error.message,true); button.disabled = false; }
 });
 $("requestFilter").addEventListener("change", () => loadManagerRequests($("requestFilter").value));
