@@ -5,6 +5,7 @@ Branch-aware employee management platform with an Arabic RTL web portal (PWA), P
 ## Main capabilities
 
 - Employee web accounts activated by one-time codes; no Telegram registration or Premium subscription is required.
+- Super-admin can create branches, provision branch managers, add employees, and reset employee passwords with one-time temporary credentials.
 - Employee self-service for branch-configured requests, request history, countdown timers, return confirmation, and supervisor call requests.
 - Manager and supervisor portal with branch-scoped request review, approval/rejection, employee management, and notifications.
 - Branch policy settings for smoking/lunch windows, durations, daily limits, minimum gaps, and configurable request buttons.
