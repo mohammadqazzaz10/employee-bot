@@ -855,6 +855,39 @@ def admin_branches():
         conn.close()
 
 
+@app.post("/api/admin/branches")
+@roles_required("super_admin")
+def create_branch():
+    payload = request.get_json(silent=True) or {}
+    code = str(payload.get("code") or "").strip().lower()
+    name = str(payload.get("name") or "").strip()
+    if not re.fullmatch(r"[a-z0-9_-]{2,24}", code) or not 2 <= len(name) <= 80:
+        return _json_error("أدخل رمز فرع من 2 إلى 24 حرفًا/رقمًا واسمًا صحيحًا.", 400)
+    conn = _db()
+    try:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(
+                "INSERT INTO branches(code,name,is_active) VALUES(%s,%s,TRUE) RETURNING id,code,name,is_active",
+                (code, name))
+            branch = cur.fetchone()
+            cur.execute("INSERT INTO branch_settings(branch_id) VALUES(%s) ON CONFLICT DO NOTHING",
+                        (branch["id"],))
+            cur.execute(
+                """INSERT INTO branch_request_types(branch_id,code,label,duration_minutes,is_active)
+                   VALUES(%s,'bathroom','🚻 استئذان الذهاب إلى الحمام',10,TRUE),
+                         (%s,'prayer','🕌 استئذان الذهاب إلى الصلاة',10,TRUE)
+                   ON CONFLICT(branch_id,code) DO NOTHING""",
+                (branch["id"], branch["id"]))
+            _audit(cur, g.current_user["id"], branch["id"], "branch_created", "branch", branch["id"])
+        conn.commit()
+        return jsonify({"ok": True, "branch": dict(branch), "message": "تم إنشاء الفرع وتجهيز إعداداته وأزرار الطلبات الأساسية."}), 201
+    except psycopg2.IntegrityError:
+        conn.rollback()
+        return _json_error("رمز الفرع أو اسمه مستخدم مسبقًا.", 409)
+    finally:
+        conn.close()
+
+
 @app.get("/api/admin/employees")
 @roles_required("super_admin", "branch_manager", "supervisor")
 def admin_employees():
