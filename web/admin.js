@@ -200,6 +200,7 @@
     const card=document.createElement("section");card.className="content-card";card.id="siteSettingsExtra";
     card.innerHTML='<div class="card-title-row"><div><span class="eyebrow">هوية النظام</span><h2>إعدادات الموقع العامة</h2></div></div><form id="siteSettingsExtraForm" class="settings-grid"><label>اسم النظام<input name="site_name" maxlength="80" required></label><label>الوصف المختصر<input name="site_tagline" maxlength="120" required></label><label style="grid-column:1/-1">رسالة المساعدة<input name="support_message" maxlength="240"></label><label style="grid-column:1/-1">إعلان عام<input name="maintenance_notice" maxlength="300"></label><div class="settings-actions"><button class="primary-button compact" type="submit">حفظ إعدادات الموقع</button><span id="siteSettingsExtraMessage" class="form-message"></span></div></form>';
     page.appendChild(card);
+    if(document.getElementById("addBranchButton")?.hidden){card.hidden=true;return;}
     try{const data=await call("/admin/site-settings");const form=document.getElementById("siteSettingsExtraForm");for(const [k,v] of Object.entries(data.settings||{})){if(form.elements[k])form.elements[k].value=v;}apply(data.settings||{});}
     catch(e){document.getElementById("siteSettingsExtraMessage").textContent=e.message;}
     document.getElementById("siteSettingsExtraForm").addEventListener("submit",async e=>{
