@@ -52,6 +52,7 @@ function showLogin(message = "") {
   $("profileButton").hidden = true;
   $("loginMessage").textContent = message;
   if (timerInterval) window.clearInterval(timerInterval);
+  if (liveSyncTimer) window.clearInterval(liveSyncTimer);
 }
 function showPortal(user) {
   currentUser = user;
@@ -87,6 +88,7 @@ function showPortal(user) {
   if (isAdmin) loadAdminDashboard();
   else loadEmployeeDashboard();
   loadNotifications();
+  startLiveSync();
 }
 let liveSyncTimer = null;
 let liveSyncBusy = false;
