@@ -1,33 +1,31 @@
 # Employee Portal (PWA)
 
-Arabic RTL employee-facing Progressive Web App for the existing Employee Bot.
+The employee portal is a mobile-first Arabic RTL Progressive Web App served by the Flask API in `web_app.py`.
 
-## Current implementation stage
+## Implemented
 
-This branch introduces the responsive employee portal shell, installable PWA manifest, app icon, and service-worker shell caching. It is deliberately **not production-authentication-ready yet**: the browser expects these same-origin API endpoints:
+- Employee and manager sign-in with employee code / username.
+- One-time employee activation codes issued by an authorized manager.
+- One-time super-admin bootstrap protected by `WEB_BOOTSTRAP_TOKEN`.
+- Password hashing with Werkzeug scrypt, account lockout after repeated failures, hashed opaque sessions, 12-hour expiry, revocation, HttpOnly session cookie, SameSite cookie policy, and CSRF double-submit validation.
+- Employee profile, branch-scoped request types, request creation, request history, active timer, return confirmation, and supervisor call.
+- Branch-scoped manager request inbox, atomic approve/reject, employee creation, activation-code issue, and super-admin creation of branch supervisors/managers.
+- Audit trail, notifications, responsive RTL interface, animated interactions, and PWA installation.
+- Service worker never caches API responses or authenticated data.
 
-- `POST /api/auth/login` with `employee_code` and `password`
-- `GET /api/auth/me`
-- `POST /api/auth/logout`
+## Deployment gate
 
-Those endpoints, credential provisioning, manager approval flows, and database migration are not included in this UI-only stage. Do not publish this branch as the live employee portal or distribute credentials until the API and authorization work is completed and tested.
+The database migration `007_employee_web_portal.sql` is additive and retains the existing employee, request, and Telegram data. Render runs the migration bootstrap before the web process starts. The Telegram bot is not required to launch the web portal and no Telegram token is requested by the web-first Render Blueprint.
 
-## Design and safety decisions
+The portal still requires a real PostgreSQL-backed staging test before employee rollout. Do not distribute activation codes until the deployment, login, branch-isolation, request-approval, timer, and session-revocation tests pass. Remove `WEB_BOOTSTRAP_TOKEN` from Render immediately after creating the first super-admin account.
 
-- Arabic RTL, responsive mobile-first layout.
-- PWA install prompt; no app-store publication required.
-- API requests use same-origin cookies and never store credentials in localStorage.
-- The service worker never caches `/api/*` responses.
-- Employee identity, branch, role, and permissions must be derived server-side from the authenticated session, never from browser-supplied IDs.
-- Existing Telegram worker and PostgreSQL records remain unchanged.
+## First deployment
 
-## Next required implementation
+1. Deploy the Render Blueprint from `main`.
+2. Set a long random `WEB_BOOTSTRAP_TOKEN` in Render.
+3. Open `/setup` over HTTPS and create the first super-admin account.
+4. Remove `WEB_BOOTSTRAP_TOKEN` from Render and redeploy/restart.
+5. Sign in at `/`, create employee records, and issue each employee a one-time activation code.
+6. Employees activate their own accounts and choose their own passwords.
 
-1. Add additive migration for employee web credentials and revocable sessions / activation codes.
-2. Implement secure authentication (slow password hashing, rate limiting, secure HttpOnly cookies, CSRF protection, session revocation).
-3. Implement employee self-service endpoints using existing request, branch, request-type, and timer rules.
-4. Implement manager web views and atomic branch-scoped approvals.
-5. Add audit events, security tests, PostgreSQL integration tests, and end-to-end browser tests.
-6. Add a Render Web Service for the API + static PWA only after the above checks pass. Keep the Telegram Background Worker as a separate service.
-
-Never put real secrets, employee passwords, phone numbers, or database URLs in Git.
+Never commit secrets, employee passwords, activation codes, phone numbers, or database URLs.
