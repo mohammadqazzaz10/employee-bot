@@ -83,6 +83,7 @@ function showPortal(user) {
   if (isAdmin) loadAdminDashboard();
   else loadEmployeeDashboard();
   loadNotifications();
+  if (user.must_change_password) $("passwordModal").showModal();
 }
 async function loadSession() {
   try {
@@ -268,6 +269,21 @@ $("activationForm").addEventListener("submit", async (event) => {
     window.setTimeout(() => { $("activationForm").hidden = true; $("loginForm").hidden = false; }, 1800);
   } catch (error) { $("activationMessage").style.color = "#b24e48"; $("activationMessage").textContent = error.message; }
   finally { button.disabled = false; }
+});
+$("passwordForm").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const current = form.elements.current_password.value;
+  const next = form.elements.new_password.value;
+  const confirm = form.elements.confirm_password.value;
+  if (next !== confirm) { $("passwordFormMessage").textContent = "كلمتا المرور الجديدتان غير متطابقتين."; return; }
+  try {
+    const data = await api("/auth/change-password", {method:"POST",body:JSON.stringify({current_password:current,new_password:next})});
+    currentUser.must_change_password = false;
+    $("passwordModal").close();
+    form.reset();
+    flash(data.message || "تم تغيير كلمة المرور.");
+  } catch (error) { $("passwordFormMessage").textContent = error.message; }
 });
 $("logoutButton").addEventListener("click", async () => {
   try { await api("/auth/logout",{method:"POST",body:"{}"}); } catch {}
