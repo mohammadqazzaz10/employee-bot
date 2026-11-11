@@ -50,6 +50,7 @@ function showLogin(message = "") {
   currentUser = null;
   $("loginView").hidden = false;
   $("portalView").hidden = true;
+  window.dispatchEvent(new Event("employee-portal:closed"));
   $("profileButton").hidden = true;
   $("loginMessage").textContent = message;
   if (timerInterval) window.clearInterval(timerInterval);
@@ -91,6 +92,7 @@ function showPortal(user) {
   else loadEmployeeDashboard();
   loadNotifications();
   startLiveSync();
+  window.dispatchEvent(new Event("employee-portal:opened"));
 }
 let liveSyncTimer = null;
 let liveSyncBusy = false;
@@ -403,6 +405,7 @@ $("passwordForm").addEventListener("submit", async (event) => {
     else await loadAdminDashboard();
     await loadNotifications();
     startLiveSync();
+    window.dispatchEvent(new Event("employee-portal:opened"));
   } catch (error) { $("passwordFormMessage").textContent = error.message; }
 });
 $("logoutButton").addEventListener("click", async () => {
