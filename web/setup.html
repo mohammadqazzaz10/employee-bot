@@ -1,0 +1,10 @@
+<!doctype html>
+<html lang="ar" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#102a25"><link rel="stylesheet" href="/styles.css"><title>تهيئة الإدارة | رفيق العمل</title></head>
+<body><div class="app-shell"><header class="topbar"><a class="brand" href="/"><span class="brand-mark"><span>ر</span></span><span class="brand-copy"><strong>رفيق العمل</strong><small>التهيئة الأولية الآمنة</small></span></a></header>
+<main class="auth-view" style="grid-template-columns:1fr;max-width:620px;margin:auto"><form class="auth-card" id="setupForm"><div class="auth-card-top"><span class="auth-icon">♢</span><span class="micro-tag">إعداد لمرة واحدة</span></div><h2>إنشاء حساب المدير العام</h2><p class="card-subtitle">تُستخدم هذه الصفحة مرة واحدة فقط بعد نشر الموقع. لا تشارك رمز التهيئة مع أي شخص.</p>
+<label for="bootstrapToken">رمز التهيئة من Render</label><div class="field-wrap"><input id="bootstrapToken" type="password" autocomplete="off" required placeholder="أدخل WEB_BOOTSTRAP_TOKEN"></div>
+<label for="fullName">الاسم الكامل</label><div class="field-wrap"><input id="fullName" required minlength="2" maxlength="120" placeholder="اسم المدير العام"></div>
+<label for="username">اسم المستخدم</label><div class="field-wrap"><input id="username" required pattern="[A-Za-z0-9_.-]{3,40}" placeholder="مثال: admin"></div>
+<label for="password">كلمة مرور قوية (12 خانة على الأقل)</label><div class="field-wrap"><input id="password" type="password" required minlength="12" autocomplete="new-password" placeholder="أنشئ كلمة مرور قوية"></div>
+<button class="primary-button" type="submit" id="setupSubmit"><span>إنشاء حساب المدير</span><b>←</b></button><p class="form-message" id="setupMessage" role="alert"></p>
+<div class="auth-foot">بعد نجاح العملية، احذف WEB_BOOTSTRAP_TOKEN من إعدادات Render فورًا.</div></form></main></div><script src="/setup.js" defer></script></body></html>
