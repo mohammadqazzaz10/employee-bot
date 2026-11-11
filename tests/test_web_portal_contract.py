@@ -84,7 +84,7 @@ class EmployeePortalContractTests(unittest.TestCase):
         client = (WEB / "notifications.js").read_text(encoding="utf-8")
         app = (WEB / "app.js").read_text(encoding="utf-8")
         self.assertIn('@app.get("/api/events/notifications")', backend)
-        self.assertIn('@auth_required', backend[backend.index('@app.get("/api/events/notifications")'):])
+        self.assertIn('@app.get("/api/events/notifications")\n@auth_required', backend)
         self.assertIn('LISTEN {}', backend)
         self.assertIn('new EventSource("/api/events/notifications"', client)
         self.assertIn('window.dispatchEvent(new Event("employee-portal:refresh"))', client)
