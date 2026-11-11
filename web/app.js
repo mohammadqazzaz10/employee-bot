@@ -94,10 +94,11 @@ function showPortal(user) {
 }
 let liveSyncTimer = null;
 let liveSyncBusy = false;
+let portalMutationBusy = false;
 let lastRequestTypesRefresh = 0;
 
 async function syncPortalData() {
-  if (!currentUser || document.hidden || liveSyncBusy) return;
+  if (!currentUser || document.hidden || liveSyncBusy || portalMutationBusy) return;
   const portal = $("portalView");
   if (!portal || portal.hidden || currentUser.must_change_password) return;
   liveSyncBusy = true;
@@ -207,12 +208,19 @@ function renderRequests(rows) {
   $("myRequests").innerHTML = rows.length ? rows.map((row) => `<tr><td>${escapeHtml(row.request_label || row.request_type)}</td><td>${formatDate(row.requested_at)}</td><td><span class="status-pill ${statusClass(row.status)}">${statusLabel(row.status)}</span></td><td>${escapeHtml(row.notes || "—")}</td></tr>`).join("") : '<tr><td colspan="4" class="empty-cell">لا توجد طلبات حتى الآن.</td></tr>';
 }
 async function submitRequest(code, button) {
+  if (portalMutationBusy) return;
+  portalMutationBusy = true;
   button.disabled = true;
   try {
     const result = await api("/employee/requests", {method:"POST", body:JSON.stringify({request_type:code})});
     flash(result.message || "تم إرسال الطلب.");
     await loadEmployeeDashboard();
-  } catch (error) { flash(error.message, true); button.disabled = false; }
+  } catch (error) {
+    flash(error.message, true);
+    button.disabled = false;
+  } finally {
+    portalMutationBusy = false;
+  }
 }
 async function loadAdminDashboard({ silent = false, loadRequests = true } = {}) {
   try {
@@ -415,7 +423,8 @@ $("returnButton").addEventListener("click", async () => {
 });
 $("managerRequests").addEventListener("click", async (event) => {
   const button = event.target.closest("[data-decision]");
-  if (!button) return;
+  if (!button || portalMutationBusy) return;
+  portalMutationBusy = true;
   button.disabled = true;
   try {
     const data = await api("/admin/requests/" + button.dataset.id + "/decision",{
@@ -424,7 +433,12 @@ $("managerRequests").addEventListener("click", async (event) => {
     flash(data.message);
     await loadManagerRequests($("requestFilter").value);
     await loadAdminDashboard({ loadRequests: false });
-  } catch (error) { flash(error.message,true); button.disabled = false; }
+  } catch (error) {
+    flash(error.message,true);
+    button.disabled = false;
+  } finally {
+    portalMutationBusy = false;
+  }
 });
 $("requestFilter").addEventListener("change", () => loadManagerRequests($("requestFilter").value));
 $("employeesTable").addEventListener("click", async (event) => {
