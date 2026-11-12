@@ -17,8 +17,8 @@
 
 /* Emran Mall brand system + clear interactive list affordances */
 :root{--ink:#12372d;--green:#1b5947;--gold:#c79d4b;--mint:#d6eadc;--paper:#fff;--line:#e7ece7}
-.brand-mark{background:linear-gradient(145deg,#174c3d,#0d2924);border:1px solid #d4b36a;box-shadow:0 8px 20px #174c3d30}
-.brand-mark img{width:100%;height:100%;object-fit:contain;border-radius:13px;background:#fff;padding:3px}
+.brand-mark{background:linear-gradient(145deg,#174c3d,#0d2924) url("/icons/icon.svg") center/cover no-repeat;border:1px solid #d4b36a;box-shadow:0 8px 20px #174c3d30}
+.brand-mark img{width:100%;height:100%;object-fit:contain;border-radius:13px;background:transparent;padding:3px}
 .brand-mark span{color:#f5e5bd}
 .auth-intro h1 em,.eyebrow{color:#9a7737}
 .primary-button{background:linear-gradient(110deg,#174c3d,#0d2924);box-shadow:0 9px 20px #174c3d24}
