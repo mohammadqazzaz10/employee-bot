@@ -174,6 +174,16 @@ class EmployeePortalPostgresIntegrationTests(unittest.TestCase):
             response.close()
 
     def test_work_tasks_are_assigned_scoped_and_status_history_is_recorded(self):
+        # Use an isolated authenticated client so this test does not depend on another test session.
+        self.manager_client = app.test_client()
+        manager_login = self.manager_client.post("/api/auth/login", json={
+            "username": "webmgr_" + self.suffix,
+            "password": "Permanent-Manager-2026!",
+        })
+        self.assertEqual(manager_login.status_code, 200)
+        self.manager_csrf = manager_login.get_json()["csrf_token"]
+        self.manager_headers = {"X-CSRF-Token": self.manager_csrf}
+
         # A branch manager can only assign work to active employees in their own branch.
         rejected = self.manager_client.post("/api/admin/tasks", headers=self.manager_headers, json={
             "title": "Cross-branch task",
