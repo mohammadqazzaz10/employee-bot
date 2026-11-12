@@ -352,7 +352,8 @@ async function loadNotifications() {
     const unread = rows.filter((row) => !row.read_at).length;
     $("notificationBadge").hidden = unread === 0;
     $("notificationBadge").textContent = unread;
-    $("headerNotificationBadge").hidden = unread === 0;\n    $("headerNotificationBadge").textContent = unread > 99 ? "99+" : unread;
+    $("headerNotificationBadge").hidden = unread === 0;
+    $("headerNotificationBadge").textContent = unread > 99 ? "99+" : unread;
     $("notificationList").innerHTML = rows.length ? rows.map((row) => `<article class="notification-item ${row.read_at ? "" : "unread"}" data-notification-id="${Number(row.id)}"><div><strong>${escapeHtml(row.title)}</strong><p>${escapeHtml(row.body)}</p><time>${formatDate(row.created_at)}</time><details class="notification-detail"><summary>عرض التفاصيل</summary><p>${escapeHtml(row.body)}</p></details></div><button class="notification-open" type="button" data-notification-open="${Number(row.id)}">فتح الإشعار ←</button></article>`).join("") : '<div class="content-card empty-cell">لا توجد إشعارات جديدة.</div>';
   } catch {}
 }
