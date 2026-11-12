@@ -9,7 +9,7 @@ class EmployeeWebRuntimeTests(unittest.TestCase):
     def test_homepage_serves_portal(self):
         response = app.test_client().get("/")
         self.assertEqual(response.status_code, 200)
-        self.assertIn("رفيق العمل".encode("utf-8"), response.data)
+        self.assertIn("عمران مول | Emran Mall".encode("utf-8"), response.data)
         self.assertEqual(response.headers.get("X-Frame-Options"), "DENY")
         self.assertIn("frame-ancestors 'none'", response.headers.get("Content-Security-Policy", ""))
 
