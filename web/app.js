@@ -228,7 +228,7 @@ function renderTimer(timer) {
     const percent = Math.min(100, Math.max(0, (Date.now() - start) / total * 100));
     $("timerProgress").style.width = percent + "%";
     $("timerProgress").parentElement.setAttribute("aria-valuenow", String(Math.round(percent)));
-    $("timerProgressText").textContent = Math.round(percent) + "% من الوقت المنقضي";\n    const percent = Math.min(100, Math.max(0, (Date.now() - start) / total * 100));\n    $("timerProgress").style.width = percent + "%";\n    $("timerProgressText").textContent = Math.round(percent) + "% من الوقت المنقضي";
+    $("timerProgressText").textContent = Math.round(percent) + "% من الوقت المنقضي";
     if (remaining <= 0) {
       $("timerTitle").textContent = "انتهت مدة الاستراحة";
       $("timerDescription").textContent = "يرجى تأكيد عودتك إلى العمل.";
