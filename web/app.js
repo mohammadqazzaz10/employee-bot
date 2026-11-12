@@ -93,7 +93,7 @@ function showPortal(user) {
   loadNotifications();
   const pendingNotificationId = new URLSearchParams(window.location.search).get("openNotification");
   if (pendingNotificationId) {
-    api("/notifications").then((data) => {
+    api("/notifications").then(async (data) => {
       const notification = (data.notifications || []).find((row) => Number(row.id) === Number(pendingNotificationId));
       if (notification) {
         if (!notification.read_at) await api("/notifications/" + notification.id + "/read", {method:"POST",body:"{}"});
