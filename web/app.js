@@ -248,9 +248,11 @@ async function loadAdminDashboard({ silent = false, loadRequests = true } = {}) 
     $("statTwo").textContent = stats.pending_requests ?? 0;
     $("statThree").textContent = stats.active_timers ?? 0;
     $("adminStats").innerHTML = [
-      ["إجمالي الموظفين",stats.employees],["طلبات بانتظارك",stats.pending_requests],
-      ["استراحات نشطة",stats.active_timers],["إشعارات غير مقروءة",stats.unread_notifications]
-    ].map(([label,value]) => `<div class="admin-stat"><strong>${Number(value || 0)}</strong><small>${label}</small></div>`).join("");
+      ["إجمالي الموظفين",stats.employees,"employees","عرض الموظفين"],
+      ["طلبات بانتظارك",stats.pending_requests,"manageRequests","مراجعة الطلبات"],
+      ["استراحات نشطة",stats.active_timers,"manageRequests","متابعة الاستراحات"],
+      ["إشعارات غير مقروءة",stats.unread_notifications,"notifications","عرض الإشعارات"]
+    ].map(([label,value,page,hint]) => `<button type="button" class="admin-stat admin-stat-action" data-admin-shortcut="${page}" aria-label="${label}: ${Number(value || 0)} — ${hint}"><strong>${Number(value || 0)}</strong><small>${label}</small><span>${hint} ←</span></button>`).join("");
     $("statTwoLabel").textContent = "طلبات معلّقة";
     $("statThreeLabel").textContent = "استراحات نشطة";
     if (loadRequests) await loadManagerRequests("pending");
@@ -364,6 +366,26 @@ async function changePage(page) {
   return true;
 }
 window.changePage = changePage;
+
+// Delegate navigation so fixed and dynamically added manager pages all work.
+$("sideNav").addEventListener("click", async (event) => {
+  const item = event.target.closest("button[data-page]");
+  if (!item || item.disabled || item.hidden) return;
+  event.preventDefault();
+  const changed = await changePage(item.dataset.page);
+  if (changed) {
+    $("sideNav").querySelectorAll("button[data-page]").forEach((button) => {
+      button.classList.toggle("active", button === item);
+      if (button === item) button.setAttribute("aria-current", "page");
+      else button.removeAttribute("aria-current");
+    });
+  }
+});
+$("adminStats").addEventListener("click", (event) => {
+  const shortcut = event.target.closest("[data-admin-shortcut]");
+  if (shortcut) changePage(shortcut.dataset.adminShortcut);
+});
+
 $("loginForm").addEventListener("submit", async (event) => {
   event.preventDefault();
   const button = $("loginSubmit");
