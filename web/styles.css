@@ -110,3 +110,13 @@ body {
   .brand-copy strong { font-size: 13px; }
   .nav-item { min-height: 46px; font-size: 11px; }
 }
+
+
+/* Responsive brand lockup and consistent Emran Mall visual system */
+:root{--ink:#1f3448;--green:#286b78;--mint:#e3eff1;--muted:#718092;--line:#e1e7ed;--paper:#fff;--gold:#4c929a;--shadow:0 14px 38px rgba(28,48,67,.075)}
+body{color:#2a3c4f;background:radial-gradient(ellipse at 92% 0%,#eaf2f5 0,transparent 36%),#f4f6f8}
+.topbar{gap:12px}.brand{min-width:0;flex:0 1 auto;gap:11px}.brand-mark{flex:0 0 48px;width:48px;height:48px;border-radius:13px}.brand-copy{min-width:0;display:flex;flex-direction:column;gap:3px}.brand-copy strong{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:clamp(11px,1.2vw,15px);line-height:1.45}.brand-copy small{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:clamp(8px,.85vw,10px)}.topbar-actions{flex:0 0 auto}
+.sidebar{background:linear-gradient(155deg,#20364d 0%,#294f65 100%)}.nav-item{transition:background .18s ease,color .18s ease,transform .18s ease}.nav-item:active{transform:scale(.985)}.primary-button{background:linear-gradient(115deg,#286b78,#234e68)}.stat-main{background:linear-gradient(125deg,#233e57,#367384)}.content-card,.stat-card{box-shadow:var(--shadow)}
+.admin-stat-action{width:100%;border:1px solid #e2eaf0;text-align:right;font:inherit;cursor:pointer;display:flex;flex-direction:column;align-items:flex-start;gap:5px;transition:transform .18s ease,border-color .18s ease,background .18s ease,box-shadow .18s ease}.admin-stat-action:hover,.admin-stat-action:focus-visible{background:#edf5f6;border-color:#8dbbc1;transform:translateY(-2px);box-shadow:0 8px 20px rgba(35,78,104,.10);outline:0}.admin-stat-action strong{color:#244f68}.admin-stat-action span{color:#347984;font-size:8px}
+@media(max-width:760px){.topbar{height:66px}.brand{flex:1 1 auto;gap:8px}.brand-mark{flex-basis:40px;width:40px;height:40px;padding:4px}.brand-copy{flex:1 1 auto}.brand-copy strong{font-size:clamp(10px,3.25vw,13px);letter-spacing:0}.brand-copy small{font-size:clamp(7px,2.25vw,9px)}.topbar-actions{gap:5px}.secure-label{display:none}.admin-stat-action{min-height:90px}}
+@media(max-width:360px){.brand-mark{flex-basis:36px;width:36px;height:36px}.brand-copy strong{font-size:10px}.brand-copy small{font-size:7px}}
