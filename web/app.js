@@ -210,7 +210,7 @@ function renderTimer(timer) {
   timerInterval = window.setInterval(tick, 1000);
 }
 function renderRequests(rows) {
-  $("myRequests").innerHTML = rows.length ? rows.map((row) => `<tr><td>${escapeHtml(row.request_label || row.request_type)}</td><td>${formatDate(row.requested_at)}</td><td><span class="status-pill ${statusClass(row.status)}">${statusLabel(row.status)}</span></td><td>${escapeHtml(row.notes || "—")}</td></tr>`).join("") : '<tr><td colspan="4" class="empty-cell">لا توجد طلبات حتى الآن.</td></tr>';
+  $("myRequests").innerHTML = rows.length ? rows.map((row) => `<tr class="interactive-row" data-request-id="${Number(row.id)}" tabindex="0" title="اضغط لتحديد الطلب"><td>${escapeHtml(row.request_label || row.request_type)}</td><td>${formatDate(row.requested_at)}</td><td><span class="status-pill ${statusClass(row.status)}">${statusLabel(row.status)}</span></td><td>${escapeHtml(row.notes || "—")}</td></tr>`).join("") : '<tr><td colspan="4" class="empty-cell">لا توجد طلبات حتى الآن.</td></tr>';
 }
 async function submitRequest(code, button) {
   if (portalMutationBusy) return;
@@ -255,7 +255,7 @@ async function loadEmployees() {
   try {
     const [data, branches] = await Promise.all([api("/admin/employees"), api("/admin/branches")]);
     branchesCache = branches.branches || [];
-    $("employeesTable").innerHTML = (data.employees || []).length ? data.employees.map((employee) => `<tr><td>${escapeHtml(employee.full_name)}<br><small>${escapeHtml(employee.job_title || "")}</small></td><td>${escapeHtml(employee.employee_code)}</td><td>${escapeHtml(employee.branch_name)}</td><td><span class="status-pill ${employee.has_web_account ? "status-approved" : "status-pending"}">${employee.has_web_account ? "مفعّل" : "غير مفعّل"}</span></td><td>${["super_admin","branch_manager"].includes(currentUser.role) ? (employee.has_web_account ? `<button class="mini-button" data-reset-password="${employee.id}">إعادة تعيين</button>` : `<button class="mini-button" data-activation="${employee.id}">رمز تفعيل</button>`) : "—"}</td></tr>`).join("") : '<tr><td colspan="5" class="empty-cell">لا يوجد موظفون مسجلون.</td></tr>';
+    $("employeesTable").innerHTML = (data.employees || []).length ? data.employees.map((employee) => `<tr data-employee-id="${Number(employee.id)}"><td>${escapeHtml(employee.full_name)}<br><small>${escapeHtml(employee.job_title || "")}</small></td><td>${escapeHtml(employee.employee_code)}</td><td>${escapeHtml(employee.branch_name)}</td><td><span class="status-pill ${employee.has_web_account ? "status-approved" : "status-pending"}">${employee.has_web_account ? "مفعّل" : "غير مفعّل"}</span></td><td>${["super_admin","branch_manager"].includes(currentUser.role) ? (employee.has_web_account ? `<button class="mini-button" data-reset-password="${employee.id}">إعادة تعيين</button>` : `<button class="mini-button" data-activation="${employee.id}">رمز تفعيل</button>`) : "—"}</td></tr>`).join("") : '<tr><td colspan="5" class="empty-cell">لا يوجد موظفون مسجلون.</td></tr>';
     fillBranchOptions();
   } catch (error) { flash(error.message, true); }
 }
@@ -317,7 +317,7 @@ async function loadNotifications() {
     const unread = rows.filter((row) => !row.read_at).length;
     $("notificationBadge").hidden = unread === 0;
     $("notificationBadge").textContent = unread;
-    $("notificationList").innerHTML = rows.length ? rows.map((row) => `<article class="notification-item ${row.read_at ? "" : "unread"}"><div><strong>${escapeHtml(row.title)}</strong><p>${escapeHtml(row.body)}</p><time>${formatDate(row.created_at)}</time></div>${row.read_at ? "" : `<button class="mini-button" data-read="${row.id}">تمت القراءة</button>`}</article>`).join("") : '<div class="content-card empty-cell">لا توجد إشعارات جديدة.</div>';
+    $("notificationList").innerHTML = rows.length ? rows.map((row) => `<article class="notification-item ${row.read_at ? "" : "unread"}" data-notification-id="${Number(row.id)}"><div><strong>${escapeHtml(row.title)}</strong><p>${escapeHtml(row.body)}</p><time>${formatDate(row.created_at)}</time><details class="notification-detail"><summary>عرض التفاصيل</summary><p>${escapeHtml(row.body)}</p></details></div><button class="notification-open" type="button" data-notification-open="${Number(row.id)}">فتح الإشعار ←</button></article>`).join("") : '<div class="content-card empty-cell">لا توجد إشعارات جديدة.</div>';
   } catch {}
 }
 async function changePage(page) {
@@ -565,11 +565,81 @@ $("requestTypesAdmin").addEventListener("click", async (event) => {
     await loadSettings();
   } catch (error) { flash(error.message,true); }
 });
+async function focusPortalRecord(selector) {
+  window.setTimeout(() => {
+    const target = document.querySelector(selector);
+    if (!target) return;
+    target.classList.add("focused-record");
+    target.scrollIntoView({ behavior: "smooth", block: "center" });
+    window.setTimeout(() => target.classList.remove("focused-record"), 5000);
+  }, 180);
+}
+async function openEmployeeNotification(notification) {
+  if (!notification) return;
+  const type = notification.notification_type || "";
+  const requestId = Number(notification.request_id || 0);
+  const employeeId = Number(notification.employee_id || 0);
+  if (type === "new_request" && requestId && currentUser && currentUser.role !== "employee") {
+    $("requestFilter").value = "all";
+    await changePage("manageRequests");
+    await loadManagerRequests("all");
+    focusPortalRecord(`#managerRequests [data-request-id="${requestId}"]`);
+    return;
+  }
+  if ((type === "request_approved" || type === "request_rejected") && requestId && currentUser?.role === "employee") {
+    await changePage("requests");
+    focusPortalRecord(`#myRequests [data-request-id="${requestId}"]`);
+    return;
+  }
+  if (type === "employee_call" && employeeId && currentUser && currentUser.role !== "employee") {
+    await changePage("employees");
+    await loadEmployees();
+    focusPortalRecord(`#employeesTable [data-employee-id="${employeeId}"]`);
+    return;
+  }
+  const card = document.querySelector(`[data-notification-id="${Number(notification.id)}"]`);
+  if (card) {
+    const details = card.querySelector("details");
+    if (details) details.open = true;
+    card.classList.remove("unread");
+    const action = card.querySelector("[data-notification-open]");
+    if (action) action.textContent = "تم فتح الإشعار ✓";
+  } else {
+    await changePage("notifications");
+    await loadNotifications();
+    const target = document.querySelector(`[data-notification-id="${Number(notification.id)}"] details`);
+    if (target) target.open = true;
+  }
+}
+window.openEmployeeNotification = openEmployeeNotification;
 $("notificationList").addEventListener("click", async (event) => {
-  const button = event.target.closest("[data-read]");
+  const button = event.target.closest("[data-notification-open]");
   if (!button) return;
-  try { await api("/notifications/" + button.dataset.read + "/read",{method:"POST",body:"{}"}); await loadNotifications(); }
-  catch (error) { flash(error.message,true); }
+  const id = Number(button.dataset.notificationOpen);
+  try {
+    const row = (await api("/notifications")).notifications?.find((item) => Number(item.id) === id);
+    if (!row) throw new Error("هذا الإشعار لم يعد متاحًا.");
+    if (!row.read_at) await api("/notifications/" + id + "/read",{method:"POST",body:"{}"});
+    await openEmployeeNotification(row);
+    await loadNotifications();
+  } catch (error) { flash(error.message,true); }
+});
+$("myRequests").addEventListener("click", (event) => {
+  const row = event.target.closest("[data-request-id]");
+  if (row) focusPortalRecord(`#myRequests [data-request-id="${Number(row.dataset.requestId)}"]`);
+});
+$("myRequests").addEventListener("keydown", (event) => {
+  if (event.key !== "Enter" && event.key !== " ") return;
+  const row = event.target.closest("[data-request-id]");
+  if (row) { event.preventDefault(); focusPortalRecord(`#myRequests [data-request-id="${Number(row.dataset.requestId)}"]`); }
+});
+navigator.serviceWorker?.addEventListener("message", async (event) => {
+  if (event.data?.type === "OPEN_NOTIFICATION" && window.openEmployeeNotification) {
+    const rows = (await api("/notifications")).notifications || [];
+    const item = rows.find((row) => Number(row.id) === Number(event.data.notificationId)) || { id:event.data.notificationId, notification_type:event.data.notificationType, request_id:event.data.requestId, employee_id:event.data.employeeId };
+    await changePage("notifications");
+    await openEmployeeNotification(item);
+  }
 });
 $("copyTemporaryPassword").addEventListener("click", async () => {
   try { await navigator.clipboard.writeText($("temporaryPasswordResult").textContent); $("copyTemporaryPassword").firstChild.textContent = "تم النسخ "; }
