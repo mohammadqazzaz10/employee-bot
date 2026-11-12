@@ -983,9 +983,9 @@ def admin_employees():
                             EXISTS(SELECT 1 FROM web_users u WHERE u.employee_id=e.id AND u.is_active=TRUE) AS has_web_account
                      FROM employees e JOIN branches b ON b.id=e.branch_id"""
             if g.current_user["role"] == "super_admin":
-                cur.execute(sql + " ORDER BY b.name,e.full_name")
+                cur.execute(sql + " ORDER BY b.name,e.employee_code,e.id")
             else:
-                cur.execute(sql + " WHERE e.branch_id=%s ORDER BY e.full_name", (g.current_user["branch_id"],))
+                cur.execute(sql + " WHERE e.branch_id=%s ORDER BY e.employee_code,e.id", (g.current_user["branch_id"],))
             rows = cur.fetchall()
         return jsonify({"ok": True, "employees": [dict(x) for x in rows]})
     finally:
