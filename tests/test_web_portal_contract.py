@@ -97,6 +97,10 @@ class EmployeePortalContractTests(unittest.TestCase):
         self.assertNotIn('secrets.token_hex(4)', source)
         self.assertIn("NEW.employee_code := 'EMP' || LPAD(NEW.id::TEXT, 5, '0')", migration)
         self.assertIn("trg_employees_assign_web_code", migration)
+        resequencing = (ROOT / "migrations" / "014_normalize_employee_codes.sql").read_text(encoding="utf-8")
+        self.assertIn("nextval('employee_code_seq')", resequencing)
+        self.assertIn("UPDATE web_users", resequencing)
+        self.assertIn("employee_code_history", resequencing)
 
     def test_employee_portal_identity_notifications_and_live_timer_ui(self):
         html = (WEB / "index.html").read_text(encoding="utf-8")
