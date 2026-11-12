@@ -320,7 +320,7 @@ async function loadAdmins() {
     const [users, branches] = await Promise.all([api("/admin/users"), api("/admin/branches")]);
     branchesCache = branches.branches || [];
     const names = Object.fromEntries(branchesCache.map((b) => [b.id,b.name]));
-    $("adminsTable").innerHTML = (users.users || []).map((user) => `<tr><td>${escapeHtml(user.full_name)}</td><td>${escapeHtml(user.username)}</td><td>${user.role === "branch_manager" ? "مدير فرع" : "مشرف"}</td><td>${escapeHtml(names[user.branch_id] || "—")}</td><td><span class="status-pill ${user.is_active ? "status-approved" : "status-rejected"}">${user.is_active ? "نشط" : "موقوف"}</span></td></tr>`).join("") || '<tr><td colspan="5" class="empty-cell">لا توجد حسابات مشرفين.</td></tr>';
+    $("adminsTable").innerHTML = (users.users || []).map((user) => `<tr data-user-id="${Number(user.id)}" tabindex="0"><td>${escapeHtml(user.full_name)}</td><td>${escapeHtml(user.username)}</td><td>${user.role === "branch_manager" ? "مدير فرع" : "مشرف"}</td><td>${escapeHtml(names[user.branch_id] || "—")}</td><td><span class="status-pill ${user.is_active ? "status-approved" : "status-rejected"}">${user.is_active ? "نشط" : "موقوف"}</span></td></tr>`).join("") || '<tr><td colspan="5" class="empty-cell">لا توجد حسابات مشرفين.</td></tr>';
     fillBranchOptions();
   } catch (error) { flash(error.message, true); }
 }
@@ -626,6 +626,13 @@ async function openEmployeeNotification(notification) {
   }
 }
 window.openEmployeeNotification = openEmployeeNotification;
+document.addEventListener("click", (event) => {
+  const item = event.target.closest(".manager-request[data-request-id], #employeesTable tr[data-employee-id], #adminsTable tr[data-user-id]");
+  if (!item || event.target.closest("button,input,select,a")) return;
+  item.classList.add("focused-record");
+  item.scrollIntoView({ behavior:"smooth", block:"center" });
+  window.setTimeout(() => item.classList.remove("focused-record"), 3500);
+});
 $("notificationList").addEventListener("click", async (event) => {
   const button = event.target.closest("[data-notification-open]");
   if (!button) return;
