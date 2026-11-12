@@ -118,10 +118,15 @@
     const open = document.createElement("button");
     open.type = "button";
     open.className = "notification-toast-open";
-    open.textContent = "عرض الإشعارات";
-    open.addEventListener("click", () => {
-      if (typeof window.changePage === "function") window.changePage("notifications");
-      if (typeof window.loadNotifications === "function") window.loadNotifications();
+    open.textContent = item.request_id ? "فتح الطلب المرتبط" : "عرض التفاصيل";
+    open.addEventListener("click", async () => {
+      try {
+        const csrf = decodeURIComponent(document.cookie.split("; ").find(part => part.startsWith("employee_csrf="))?.split("=")[1] || "");
+        await fetch("/api/notifications/" + encodeURIComponent(item.id) + "/read", { method:"POST", credentials:"same-origin", headers:{"X-CSRF-Token":csrf} });
+      } catch (_) {}
+      if (typeof window.changePage === "function") await window.changePage("notifications");
+      if (typeof window.loadNotifications === "function") await window.loadNotifications();
+      if (typeof window.openEmployeeNotification === "function") await window.openEmployeeNotification(item);
       card.remove();
     });
     dismiss.addEventListener("click", () => card.remove());
