@@ -106,6 +106,20 @@
       try{const active=btn.dataset.active!=="true";const r=await api("/admin/employees/"+btn.dataset.employeeStatus+"/status","PATCH",{is_active:active});btn.dataset.active=String(active);btn.textContent=active?"حظر الموظف":"إعادة التفعيل";btn.classList.toggle("danger-button",!active);flash(r.message);await loadEmployeesForStatus();}
       catch(err){flash(err.message,true);}
     });
+    const activityNav=document.createElement("button");
+    activityNav.type="button";activityNav.className="nav-item admin-only";activityNav.dataset.page="employeeActivity";
+    activityNav.innerHTML="<span>◉</span> حركة الموظفين";
+    nav.appendChild(activityNav);
+    const activityPage=document.createElement("section");
+    activityPage.className="page-section";activityPage.id="page-employeeActivity";
+    activityPage.innerHTML=`
+      <div class="page-heading"><div><div class="eyebrow">المتابعة المباشرة</div><h1>حركة الموظفين</h1><p>حالة الاتصال وآخر صفحة نشطة وسجل تغيّر الحالة داخل فرعك. لا يتم جمع الموقع الجغرافي.</p></div><button class="soft-button" id="activityRefresh" type="button">تحديث</button></div>
+      <div class="content-card"><div class="card-title-row"><div><span class="eyebrow">نطاق المتابعة</span><h2>الموظفون وحالة الاتصال</h2></div><span class="live-pill"><i></i> تحديث تلقائي</span></div><label id="activityBranchWrap">الفرع<select id="activityBranch"></select></label><div id="employeePresenceList" class="manager-request-list"><div class="empty-cell">جارٍ تحميل حركة الموظفين...</div></div></div>
+      <div class="content-card"><div class="card-title-row"><div><span class="eyebrow">سجل الحركة</span><h2>آخر تغيّرات الحالة</h2></div></div><div id="employeeActivityEvents" class="manager-request-list"><div class="empty-cell">لا توجد أحداث بعد.</div></div></div>`;
+    panel.appendChild(activityPage);
+    $("activityRefresh").addEventListener("click",loadEmployeeActivity);
+    $("activityBranch").addEventListener("change",loadEmployeeActivity);
+    if(window.currentUser?.role!=="super_admin")$("activityBranchWrap").hidden=true;
     loadBranches();
     loadMeetings();
     enhanceEmployeeRows();
@@ -121,7 +135,7 @@
   async function loadBranches(){
     try{
       const data=await api("/admin/branches");
-      for(const id of ["announcementBranch","meetingBranch","editBranch"]){
+      for(const id of ["announcementBranch","meetingBranch","editBranch","activityBranch"]){
         const el=$(id);if(!el)continue;const previous=el.value;
         el.innerHTML=(data.branches||[]).map(b=>`<option value="${b.id}">${esc(b.name)}${b.is_active?"":" (موقوف)"}</option>`).join("");
         if(previous)el.value=previous;
@@ -159,6 +173,26 @@
       action.appendChild(btn);
     });
   }
+  async function loadEmployeeActivity(){
+    if(!$("employeePresenceList"))return;
+    try{
+      const branch=$("activityBranch")?.value||"";
+      const data=await api("/admin/employee-activity"+(branch?"?branch_id="+encodeURIComponent(branch):""));
+      const status={online:"متصل الآن",idle:"نشط مؤخرًا",offline:"غير متصل"};
+      const pages={dashboard:"الرئيسية",requests:"الطلبات",notifications:"الإشعارات",workTasks:"المهام",profile:"الملف الشخصي",settings:"الإعدادات"};
+      $("employeePresenceList").innerHTML=(data.employees||[]).map(e=>{
+        const color=e.presence_status==="online"?"#2f8b5b":e.presence_status==="idle"?"#bd8b35":"#89948d";
+        const last=e.last_seen_at?new Date(e.last_seen_at).toLocaleString("ar-JO"):"لم يسجل دخولًا بعد";
+        return `<article class="manager-request"><div><strong>${esc(e.full_name)}</strong><p>${esc(e.employee_code||"")} · ${esc(e.job_title||"")}</p><time>آخر ظهور: ${esc(last)} · الصفحة: ${esc(pages[e.current_page]||e.current_page||"—")}</time></div><span class="status-pill" style="color:${color}">${status[e.presence_status]||"غير متصل"}</span></article>`;
+      }).join("")||'<div class="empty-cell">لا يوجد موظفون نشطون في هذا النطاق.</div>';
+      const labels={online:"بدأ الاتصال",resumed:"عاد إلى النظام",tab_visible:"فتح صفحة النظام",tab_hidden:"أخفى صفحة النظام",page_changed:"تنقّل داخل النظام"};
+      $("employeeActivityEvents").innerHTML=(data.events||[]).map(e=>`<article class="manager-request"><div><strong>${esc(e.full_name)}</strong><p>${esc(labels[e.event_type]||e.event_type)} · ${esc(e.details?.page||"")}</p><time>${esc(new Date(e.created_at).toLocaleString("ar-JO"))}</time></div></article>`).join("")||'<div class="empty-cell">لا توجد تغيّرات مسجلة بعد.</div>';
+    }catch(err){$("employeePresenceList").textContent=err.message;}
+  }
+  document.addEventListener("click",e=>{
+    if(e.target.closest('[data-page="employeeActivity"]'))window.setTimeout(loadEmployeeActivity,120);
+  });
+  window.setInterval(()=>{if($("page-employeeActivity")?.classList.contains("active"))loadEmployeeActivity();},20000);
   document.addEventListener("click",e=>{
     const nav=e.target.closest('[data-page="employees"]');
     if(nav)window.setTimeout(enhanceEmployeeRows,250);
