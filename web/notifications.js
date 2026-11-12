@@ -355,9 +355,16 @@
       pushButton.hidden = !portalOpen();
       const existing = await registration.pushManager.getSubscription();
       if (existing && Notification.permission === "granted") {
-        await api("/push/subscriptions", "POST", existing.toJSON());
-        pushButton.textContent = "إشعارات الهاتف مفعّلة ✓";
+        const status = await api("/push/subscriptions/status", "POST", {endpoint: existing.endpoint});
+        if (status.active) {
+          pushButton.textContent = "إشعارات الهاتف مفعّلة ✓";
+          pushButton.disabled = true;
+        } else {
+          pushButton.disabled = false;
+          pushButton.textContent = "إعادة تفعيل إشعارات الهاتف";
+        }
       } else {
+        pushButton.disabled = false;
         pushButton.textContent = "تفعيل إشعارات الهاتف";
       }
     } catch (_) {
@@ -380,13 +387,21 @@
       registration ||= await navigator.serviceWorker.register("/sw.js", {scope:"/"});
       await navigator.serviceWorker.ready;
       const config = await api("/push/config");
+      const previous = await registration.pushManager.getSubscription();
+      if (previous) {
+        // A stale endpoint can keep returning HTTP 410 even while the browser
+        // still reports a local subscription. Remove it before creating a new one.
+        await previous.unsubscribe();
+      }
       const subscription = await registration.pushManager.subscribe({
         userVisibleOnly: true,
         applicationServerKey: decodeKey(config.public_key)
       });
       await api("/push/subscriptions", "POST", subscription.toJSON());
       pushButton.textContent = "إشعارات الهاتف مفعّلة ✓";
+      pushButton.disabled = true;
     } catch (error) {
+      pushButton.disabled = false;
       pushButton.textContent = original;
       alert(error.message || "تعذر تفعيل الإشعارات. تحقق من دعم المتصفح والاتصال.");
     } finally {

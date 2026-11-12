@@ -65,6 +65,26 @@ def register_push_delivery(app, auth_required, _json_error):
         finally:
             conn.close()
 
+    @app.post("/api/push/subscriptions/status")
+    @auth_required
+    def push_subscription_status():
+        from flask import g, request
+        body = request.get_json(silent=True)
+        endpoint = str((body or {}).get("endpoint") or "").strip()
+        if not endpoint.startswith("https://") or len(endpoint) > 2048:
+            return _json_error("عنوان اشتراك الإشعارات غير صالح.", 400)
+        conn = _connect()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT 1 FROM web_push_subscriptions WHERE user_id=%s AND endpoint=%s",
+                    (g.current_user["id"], endpoint),
+                )
+                active = cur.fetchone() is not None
+            return {"ok": True, "active": active}
+        finally:
+            conn.close()
+
     @app.delete("/api/push/subscriptions")
     @auth_required
     def delete_push_subscription():

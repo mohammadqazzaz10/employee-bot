@@ -30,3 +30,13 @@ def test_pem_vapid_keys_are_loaded_as_vapid_objects():
     assert "from py_vapid import Vapid" in delivery
     assert "Vapid.from_pem(private_key.encode(\"utf-8\"))" in delivery
     assert "vapid_private_key=vapid_key" in delivery
+
+
+def test_expired_push_subscription_can_be_detected_and_renewed():
+    delivery = Path("web_push_delivery.py").read_text(encoding="utf-8")
+    frontend = Path("web/notifications.js").read_text(encoding="utf-8")
+    assert '@app.post("/api/push/subscriptions/status")' in delivery
+    assert 'return {"ok": True, "active": active}' in delivery
+    assert 'api("/push/subscriptions/status", "POST", {endpoint: existing.endpoint})' in frontend
+    assert 'await previous.unsubscribe()' in frontend
+    assert 'pushButton.textContent = "إعادة تفعيل إشعارات الهاتف"' in frontend
