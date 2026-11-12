@@ -1532,6 +1532,7 @@ import sys
 sys.modules.setdefault("web_app", sys.modules[__name__])
 import web_admin_extensions  # noqa: E402,F401
 import web_work_extensions  # noqa: E402,F401
+import web_operations_extensions  # noqa: E402,F401
 
 
 if __name__ == "__main__":

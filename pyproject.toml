@@ -18,7 +18,7 @@ dependencies = [
 ]
 
 [tool.setuptools]
-py-modules = ["bot", "branch_settings", "request_types", "broadcast", "web_app", "web_admin_extensions", "web_work_extensions"]
+py-modules = ["bot", "branch_settings", "request_types", "broadcast", "web_app", "web_admin_extensions", "web_work_extensions", "web_operations_extensions"]
 
 [tool.setuptools.packages.find]
 include = ["scripts*"]
