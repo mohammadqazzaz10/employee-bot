@@ -37,3 +37,76 @@
 .manager-request[data-request-id]:hover{border-color:#c6d9c9;box-shadow:0 8px 22px #173d2d0a}
 .focused-record{outline:2px solid #c79d4b!important;outline-offset:3px;background:#fffaf0!important;scroll-margin:100px}
 @media(max-width:760px){.notification-item{flex-wrap:wrap}.notification-open{width:100%}}
+
+
+/* Refined Emran Mall UI: calm navy, teal and cool neutral surfaces. */
+:root {
+  color-scheme: light;
+  --ink: #243447;
+  --green: #2d737b;
+  --mint: #dcecef;
+  --muted: #778594;
+  --line: #e2e8ee;
+  --paper: #ffffff;
+  --gold: #2d737b;
+  --shadow: 0 16px 42px rgba(31, 48, 67, .07);
+}
+body {
+  color: #2b3b4d;
+  background: radial-gradient(ellipse at 90% 0%, #eaf1f5 0, transparent 34%), #f4f6f8;
+}
+.topbar { border-bottom-color: #e1e7ed; }
+.brand { gap: 14px; }
+.brand-mark {
+  width: 52px; height: 52px; flex: 0 0 52px;
+  border-radius: 13px; padding: 5px;
+  background: #fff !important;
+  border: 1px solid #dce4eb !important;
+  box-shadow: 0 5px 16px rgba(31,48,67,.08) !important;
+  overflow: hidden;
+}
+.brand-mark:after { display: none !important; }
+.brand-mark img {
+  display: block; width: 100%; height: 100%;
+  object-fit: contain; object-position: center;
+  border-radius: 7px; padding: 0;
+}
+.brand-copy strong { color: #26384b; font-size: 15px; letter-spacing: 0; }
+.brand-copy small { color: #718091; font-size: 10px; }
+.sidebar {
+  background: linear-gradient(160deg, #24364b, #304b63);
+  box-shadow: 0 16px 35px rgba(31,48,67,.14);
+}
+.side-avatar { background: #e2eef0; color: #285f68; }
+.side-profile small { color: #c0d0dc; }
+.side-label { color: #b2c5d2; }
+.nav-item { color: #d1dce5; min-height: 44px; font-size: 10px; }
+.nav-item:hover { background: rgba(255,255,255,.09); color: #fff; }
+.nav-item.active {
+  color: #fff; background: rgba(255,255,255,.14);
+  box-shadow: inset -3px 0 #64b7bd;
+}
+.nav-item:focus-visible { outline: 2px solid #8dd1d4; outline-offset: 2px; }
+.eyebrow, .auth-intro h1 em { color: #367f87; }
+.kicker-line { background: #69aeb5; }
+.primary-button {
+  background: linear-gradient(110deg, #315f75, #24465f);
+  box-shadow: 0 8px 18px rgba(36,70,95,.17);
+}
+.primary-button:hover { box-shadow: 0 12px 24px rgba(36,70,95,.22); }
+.soft-button { border-color: #d4e3e7; background: #edf5f6; color: #326c75; }
+.stat-main { background: linear-gradient(125deg, #263d55, #365c73); }
+.stat-icon.blue { background: #eaf1f7; color: #587d9e; }
+.stat-icon.amber { background: #eaf3f4; color: #367f87; }
+.timer-ring { background: conic-gradient(#4e9da4 0deg, #e7edf1 0deg); }
+.timer-ring strong { color: #315d6a; }
+.request-type .type-symbol { background: #eaf3f4; color: #367f87; }
+.live-pill { color: #347a80; background: #eaf4f4; }
+.status-approved, .status-account { background: #eaf3f2; color: #34777a; }
+.focused-record { outline-color: #58a3aa !important; background: #f0f8f8 !important; }
+.page-section[hidden] { display: none !important; }
+@media (max-width: 760px) {
+  .brand-mark { width: 46px; height: 46px; flex-basis: 46px; }
+  .brand-copy strong { font-size: 13px; }
+  .nav-item { min-height: 46px; font-size: 11px; }
+}
