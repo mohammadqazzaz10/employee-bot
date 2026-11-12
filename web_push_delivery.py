@@ -34,7 +34,6 @@ def register_push_delivery(app, auth_required, _json_error):
     @app.post("/api/push/subscriptions")
     @auth_required
     def save_push_subscription():
-        payload = app.json if False else None
         from flask import g, request
         body = request.get_json(silent=True)
         body = body if isinstance(body, dict) else {}
