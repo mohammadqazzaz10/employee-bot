@@ -23,3 +23,10 @@ def test_web_push_requires_both_vapid_keys():
     assert 'VAPID_PUBLIC_KEY' in delivery
     assert 'VAPID_PRIVATE_KEY' in delivery
     assert '"enabled": bool(public_key and private_key)' in delivery
+
+
+def test_pem_vapid_keys_are_loaded_as_vapid_objects():
+    delivery = Path("web_push_delivery.py").read_text(encoding="utf-8")
+    assert "from py_vapid import Vapid" in delivery
+    assert "Vapid.from_pem(private_key.encode(\"utf-8\"))" in delivery
+    assert "vapid_private_key=vapid_key" in delivery

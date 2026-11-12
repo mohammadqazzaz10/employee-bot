@@ -92,6 +92,8 @@ def _deliver_one():
     if not private_key or not os.environ.get("VAPID_PUBLIC_KEY", "").strip():
         return False
     from pywebpush import WebPushException, webpush
+    from py_vapid import Vapid
+    vapid_key = Vapid.from_pem(private_key.encode("utf-8")) if "-----BEGIN" in private_key else private_key
 
     conn = _connect()
     try:
@@ -137,7 +139,7 @@ def _deliver_one():
             webpush(
                 subscription_info=subscription,
                 data=json.dumps(payload, ensure_ascii=False),
-                vapid_private_key=private_key,
+                vapid_private_key=vapid_key,
                 vapid_claims={"sub": subject},
                 ttl=86400,
             )
