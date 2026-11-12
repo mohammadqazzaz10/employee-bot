@@ -13,3 +13,27 @@
 #page-adminTools .manager-request{animation:adminRise .28s ease both}
 @keyframes adminRise{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
 @media(prefers-reduced-motion:reduce){#page-adminTools *{animation:none!important;transition:none!important}}
+
+
+/* Emran Mall brand system + clear interactive list affordances */
+:root{--ink:#12372d;--green:#1b5947;--gold:#c79d4b;--mint:#d6eadc;--paper:#fff;--line:#e7ece7}
+.brand-mark{background:linear-gradient(145deg,#174c3d,#0d2924);border:1px solid #d4b36a;box-shadow:0 8px 20px #174c3d30}
+.brand-mark img{width:100%;height:100%;object-fit:contain;border-radius:13px;background:#fff;padding:3px}
+.brand-mark span{color:#f5e5bd}
+.auth-intro h1 em,.eyebrow{color:#9a7737}
+.primary-button{background:linear-gradient(110deg,#174c3d,#0d2924);box-shadow:0 9px 20px #174c3d24}
+.nav-item.active{box-shadow:inset -3px 0 #d7b66e}
+.stat-main{background:linear-gradient(125deg,#123b30,#24634b)}
+.notification-item{cursor:default;transition:border-color .2s,box-shadow .2s,transform .2s}
+.notification-item:hover{border-color:#c7d8ca;box-shadow:0 10px 24px #173d2d0b}
+.notification-open{border:0;border-radius:9px;padding:9px 13px;background:#eaf3eb;color:#285c42;font:inherit;font-size:9px;font-weight:700;white-space:nowrap}
+.notification-open:hover{background:#dcebdd}
+.notification-detail{margin-top:9px}
+.notification-detail summary{cursor:pointer;color:#8c6b31;font-size:8px;font-weight:700}
+.notification-detail p{white-space:pre-wrap;overflow-wrap:anywhere}
+.interactive-row{cursor:pointer;transition:background .18s}
+.interactive-row:hover,.interactive-row:focus{background:#f3f8f3;outline:0}
+.manager-request[data-request-id]{cursor:pointer;transition:border-color .2s,box-shadow .2s}
+.manager-request[data-request-id]:hover{border-color:#c6d9c9;box-shadow:0 8px 22px #173d2d0a}
+.focused-record{outline:2px solid #c79d4b!important;outline-offset:3px;background:#fffaf0!important;scroll-margin:100px}
+@media(max-width:760px){.notification-item{flex-wrap:wrap}.notification-open{width:100%}}
