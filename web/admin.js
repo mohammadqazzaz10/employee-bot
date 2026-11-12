@@ -185,8 +185,8 @@
         const last=e.last_seen_at?new Date(e.last_seen_at).toLocaleString("ar-JO"):"لم يسجل دخولًا بعد";
         return `<article class="manager-request"><div><strong>${esc(e.full_name)}</strong><p>${esc(e.employee_code||"")} · ${esc(e.job_title||"")}</p><time>آخر ظهور: ${esc(last)} · الصفحة: ${esc(pages[e.current_page]||e.current_page||"—")}</time></div><span class="status-pill" style="color:${color}">${status[e.presence_status]||"غير متصل"}</span></article>`;
       }).join("")||'<div class="empty-cell">لا يوجد موظفون نشطون في هذا النطاق.</div>';
-      const labels={online:"بدأ الاتصال",resumed:"عاد إلى النظام",tab_visible:"فتح صفحة النظام",tab_hidden:"أخفى صفحة النظام",page_changed:"تنقّل داخل النظام"};
-      $("employeeActivityEvents").innerHTML=(data.events||[]).map(e=>`<article class="manager-request"><div><strong>${esc(e.full_name)}</strong><p>${esc(labels[e.event_type]||e.event_type)} · ${esc(e.details?.page||"")}</p><time>${esc(new Date(e.created_at).toLocaleString("ar-JO"))}</time></div></article>`).join("")||'<div class="empty-cell">لا توجد تغيّرات مسجلة بعد.</div>';
+      const labels={online:"بدأ الاتصال",resumed:"عاد إلى النظام",tab_visible:"فتح صفحة النظام",tab_hidden:"أخفى صفحة النظام",page_changed:"تنقّل داخل النظام",employee_request_created:"قدّم طلب استئذان أو استراحة",employee_return_confirmed:"سجّل العودة إلى العمل",supervisor_called:"استدعى المشرف"};
+      $("employeeActivityEvents").innerHTML=(data.events||[]).map(e=>`<article class="manager-request"><div><strong>${esc(e.full_name)}</strong><p>${esc(labels[e.event_type]||e.event_type)} · ${esc(e.details?.page||e.details?.request_type||e.details?.to_status||"")}</p><time>${esc(new Date(e.created_at).toLocaleString("ar-JO"))}</time></div></article>`).join("")||'<div class="empty-cell">لا توجد تغيّرات مسجلة بعد.</div>';
     }catch(err){$("employeePresenceList").textContent=err.message;}
   }
   document.addEventListener("click",e=>{

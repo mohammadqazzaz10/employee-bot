@@ -196,12 +196,21 @@ def get_employee_activity():
             )
             employees = [dict(row) for row in cur.fetchall()]
             cur.execute(
-                """SELECT a.id,a.employee_id,e.full_name,a.event_type,a.details,a.created_at
-                   FROM web_employee_activity a
-                   JOIN employees e ON e.id=a.employee_id
-                   WHERE e.is_active=TRUE """ + activity_filter + """
-                   ORDER BY a.created_at DESC LIMIT 60""",
-                activity_params,
+                """SELECT id,employee_id,full_name,event_type,details,created_at FROM (
+                     SELECT a.id,a.employee_id,e.full_name,a.event_type,a.details,a.created_at
+                     FROM web_employee_activity a
+                     JOIN employees e ON e.id=a.employee_id
+                     WHERE e.is_active=TRUE """ + activity_filter + """
+                     UNION ALL
+                     SELECT a.id,e.id AS employee_id,e.full_name,a.action AS event_type,
+                            a.details,a.created_at
+                     FROM web_audit_log a
+                     JOIN web_users u ON u.id=a.actor_user_id AND u.role='employee'
+                     JOIN employees e ON e.id=u.employee_id
+                     WHERE e.is_active=TRUE """ + activity_filter.replace("a.branch_id", "a.branch_id") + """
+                   ) activity_feed
+                   ORDER BY created_at DESC LIMIT 80""",
+                activity_params + activity_params,
             )
             events = [dict(row) for row in cur.fetchall()]
         return jsonify({"ok": True, "employees": employees, "events": events})

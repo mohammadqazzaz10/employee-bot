@@ -22,6 +22,7 @@ class OperationalCompletionContractTests(unittest.TestCase):
         self.assertIn("g.current_user[\"branch_id\"]", source)
         self.assertIn("web_employee_presence", source)
         self.assertIn("web_employee_activity", source)
+        self.assertIn("web_audit_log", source)
 
     def test_presence_frontend_is_loaded_and_does_not_collect_gps(self):
         html = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
