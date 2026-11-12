@@ -290,15 +290,22 @@
     });
   };
   function addControl(){
-    const actions=document.querySelector(".topbar-actions");if(!actions||document.getElementById("employeeSoundButton"))return;
-    const b=document.createElement("button");b.id="employeeSoundButton";b.type="button";b.className="icon-button";
-    b.title="تشغيل أو إيقاف صوت التنبيهات";b.setAttribute("aria-label",b.title);b.textContent=enabled?"♫":"♩";
-    b.addEventListener("click",()=>{enabled=!enabled;localStorage.setItem("employee-sound-enabled",String(enabled));b.textContent=enabled?"♫":"♩";if(enabled)tone();});
-    actions.insertBefore(b,actions.firstChild);
-    const n=document.createElement("button");n.id="employeeBrowserNotify";n.type="button";n.className="icon-button";
-    n.title="السماح بإشعارات الجهاز";n.setAttribute("aria-label",n.title);n.textContent="♧";
-    n.addEventListener("click",async()=>{if("Notification" in window){const p=await Notification.requestPermission();n.title=p==="granted"?"إشعارات الجهاز مفعّلة":"لم يتم السماح بالإشعارات";}else n.title="المتصفح لا يدعم إشعارات الجهاز";});
-    actions.insertBefore(n,b.nextSibling);
+    const sidebarBottom=document.querySelector(".sidebar-bottom");if(!sidebarBottom)return;
+    let actions=document.getElementById("notificationPreferences");
+    if(!actions){actions=document.createElement("div");actions.id="notificationPreferences";actions.className="notification-preferences";actions.setAttribute("aria-label","إعدادات التنبيهات");sidebarBottom.insertBefore(actions,sidebarBottom.firstChild);}
+    if(document.getElementById("employeeSoundButton")&&document.getElementById("employeeBrowserNotify"))return;
+    if(!document.getElementById("employeeSoundButton")){
+      const b=document.createElement("button");b.id="employeeSoundButton";b.type="button";b.className="icon-button";
+      b.title="تشغيل أو إيقاف صوت التنبيهات";b.setAttribute("aria-label",b.title);b.textContent=enabled?"♫":"♩";
+      b.addEventListener("click",()=>{enabled=!enabled;localStorage.setItem("employee-sound-enabled",String(enabled));b.textContent=enabled?"♫":"♩";if(enabled)tone();});
+      actions.appendChild(b);
+    }
+    if(!document.getElementById("employeeBrowserNotify")){
+      const n=document.createElement("button");n.id="employeeBrowserNotify";n.type="button";n.className="icon-button";
+      n.title="السماح بإشعارات الجهاز";n.setAttribute("aria-label",n.title);n.textContent="♧";
+      n.addEventListener("click",async()=>{if("Notification" in window){const p=await Notification.requestPermission();n.title=p==="granted"?"إشعارات الجهاز مفعّلة":"لم يتم السماح بالإشعارات";}else n.title="المتصفح لا يدعم إشعارات الجهاز";});
+      actions.appendChild(n);
+    }
   }
   async function poll(){
     // Session cookie is HttpOnly; the authenticated API validates it.
