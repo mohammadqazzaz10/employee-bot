@@ -90,6 +90,14 @@ class EmployeePortalContractTests(unittest.TestCase):
         self.assertIn('window.dispatchEvent(new Event("employee-portal:refresh"))', client)
         self.assertIn('window.addEventListener("employee-portal:refresh"', app)
 
+    def test_new_employee_codes_are_database_sequential_not_random(self):
+        source = (ROOT / "web_app.py").read_text(encoding="utf-8")
+        migration = (ROOT / "migrations" / "007_employee_web_portal.sql").read_text(encoding="utf-8")
+        self.assertIn("INSERT INTO employees(phone_number,full_name,job_title,branch_id,is_active)", source)
+        self.assertNotIn('secrets.token_hex(4)', source)
+        self.assertIn("NEW.employee_code := 'EMP' || LPAD(NEW.id::TEXT, 5, '0')", migration)
+        self.assertIn("trg_employees_assign_web_code", migration)
+
     def test_frontend_and_backend_are_connected_by_same_origin_api(self):
         source = (ROOT / "web_app.py").read_text(encoding="utf-8")
         js = (WEB / "app.js").read_text(encoding="utf-8")
