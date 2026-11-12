@@ -274,10 +274,7 @@
   window.addEventListener("focus", pollNotifications);
   if ("serviceWorker" in navigator) {
     navigator.serviceWorker.addEventListener("message", event => {
-      if (event.data?.type === "OPEN_NOTIFICATION" && typeof window.openEmployeeNotification === "function") {
-        window.changePage("notifications");
-        window.openEmployeeNotification(event.data).catch(() => {});
-      } else if (event.data?.type === "OPEN_NOTIFICATIONS" && typeof window.changePage === "function") {
+      if (event.data?.type === "OPEN_NOTIFICATIONS" && typeof window.changePage === "function") {
         window.changePage("notifications");
       }
     });
