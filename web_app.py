@@ -308,7 +308,7 @@ def security_headers(response):
     response.headers["Cross-Origin-Resource-Policy"] = "same-origin"
     response.headers["Content-Security-Policy"] = (
         "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
-        "font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data:; connect-src 'self'; "
+        "font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: https://encrypted-tbn0.gstatic.com; connect-src 'self'; "
         "object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
     )
     if app.config["COOKIE_SECURE"]:
@@ -863,7 +863,7 @@ def notifications():
     try:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute(
-                """SELECT id,notification_type,title,body,read_at,created_at
+                """SELECT id,employee_id,request_id,notification_type,title,body,read_at,created_at
                    FROM web_notifications WHERE recipient_user_id=%s
                    ORDER BY created_at DESC LIMIT 30""", (g.current_user["id"],))
             rows = cur.fetchall()

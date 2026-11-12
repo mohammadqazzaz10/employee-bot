@@ -211,7 +211,7 @@
     });
   }
   function apply(s){
-    const name=s.site_name||"رفيق العمل",tag=s.site_tagline||"منظومة إدارة الموظفين";
+    const name=s.site_name||"عمران مول | Emran Mall",tag=s.site_tagline||"الفرع الرئيسي – خريبة السوق";
     const brand=document.querySelector(".brand-copy strong"),sub=document.querySelector(".brand-copy small");
     if(brand)brand.textContent=name;if(sub)sub.textContent=tag;document.title=name+" | بوابة الموظفين";
   }

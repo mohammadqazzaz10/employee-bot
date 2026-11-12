@@ -324,7 +324,7 @@ def process_meeting_reminders():
 @app.get("/api/site-info")
 def public_site_info():
     """Expose only non-sensitive branding/help text for portal views."""
-    defaults = {"site_name": "رفيق العمل", "site_tagline": "منظومة إدارة الموظفين", "support_message": "تواصل مع مدير فرعك عند الحاجة.", "maintenance_notice": ""}
+    defaults = {"site_name": "عمران مول | Emran Mall", "site_tagline": "الفرع الرئيسي – خريبة السوق", "support_message": "للمساعدة، تواصل مع مدير فرع عمران مول.", "maintenance_notice": ""}
     try:
         conn = _db()
         try:
