@@ -29,6 +29,9 @@
       .notification-toast-open{background:#eaf4ed;color:#285b40;font-weight:700}
       .notification-toast-close{background:#f3f5f3;color:#637168}
       @keyframes notificationToastIn{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:translateY(0)}}
+      .notification-preferences{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 12px;padding:10px 0;border-top:1px solid #e7eee9;border-bottom:1px solid #e7eee9}
+      .notification-preferences .icon-button{width:40px;height:40px;flex:0 0 40px}
+      .notification-preferences #pushEnableButton{flex:1;min-width:0;min-height:40px;padding:8px 10px;font-size:11px;white-space:normal}
       @media(prefers-reduced-motion:reduce){.notification-toast{animation:none}}
     `;
     document.head.appendChild(style);
@@ -318,8 +321,16 @@
   let pushButton = null, registration = null, pushEnabled = false;
 
   function ensureButton() {
-    const host = document.querySelector(".topbar-actions");
+    const host = document.querySelector(".sidebar-bottom");
     if (!host) return;
+    let preferences = document.getElementById("notificationPreferences");
+    if (!preferences) {
+      preferences = document.createElement("div");
+      preferences.id = "notificationPreferences";
+      preferences.className = "notification-preferences";
+      preferences.setAttribute("aria-label", "إعدادات التنبيهات");
+      host.insertBefore(preferences, host.firstChild);
+    }
     const existing = document.getElementById("pushEnableButton");
     if (existing) { pushButton = existing; return; }
     pushButton = document.createElement("button");
@@ -329,7 +340,7 @@
     pushButton.textContent = "تفعيل إشعارات الهاتف";
     pushButton.hidden = true;
     pushButton.addEventListener("click", enablePush);
-    host.insertBefore(pushButton, host.lastElementChild);
+    preferences.appendChild(pushButton);
   }
 
   async function setupPush() {
