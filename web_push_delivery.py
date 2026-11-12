@@ -101,8 +101,8 @@ def _deliver_one():
                    JOIN web_push_subscriptions s ON s.user_id=n.recipient_user_id
                    WHERE q.next_attempt_at<=CURRENT_TIMESTAMP
                      AND (q.locked_at IS NULL OR q.locked_at<CURRENT_TIMESTAMP-INTERVAL '2 minutes')
-                   ORDER BY q.id,s.id
-                   FOR UPDATE OF q SKIP LOCKED LIMIT 20"""
+                   ORDER BY q.id,s.id LIMIT 20
+                   FOR UPDATE OF q SKIP LOCKED"""
             )
             jobs = cur.fetchall()
             if not jobs:
