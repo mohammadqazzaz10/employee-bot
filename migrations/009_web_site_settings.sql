@@ -7,9 +7,9 @@ CREATE TABLE IF NOT EXISTS web_app_settings (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 INSERT INTO web_app_settings(setting_key,setting_value) VALUES
- ('site_name','"عمران مول | Emran Mall"'::jsonb),
- ('site_tagline','"الفرع الرئيسي – خريبة السوق"'::jsonb),
- ('support_message','"للمساعدة، تواصل مع مدير فرع عمران مول."'::jsonb),
+ ('site_name','"رفيق العمل"'::jsonb),
+ ('site_tagline','"منظومة إدارة الموظفين"'::jsonb),
+ ('support_message','"تواصل مع مدير فرعك عند الحاجة."'::jsonb),
  ('maintenance_notice','""'::jsonb)
 ON CONFLICT(setting_key) DO NOTHING;
 COMMIT;
