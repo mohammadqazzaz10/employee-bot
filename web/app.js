@@ -351,7 +351,8 @@ async function loadNotifications() {
     const rows = data.notifications || [];
     const unread = rows.filter((row) => !row.read_at).length;
     $("notificationBadge").hidden = unread === 0;
-    $("notificationBadge").textContent = unread;\n    $("headerNotificationBadge").hidden = unread === 0;\n    $("headerNotificationBadge").textContent = unread > 99 ? "99+" : unread;
+    $("notificationBadge").textContent = unread;
+    $("headerNotificationBadge").hidden = unread === 0;\n    $("headerNotificationBadge").textContent = unread > 99 ? "99+" : unread;
     $("notificationList").innerHTML = rows.length ? rows.map((row) => `<article class="notification-item ${row.read_at ? "" : "unread"}" data-notification-id="${Number(row.id)}"><div><strong>${escapeHtml(row.title)}</strong><p>${escapeHtml(row.body)}</p><time>${formatDate(row.created_at)}</time><details class="notification-detail"><summary>عرض التفاصيل</summary><p>${escapeHtml(row.body)}</p></details></div><button class="notification-open" type="button" data-notification-open="${Number(row.id)}">فتح الإشعار ←</button></article>`).join("") : '<div class="content-card empty-cell">لا توجد إشعارات جديدة.</div>';
   } catch {}
 }
@@ -735,7 +736,8 @@ $("copyActivation").addEventListener("click", async () => {
 });
 document.querySelectorAll("[data-close]").forEach((button) => button.addEventListener("click", () => $(button.dataset.close).close()));
 $("mobileMenu").addEventListener("click", () => $("sidebar").classList.toggle("open"));
-$("profileButton").addEventListener("click", () => changePage("home"));\n$("headerNotifications").addEventListener("click", () => changePage("notifications"));
+$("profileButton").addEventListener("click", () => changePage("home"));
+$("headerNotifications").addEventListener("click", () => changePage("notifications"));
 window.addEventListener("beforeinstallprompt", (event) => {
   event.preventDefault(); installPrompt = event; $("installButton").hidden = false;
 });
