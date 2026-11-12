@@ -6,6 +6,7 @@ MIGRATION = ROOT / "migrations" / "001_multibranch_foundation.sql"
 INTEGRITY_MIGRATION = ROOT / "migrations" / "005_preproduction_integrity.sql"
 TIMER_ACK_MIGRATION = ROOT / "migrations" / "006_timer_return_acknowledgements.sql"
 WEB_MIGRATION = ROOT / "migrations" / "007_employee_web_portal.sql"
+CODE_MIGRATION = ROOT / "migrations" / "014_normalize_employee_codes.sql"
 EVENTS_MIGRATION = ROOT / "migrations" / "010_web_notification_events.sql"
 RUNNER = ROOT / "scripts" / "migrate.py"
 
@@ -70,6 +71,21 @@ class MigrationContractTests(unittest.TestCase):
                 self.assertIn(fragment, sql)
         self.assertNotIn("drop table", sql)
         self.assertNotIn("delete from employees", sql)
+
+    def test_employee_code_migration_resequences_codes_and_preserves_history(self):
+        sql = CODE_MIGRATION.read_text(encoding="utf-8").lower()
+        for fragment in (
+            "create table if not exists employee_code_history",
+            "row_number() over (order by id)",
+            "update web_users",
+            "employee_code_seq",
+            "nextval('employee_code_seq')",
+            "create or replace function assign_employee_web_code",
+        ):
+            with self.subTest(fragment=fragment):
+                self.assertIn(fragment, sql)
+        self.assertNotIn("delete from employees", sql)
+        self.assertIn("on delete restrict", sql)
 
     def test_notification_events_are_published_only_to_the_recipient_channel(self):
         sql = EVENTS_MIGRATION.read_text(encoding="utf-8").lower()
