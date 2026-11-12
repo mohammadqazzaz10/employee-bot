@@ -447,7 +447,7 @@ $("sideNav").addEventListener("click", (event) => {
   const item = event.target.closest("button[data-page]");
   if (!item || item.disabled || item.hidden) return;
   event.preventDefault();
-  event.stopPropagation();
+  // Keep bubbling so page-specific extensions can refresh their own data.
   void changePage(item.dataset.page);
 });
 $("viewRequests").addEventListener("click", () => changePage("requests"));
