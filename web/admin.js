@@ -21,7 +21,7 @@
     const nav=$("sideNav"), panel=document.querySelector(".main-panel");
     if(!nav || !panel || $("page-adminTools")) return;
     const item=document.createElement("button");
-    item.className="nav-item admin-only"; item.dataset.page="adminTools";
+    item.type="button"; item.className="nav-item admin-only"; item.dataset.page="adminTools";
     item.innerHTML="<span>✦</span> الإدارة المتقدمة";
     nav.appendChild(item);
     const section=document.createElement("section");
