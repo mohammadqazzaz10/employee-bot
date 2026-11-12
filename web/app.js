@@ -95,7 +95,11 @@ function showPortal(user) {
   if (pendingNotificationId) {
     api("/notifications").then((data) => {
       const notification = (data.notifications || []).find((row) => Number(row.id) === Number(pendingNotificationId));
-      if (notification) openEmployeeNotification(notification);
+      if (notification) {
+        if (!notification.read_at) await api("/notifications/" + notification.id + "/read", {method:"POST",body:"{}"});
+        await loadNotifications();
+        await openEmployeeNotification(notification);
+      }
     }).catch(() => {});
     const cleanUrl = new URL(window.location.href);
     cleanUrl.searchParams.delete("openNotification");
@@ -630,8 +634,8 @@ $("notificationList").addEventListener("click", async (event) => {
     const row = (await api("/notifications")).notifications?.find((item) => Number(item.id) === id);
     if (!row) throw new Error("هذا الإشعار لم يعد متاحًا.");
     if (!row.read_at) await api("/notifications/" + id + "/read",{method:"POST",body:"{}"});
-    await openEmployeeNotification(row);
     await loadNotifications();
+    await openEmployeeNotification(row);
   } catch (error) { flash(error.message,true); }
 });
 $("myRequests").addEventListener("click", (event) => {
@@ -647,6 +651,8 @@ navigator.serviceWorker?.addEventListener("message", async (event) => {
   if (event.data?.type === "OPEN_NOTIFICATION" && window.openEmployeeNotification) {
     const rows = (await api("/notifications")).notifications || [];
     const item = rows.find((row) => Number(row.id) === Number(event.data.notificationId)) || { id:event.data.notificationId, notification_type:event.data.notificationType, request_id:event.data.requestId, employee_id:event.data.employeeId };
+    if (item.id && !item.read_at) await api("/notifications/" + item.id + "/read", {method:"POST",body:"{}"});
+    await loadNotifications();
     await changePage("notifications");
     await openEmployeeNotification(item);
   }
