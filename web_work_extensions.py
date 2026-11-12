@@ -64,7 +64,8 @@ def _push_worker_loop():
             try:
                 with conn.cursor(cursor_factory=RealDictCursor) as cur:
                     cur.execute(
-                        """SELECT q.id AS queue_id,q.attempts,n.id,n.recipient_user_id,n.title,n.body
+                        """SELECT q.id AS queue_id,q.attempts,n.id,n.recipient_user_id,n.employee_id,n.request_id,
+                                  n.notification_type,n.title,n.body
                            FROM web_push_queue q JOIN web_notifications n ON n.id=q.notification_id
                            WHERE q.next_attempt_at<=CURRENT_TIMESTAMP
                              AND (q.locked_at IS NULL OR q.locked_at<CURRENT_TIMESTAMP-INTERVAL '2 minutes')
@@ -104,6 +105,10 @@ def _push_worker_loop():
                 "title": row["title"],
                 "body": row["body"],
                 "url": "/",
+                "notification_id": row["id"],
+                "notification_type": row["notification_type"],
+                "request_id": row["request_id"],
+                "employee_id": row["employee_id"],
                 "tag": "employee-notification-" + str(row["id"]),
             }, ensure_ascii=False)
             for subscription in subscriptions:
