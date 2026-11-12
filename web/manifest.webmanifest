@@ -1,14 +1,14 @@
 {
-  "name": "رفيق العمل - بوابة الموظفين",
-  "short_name": "رفيق العمل",
-  "description": "بوابة الموظفين لإدارة الطلبات والاستراحات",
+  "name": "عمران مول Emran Mall - بوابة الموظفين",
+  "short_name": "عمران مول",
+  "description": "بوابة موظفي عمران مول – الفرع الرئيسي خريبة السوق",
   "lang": "ar",
   "dir": "rtl",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
   "background_color": "#f4f7f5",
-  "theme_color": "#102a25",
+  "theme_color": "#123b30",
   "icons": [
     { "src": "/icons/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
   ]
