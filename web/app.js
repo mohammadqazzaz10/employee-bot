@@ -219,11 +219,16 @@ function renderTimer(timer) {
   const tick = () => {
     const remaining = Math.max(0, end - Date.now());
     const seconds = Math.floor(remaining / 1000);
-    const minutes = Math.floor(seconds / 60);
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
     const rest = seconds % 60;
-    $("timerValue").textContent = String(minutes).padStart(2,"0") + ":" + String(rest).padStart(2,"0");
+    $("timerValue").textContent = [hours, minutes, rest].map((part) => String(part).padStart(2,"0")).join(":");
     const progress = Math.min(360, Math.max(0, (Date.now() - start) / total * 360));
-    $("timerRing").style.background = `conic-gradient(#4d9970 ${progress}deg,#e7efe9 ${progress}deg)`;\n    const percent = Math.min(100, Math.max(0, (Date.now() - start) / total * 100));\n    $("timerProgress").style.width = percent + "%";\n    $("timerProgressText").textContent = Math.round(percent) + "% من الوقت المنقضي";
+    $("timerRing").style.background = `conic-gradient(#4d9970 ${progress}deg,#e7efe9 ${progress}deg)`;
+    const percent = Math.min(100, Math.max(0, (Date.now() - start) / total * 100));
+    $("timerProgress").style.width = percent + "%";
+    $("timerProgress").parentElement.setAttribute("aria-valuenow", String(Math.round(percent)));
+    $("timerProgressText").textContent = Math.round(percent) + "% من الوقت المنقضي";\n    const percent = Math.min(100, Math.max(0, (Date.now() - start) / total * 100));\n    $("timerProgress").style.width = percent + "%";\n    $("timerProgressText").textContent = Math.round(percent) + "% من الوقت المنقضي";
     if (remaining <= 0) {
       $("timerTitle").textContent = "انتهت مدة الاستراحة";
       $("timerDescription").textContent = "يرجى تأكيد عودتك إلى العمل.";
@@ -240,6 +245,8 @@ function renderRequests(rows) {
 }
 async function submitRequest(code, button) {
   if (portalMutationBusy) return;
+  const requestLabel = button.querySelector("strong")?.textContent || "الاستراحة";
+  if (!window.confirm("هل تريد إرسال طلب " + requestLabel + "؟")) return;
   portalMutationBusy = true;
   button.disabled = true;
   try {
