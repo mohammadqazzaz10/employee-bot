@@ -98,6 +98,21 @@ class EmployeePortalContractTests(unittest.TestCase):
         self.assertIn("NEW.employee_code := 'EMP' || LPAD(NEW.id::TEXT, 5, '0')", migration)
         self.assertIn("trg_employees_assign_web_code", migration)
 
+    def test_employee_portal_identity_notifications_and_live_timer_ui(self):
+        html = (WEB / "index.html").read_text(encoding="utf-8")
+        js = (WEB / "app.js").read_text(encoding="utf-8")
+        css = (WEB / "styles.css").read_text(encoding="utf-8")
+        for element_id in ("employeeIdentityCard", "identityName", "identityCode",
+                           "headerNotifications", "headerNotificationBadge", "timerProgress",
+                           "timerProgressText"):
+            with self.subTest(element_id=element_id):
+                self.assertIn(f'id="{element_id}"', html)
+        self.assertIn('Math.floor(seconds / 3600)', js)
+        self.assertIn('window.confirm("هل تريد إرسال طلب "', js)
+        self.assertIn('headerNotificationBadge', js)
+        self.assertIn('.employee-identity-card', css)
+        self.assertIn('.timer-progress-track', css)
+
     def test_frontend_and_backend_are_connected_by_same_origin_api(self):
         source = (ROOT / "web_app.py").read_text(encoding="utf-8")
         js = (WEB / "app.js").read_text(encoding="utf-8")

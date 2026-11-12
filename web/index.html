@@ -22,6 +22,7 @@
         <span class="brand-copy"><strong>عمران مول | Emran Mall</strong><small>الفرع الرئيسي – خريبة السوق</small></span>
       </a>
       <div class="topbar-actions">
+        <button class="icon-button header-notifications" id="headerNotifications" type="button" aria-label="فتح الإشعارات" title="الإشعارات">♧<i id="headerNotificationBadge" hidden>0</i></button>
         <span class="secure-label"><i></i> بيئة عمل آمنة</span>
         <button class="icon-button" id="installButton" hidden title="تثبيت التطبيق" aria-label="تثبيت التطبيق">↓</button>
         <button class="avatar" id="profileButton" hidden aria-label="الملف الشخصي">م</button>
@@ -93,6 +94,7 @@
           <div class="mobile-head"><span class="eyebrow" id="todayLabel">مساحة العمل</span><button class="mobile-menu" id="mobileMenu">☰</button></div>
           <section class="page-section active" id="page-home">
             <div class="page-heading"><div><div class="eyebrow">لوحة المتابعة</div><h1>أهلًا، <span id="employeeName">...</span> <span class="wave">✦</span></h1><p id="employeeMeta">نتمنى لك يومًا موفقًا.</p></div><div class="heading-date" id="dateLabel"></div></div>
+            <section class="employee-identity-card" id="employeeIdentityCard" aria-label="بيانات الموظف"><div class="identity-avatar" id="identityAvatar">م</div><div class="identity-copy"><span class="identity-kicker">بطاقة الموظف</span><strong id="identityName">الموظف</strong><p><span>الرقم الوظيفي</span> <b id="identityCode">—</b></p><small id="identityMeta">—</small></div><span class="identity-status"><i></i> حساب نشط</span></section>
             <div class="stats-grid" id="statsGrid">
               <article class="stat-card stat-main"><span class="stat-icon">♙</span><small id="statOneLabel">حالة الحساب</small><strong id="statOne">نشط</strong><span class="stat-note">حسابك جاهز للاستخدام</span></article>
               <article class="stat-card"><span class="stat-icon blue">▤</span><small id="statTwoLabel">طلبات معلّقة</small><strong id="statTwo">—</strong><span class="stat-note">بانتظار المراجعة</span></article>
@@ -101,7 +103,7 @@
             <div class="content-grid">
               <section class="content-card timer-card" id="timerCard">
                 <div class="card-title-row"><div><span class="eyebrow">متابعة الوقت</span><h2>حالة الاستراحة</h2></div><span class="live-pill"><i></i> مباشر</span></div>
-                <div class="timer-content"><div class="timer-ring" id="timerRing"><div><strong id="timerValue">--:--</strong><small id="timerCaption">لا توجد استراحة نشطة</small></div></div><div class="timer-details"><strong id="timerTitle">أنت على رأس العمل</strong><p id="timerDescription">عند الموافقة على طلبك سيظهر الوقت المتبقي هنا.</p><button class="soft-button" id="returnButton" hidden>تأكيد العودة للعمل</button></div></div>
+                <div class="timer-content"><div class="timer-ring" id="timerRing"><div><strong id="timerValue">--:--:--</strong><small id="timerCaption">لا توجد استراحة نشطة</small></div></div><div class="timer-details"><strong id="timerTitle">أنت على رأس العمل</strong><p id="timerDescription">عند الموافقة على طلبك سيظهر الوقت المتبقي هنا.</p><button class="soft-button" id="returnButton" hidden>تأكيد العودة للعمل</button></div></div><div class="timer-progress-track" role="progressbar" aria-label="تقدم الاستراحة" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span id="timerProgress"></span></div><div class="timer-progress-label"><span>بداية الاستراحة</span><strong id="timerProgressText">لم تبدأ</strong><span>نهاية الاستراحة</span></div>
               </section>
               <section class="content-card quick-card"><div class="card-title-row"><div><span class="eyebrow">اختصارات</span><h2>خدمات سريعة</h2></div></div><div class="quick-actions" id="quickActions"><button class="quick-action" id="callSupervisor"><span class="quick-icon coral">♧</span><strong>استدعاء المشرف</strong><small>اطلب التواصل معك</small></button><button class="quick-action" id="viewRequests"><span class="quick-icon blue">▤</span><strong>متابعة طلباتي</strong><small>اعرف حالة طلباتك</small></button></div></section>
             </div>

@@ -71,6 +71,10 @@ function showPortal(user) {
   $("sideRole").textContent = roleNames[user.role] || "مستخدم";
   $("employeeName").textContent = user.full_name || "الموظف";
   $("employeeMeta").textContent = [user.job_title, user.branch_name].filter(Boolean).join(" • ") || "مرحبًا بك في مساحة العمل.";
+  $("identityName").textContent = user.full_name || "الموظف";
+  $("identityAvatar").textContent = (user.full_name || "م").trim().charAt(0);
+  $("identityCode").textContent = user.employee_code || user.employee_number || "يظهر بعد تحميل الملف";
+  $("identityMeta").textContent = [user.job_title, user.branch_name].filter(Boolean).join(" • ") || "بيانات الفرع";
   $("todayLabel").textContent = "مساحة العمل";
   $("dateLabel").textContent = new Intl.DateTimeFormat("ar-JO", { dateStyle: "full" }).format(new Date());
   const isAdmin = user.role !== "employee";
@@ -167,6 +171,10 @@ async function loadEmployeeDashboard({ silent = false, refreshTypes = true } = {
     const profile = summary.profile || {};
     $("employeeName").textContent = profile.full_name || currentUser.full_name;
     $("employeeMeta").textContent = [profile.job_title, profile.branch_name].filter(Boolean).join(" • ");
+    $("identityName").textContent = profile.full_name || currentUser.full_name || "الموظف";
+    $("identityCode").textContent = profile.employee_code || profile.employee_number || currentUser.employee_code || "—";
+    $("identityMeta").textContent = [profile.job_title, profile.branch_name].filter(Boolean).join(" • ") || "—";
+    $("identityAvatar").textContent = (profile.full_name || currentUser.full_name || "م").trim().charAt(0);
     $("statTwo").textContent = summary.pending_count ?? 0;
     renderTimer(summary.timer);
     if (types) {
@@ -191,7 +199,9 @@ function renderTimer(timer) {
   renderedTimerKey = timerKey;
   if (timerInterval) window.clearInterval(timerInterval);
   if (!timer) {
-    $("timerValue").textContent = "--:--";
+    $("timerValue").textContent = "--:--:--";
+    $("timerProgress").style.width = "0%";
+    $("timerProgressText").textContent = "لم تبدأ";
     $("timerCaption").textContent = "لا توجد استراحة نشطة";
     $("timerTitle").textContent = "أنت على رأس العمل";
     $("timerDescription").textContent = "عند الموافقة على طلبك سيظهر الوقت المتبقي هنا.";
@@ -209,11 +219,16 @@ function renderTimer(timer) {
   const tick = () => {
     const remaining = Math.max(0, end - Date.now());
     const seconds = Math.floor(remaining / 1000);
-    const minutes = Math.floor(seconds / 60);
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
     const rest = seconds % 60;
-    $("timerValue").textContent = String(minutes).padStart(2,"0") + ":" + String(rest).padStart(2,"0");
+    $("timerValue").textContent = [hours, minutes, rest].map((part) => String(part).padStart(2,"0")).join(":");
     const progress = Math.min(360, Math.max(0, (Date.now() - start) / total * 360));
     $("timerRing").style.background = `conic-gradient(#4d9970 ${progress}deg,#e7efe9 ${progress}deg)`;
+    const percent = Math.min(100, Math.max(0, (Date.now() - start) / total * 100));
+    $("timerProgress").style.width = percent + "%";
+    $("timerProgress").parentElement.setAttribute("aria-valuenow", String(Math.round(percent)));
+    $("timerProgressText").textContent = Math.round(percent) + "% من الوقت المنقضي";
     if (remaining <= 0) {
       $("timerTitle").textContent = "انتهت مدة الاستراحة";
       $("timerDescription").textContent = "يرجى تأكيد عودتك إلى العمل.";
@@ -230,6 +245,8 @@ function renderRequests(rows) {
 }
 async function submitRequest(code, button) {
   if (portalMutationBusy) return;
+  const requestLabel = button.querySelector("strong")?.textContent || "الاستراحة";
+  if (!window.confirm("هل تريد إرسال طلب " + requestLabel + "؟")) return;
   portalMutationBusy = true;
   button.disabled = true;
   try {
@@ -335,6 +352,8 @@ async function loadNotifications() {
     const unread = rows.filter((row) => !row.read_at).length;
     $("notificationBadge").hidden = unread === 0;
     $("notificationBadge").textContent = unread;
+    $("headerNotificationBadge").hidden = unread === 0;
+    $("headerNotificationBadge").textContent = unread > 99 ? "99+" : unread;
     $("notificationList").innerHTML = rows.length ? rows.map((row) => `<article class="notification-item ${row.read_at ? "" : "unread"}" data-notification-id="${Number(row.id)}"><div><strong>${escapeHtml(row.title)}</strong><p>${escapeHtml(row.body)}</p><time>${formatDate(row.created_at)}</time><details class="notification-detail"><summary>عرض التفاصيل</summary><p>${escapeHtml(row.body)}</p></details></div><button class="notification-open" type="button" data-notification-open="${Number(row.id)}">فتح الإشعار ←</button></article>`).join("") : '<div class="content-card empty-cell">لا توجد إشعارات جديدة.</div>';
   } catch {}
 }
@@ -719,6 +738,7 @@ $("copyActivation").addEventListener("click", async () => {
 document.querySelectorAll("[data-close]").forEach((button) => button.addEventListener("click", () => $(button.dataset.close).close()));
 $("mobileMenu").addEventListener("click", () => $("sidebar").classList.toggle("open"));
 $("profileButton").addEventListener("click", () => changePage("home"));
+$("headerNotifications").addEventListener("click", () => changePage("notifications"));
 window.addEventListener("beforeinstallprompt", (event) => {
   event.preventDefault(); installPrompt = event; $("installButton").hidden = false;
 });
