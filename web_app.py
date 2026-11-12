@@ -863,7 +863,7 @@ def notifications():
     try:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute(
-                """SELECT id,notification_type,title,body,read_at,created_at
+                """SELECT id,employee_id,request_id,notification_type,title,body,read_at,created_at
                    FROM web_notifications WHERE recipient_user_id=%s
                    ORDER BY created_at DESC LIMIT 30""", (g.current_user["id"],))
             rows = cur.fetchall()
