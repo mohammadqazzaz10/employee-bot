@@ -434,7 +434,7 @@ def update_work_task(assignment_id):
                     """INSERT INTO web_notifications(recipient_user_id,notification_type,title,body)
                        SELECT id,'task_updated','تحديث مهمة: ' || %s,%s
                        FROM web_users WHERE branch_id=%s AND role IN ('branch_manager','supervisor') AND is_active=TRUE""",
-                    (row["title"], row["employee_name"] + " حدّث حالة المهمة إلى " + status_label),
+                    (row["title"], row["employee_name"] + " حدّث حالة المهمة إلى " + status_label, row["branch_id"]),
                 )
             else:
                 cur.execute(
