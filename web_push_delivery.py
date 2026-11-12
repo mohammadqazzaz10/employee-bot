@@ -24,6 +24,10 @@ def _connect():
 
 def register_push_delivery(app, auth_required, _json_error):
     """Register per-user subscription APIs and start the queue worker."""
+    # Test runners and WSGI reloaders may import the application more than once.
+    if "push_config" in app.view_functions:
+        _start_worker()
+        return
     @app.get("/api/push/config")
     @auth_required
     def push_config():
