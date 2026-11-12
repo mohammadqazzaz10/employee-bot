@@ -335,8 +335,21 @@ async function loadNotifications() {
   } catch {}
 }
 async function changePage(page) {
-  document.querySelectorAll(".nav-item").forEach((item) => item.classList.toggle("active", item.dataset.page === page));
-  document.querySelectorAll(".page-section").forEach((section) => section.classList.toggle("active", section.id === "page-" + page));
+  const target = $("page-" + page);
+  if (!target || !currentUser) return false;
+  const navItem = document.querySelector('#sideNav [data-page="' + page + '"]');
+  if (navItem && navItem.hidden) return false;
+  document.querySelectorAll(".nav-item[data-page]").forEach((item) => {
+    const active = item.dataset.page === page;
+    item.classList.toggle("active", active);
+    if (active) item.setAttribute("aria-current", "page");
+    else item.removeAttribute("aria-current");
+  });
+  document.querySelectorAll(".page-section").forEach((section) => {
+    const active = section === target;
+    section.classList.toggle("active", active);
+    section.hidden = !active;
+  });
   $("sidebar").classList.remove("open");
   if (page === "requests" && currentUser.role === "employee") {
     try { const data = await api("/employee/requests"); renderRequests(data.requests || []); } catch (e) { flash(e.message,true); }
@@ -346,7 +359,11 @@ async function changePage(page) {
   if (page === "admins") loadAdmins();
   if (page === "settings") loadSettings();
   if (page === "notifications") loadNotifications();
+  if (page === "adminTools") window.dispatchEvent(new Event("employee-portal:admin-tools-opened"));
+  if (page === "workTasks") window.dispatchEvent(new Event("employee-portal:work-tasks-opened"));
+  return true;
 }
+window.changePage = changePage;
 $("loginForm").addEventListener("submit", async (event) => {
   event.preventDefault();
   const button = $("loginSubmit");
@@ -427,8 +444,11 @@ $("logoutButton").addEventListener("click", async () => {
   showLogin("تم تسجيل الخروج بأمان.");
 });
 $("sideNav").addEventListener("click", (event) => {
-  const item = event.target.closest("[data-page]");
-  if (item) changePage(item.dataset.page);
+  const item = event.target.closest("button[data-page]");
+  if (!item || item.disabled || item.hidden) return;
+  event.preventDefault();
+  event.stopPropagation();
+  void changePage(item.dataset.page);
 });
 $("viewRequests").addEventListener("click", () => changePage("requests"));
 $("callSupervisor").addEventListener("click", async () => {
