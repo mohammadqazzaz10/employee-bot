@@ -11,7 +11,7 @@ def test_background_web_push_is_wired_and_uses_authenticated_subscriptions():
     assert '@app.get("/api/push/config")' in delivery
     assert '@app.post("/api/push/subscriptions")' in delivery
     assert "g.current_user[\"id\"]" in delivery
-    assert "FOR UPDATE SKIP LOCKED" in delivery
+    assert "FOR UPDATE OF q SKIP LOCKED" in delivery
     assert "vapid_private_key=private_key" in delivery
     assert 'registration.pushManager.subscribe' in frontend
     assert 'self.addEventListener("push"' in worker
