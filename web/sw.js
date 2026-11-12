@@ -53,6 +53,6 @@ self.addEventListener("push", (event) => {
     badge: "/icons/icon.svg",
     tag: String(payload.tag || "employee-portal-push").slice(0, 120),
     renotify: false,
-    data: { url }
+    data: { url, notificationId: payload.notification_id || null, notificationType: payload.notification_type || null, requestId: payload.request_id || null, employeeId: payload.employee_id || null }
   }));
 });
