@@ -1,4 +1,4 @@
-const CACHE = "employee-portal-shell-v5";
+const CACHE = "employee-portal-shell-v6";
 const SHELL = ["/", "/styles.css", "/app.js", "/admin.js", "/notifications.js", "/work.js", "/manifest.webmanifest", "/icons/icon.svg"];
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(SHELL)));
@@ -23,14 +23,20 @@ self.addEventListener("notificationclick", (event) => {
   event.notification.close();
   event.waitUntil((async () => {
     const windows = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+    const data = event.notification.data || {};
+    const message = { type: data.notificationId ? "OPEN_NOTIFICATION" : "OPEN_NOTIFICATIONS", notificationId: data.notificationId || null, notificationType: data.notificationType || null, requestId: data.requestId || null, employeeId: data.employeeId || null };
     for (const client of windows) {
       if ("focus" in client) {
         await client.focus();
-        client.postMessage({ type: "OPEN_NOTIFICATIONS" });
+        client.postMessage(message);
         return;
       }
     }
-    if (self.clients.openWindow) await self.clients.openWindow(target.href);
+    if (self.clients.openWindow) {
+      const destination = new URL(data.url || "/", self.location.origin);
+      if (data.notificationId) destination.searchParams.set("openNotification", String(data.notificationId));
+      await self.clients.openWindow(destination.href);
+    }
   })());
 });
 
