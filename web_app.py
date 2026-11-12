@@ -1534,6 +1534,10 @@ import web_admin_extensions  # noqa: E402,F401
 import web_work_extensions  # noqa: E402,F401
 import web_operations_extensions  # noqa: E402,F401
 
+# Register authenticated background Web Push endpoints and start the durable queue worker.
+from web_push_delivery import register_push_delivery  # noqa: E402
+register_push_delivery(app, auth_required, _json_error)
+
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", "8080")), debug=False)
