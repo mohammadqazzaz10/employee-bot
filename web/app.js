@@ -91,6 +91,16 @@ function showPortal(user) {
   if (isAdmin) loadAdminDashboard();
   else loadEmployeeDashboard();
   loadNotifications();
+  const pendingNotificationId = new URLSearchParams(window.location.search).get("openNotification");
+  if (pendingNotificationId) {
+    api("/notifications").then((data) => {
+      const notification = (data.notifications || []).find((row) => Number(row.id) === Number(pendingNotificationId));
+      if (notification) openEmployeeNotification(notification);
+    }).catch(() => {});
+    const cleanUrl = new URL(window.location.href);
+    cleanUrl.searchParams.delete("openNotification");
+    window.history.replaceState({}, "", cleanUrl.pathname + cleanUrl.search + cleanUrl.hash);
+  }
   startLiveSync();
   window.dispatchEvent(new Event("employee-portal:opened"));
 }
