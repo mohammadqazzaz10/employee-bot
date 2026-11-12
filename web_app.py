@@ -1015,10 +1015,12 @@ def create_employee():
             if not cur.fetchone():
                 conn.rollback()
                 return _json_error("الفرع غير موجود أو غير نشط.", 400)
+            # The database trigger assigns EMP + the sequential employee row ID.
+            # Never generate random employee numbers in the API layer.
             cur.execute(
-                """INSERT INTO employees(employee_code,phone_number,full_name,job_title,branch_id,is_active)
-                   VALUES(%s,%s,%s,%s,%s,TRUE) RETURNING id,employee_code""",
-                ("EMP" + secrets.token_hex(4).upper(), phone, full_name, job_title, branch_id))
+                """INSERT INTO employees(phone_number,full_name,job_title,branch_id,is_active)
+                   VALUES(%s,%s,%s,%s,TRUE) RETURNING id,employee_code""",
+                (phone, full_name, job_title, branch_id))
             employee = cur.fetchone()
             _audit(cur, g.current_user["id"], branch_id, "employee_created", "employee", employee["id"])
         conn.commit()
