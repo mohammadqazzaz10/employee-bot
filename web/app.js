@@ -48,6 +48,7 @@ function flash(message, isError = false) {
 }
 function showLogin(message = "") {
   currentUser = null;
+  window.currentUser = null;
   $("loginView").hidden = false;
   $("portalView").hidden = true;
   window.dispatchEvent(new Event("employee-portal:closed"));
@@ -59,6 +60,7 @@ function showLogin(message = "") {
 }
 function showPortal(user) {
   currentUser = user;
+  window.currentUser = user;
   $("loginView").hidden = true;
   $("portalView").hidden = false;
   $("profileButton").hidden = false;

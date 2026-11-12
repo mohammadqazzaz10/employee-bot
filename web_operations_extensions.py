@@ -4,6 +4,7 @@ import logging
 import re
 import threading
 import time
+from datetime import datetime, timedelta, timezone
 
 from flask import g, jsonify, request
 from psycopg2.extras import RealDictCursor
@@ -121,7 +122,7 @@ def update_employee_presence():
             event_type = None
             if not previous:
                 event_type = "online"
-            elif previous["last_seen_at"] < __import__("datetime").datetime.now(__import__("datetime").timezone.utc) - __import__("datetime").timedelta(minutes=2):
+            elif previous["last_seen_at"] < datetime.now(timezone.utc) - timedelta(minutes=2):
                 event_type = "resumed"
             elif bool(previous["is_visible"]) != visible:
                 event_type = "tab_visible" if visible else "tab_hidden"
